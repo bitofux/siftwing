@@ -1,0 +1,15 @@
+# CMake and compiler outputs
+/build/
+/build-*/
+/cmake-build-*/
+/out/
+/compile_commands.json
+
+# Runtime artifacts
+*.log
+*.pid
+
+# Editor and operating-system metadata
+.DS_Store
+*.swp
+*.swo
