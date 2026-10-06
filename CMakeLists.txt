@@ -60,6 +60,10 @@ if(BUILD_TESTING)
     target_link_libraries(siftwing_checked_test PRIVATE siftwing_base)
     add_test(NAME base.checked COMMAND siftwing_checked_test)
     set_tests_properties(base.checked PROPERTIES TIMEOUT 30)
+    add_executable(siftwing_id_test tests/unit/id_test.cpp)
+    target_link_libraries(siftwing_id_test PRIVATE siftwing_base)
+    add_test(NAME base.id COMMAND siftwing_id_test)
+    set_tests_properties(base.id PROPERTIES TIMEOUT 10)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
         add_test(NAME base.result_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
@@ -73,5 +77,11 @@ if(BUILD_TESTING)
                 "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/checked-compile-contract"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/checked_compile_contract.cmake")
         set_tests_properties(base.checked_compile_contract PROPERTIES TIMEOUT 30)
+        add_test(NAME base.id_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/id-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/id_compile_contract.cmake")
+        set_tests_properties(base.id_compile_contract PROPERTIES TIMEOUT 60)
     endif()
 endif()
