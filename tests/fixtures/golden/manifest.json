@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "origin": "original-siftwing-fixture",
+  "license": "MIT",
+  "files": [
+    {
+      "path": "rss/original.xml",
+      "size_bytes": 1058,
+      "sha256": "754d840d1ab2f4b5035b790dcac369b2e302f2f24574ad5430f6e90819c2d736"
+    },
+    {
+      "path": "txt/empty.txt",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "txt/en-river.txt",
+      "size_bytes": 65,
+      "sha256": "1d6bdb03f1bc38fd58fba150c18b7997f89b3b4598ecb3b8e3990c95cc8a1ec4"
+    },
+    {
+      "path": "txt/en-workbench-copy.txt",
+      "size_bytes": 61,
+      "sha256": "0c3ebfc17c7240b656a20e29df8a86ba5be289304ae7b4e320e646a901f2d8dc"
+    },
+    {
+      "path": "txt/en-workbench.txt",
+      "size_bytes": 61,
+      "sha256": "0c3ebfc17c7240b656a20e29df8a86ba5be289304ae7b4e320e646a901f2d8dc"
+    },
+    {
+      "path": "txt/zh-river.txt",
+      "size_bytes": 59,
+      "sha256": "44f60c8b90bb4cdcacdcc9a07a9d1c74a3e6c213835cf07a38dde68c768382b0"
+    },
+    {
+      "path": "txt/zh-workbench.txt",
+      "size_bytes": 56,
+      "sha256": "baeabd6e50b6f95f97c115cf6ff45c5a18bbb489c84f1f59f49eb882ac214a2c"
+    }
+  ],
+  "exact_duplicates": [
+    [
+      "txt/en-workbench.txt",
+      "txt/en-workbench-copy.txt"
+    ]
+  ],
+  "empty_files": [
+    "txt/empty.txt"
+  ],
+  "rss": {
+    "path": "rss/original.xml",
+    "items": [
+      {
+        "title": "Copper kettle",
+        "link": "https://fixtures.example.invalid/kettle",
+        "pubDate": "Mon, 05 Oct 2026 09:00:00 GMT",
+        "description": "A fallback description for the kettle.",
+        "content:encoded": "<p>A copper kettle rests on the workbench.</p><p>The lantern is blue.</p>"
+      },
+      {
+        "title": "河边纸船",
+        "link": "https://fixtures.example.invalid/boat",
+        "pubDate": "Mon, 05 Oct 2026 10:00:00 GMT",
+        "description": "<p>纸船停在河边闸门旁。</p><p>Green &amp; blue lanterns.</p>",
+        "content:encoded": null
+      },
+      {
+        "title": null,
+        "link": null,
+        "pubDate": null,
+        "description": "<p></p>",
+        "content:encoded": null
+      }
+    ]
+  }
+}

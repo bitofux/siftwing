@@ -31,6 +31,7 @@ target_link_libraries(siftwing_build_probe PRIVATE siftwing_bootstrap)
 
 include(CTest)
 if(BUILD_TESTING)
+    find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
     add_executable(siftwing_byte_probe_test tests/unit/byte_probe_test.cpp)
     target_link_libraries(siftwing_byte_probe_test PRIVATE siftwing_bootstrap)
     add_test(NAME bootstrap.byte_probe COMMAND siftwing_byte_probe_test)
@@ -39,4 +40,11 @@ if(BUILD_TESTING)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/build_probe_cli.cmake"
     )
     set_tests_properties(bootstrap.byte_probe bootstrap.cli PROPERTIES TIMEOUT 10)
+    add_test(NAME fixtures.integrity
+        COMMAND Python3::Interpreter -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/golden_fixtures_test.py"
+            --fixtures "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/golden"
+            --project-license "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+    )
+    set_tests_properties(fixtures.integrity PROPERTIES TIMEOUT 15)
 endif()

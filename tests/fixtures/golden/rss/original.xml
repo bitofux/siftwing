@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Siftwing fictional workshop</title>
+    <link>https://fixtures.example.invalid/feed</link>
+    <description>Original local test records.</description>
+    <item>
+      <title>Copper kettle</title>
+      <link>https://fixtures.example.invalid/kettle</link>
+      <pubDate>Mon, 05 Oct 2026 09:00:00 GMT</pubDate>
+      <description>A fallback description for the kettle.</description>
+      <content:encoded><![CDATA[<p>A copper kettle rests on the workbench.</p><p>The lantern is blue.</p>]]></content:encoded>
+    </item>
+    <item>
+      <title>河边纸船</title>
+      <link>https://fixtures.example.invalid/boat</link>
+      <pubDate>Mon, 05 Oct 2026 10:00:00 GMT</pubDate>
+      <description>&lt;p&gt;纸船停在河边闸门旁。&lt;/p&gt;&lt;p&gt;Green &amp;amp; blue lanterns.&lt;/p&gt;</description>
+    </item>
+    <item>
+      <description><![CDATA[<p></p>]]></description>
+    </item>
+  </channel>
+</rss>
