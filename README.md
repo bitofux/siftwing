@@ -6,7 +6,7 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 
 ## 项目状态
 
-仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。搜索、索引、协议和 Reactor 能力仍属于计划，尚未实现。
+仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层还提供 `Result<T>` / `Result<void>` 与拥有原因、上下文文本的 `Error`，并验证其运行行为及编译合同。搜索、索引、协议和 Reactor 能力仍属于计划，尚未实现。
 
 ## 在 Ubuntu 上构建与测试
 
@@ -25,9 +25,11 @@ build/debug/siftwing_build_probe a banana
 # 3
 ```
 
-探针只统计精确字节，不涉及文本、编码或搜索语义。参数非法时退出 2，输出失败时退出 1。三项测试（两项构建探针和 `fixtures.integrity`）必须被实际发现并运行，仅编译成功不足以确认验证通过。
+探针只统计精确字节，不涉及文本、编码或搜索语义。参数非法时退出 2，输出失败时退出 1。Ubuntu GCC/Clang 配置须实际发现并运行全部五项测试（两项构建探针、fixtures.integrity、base.result 与 base.result_compile_contract），仅编译成功不足以确认验证通过。
 
-CMake 配置时自动在构建目录生成 `compile_commands.json`；该生成文件不提交。
+基础结果模型位于 [result.h](include/siftwing/base/result.h)，通过 CMake 目标 `siftwing_base` 使用。调用方先检查 `has_value()` 或显式布尔分支，再读取 `value()` / `error()`；访问错分支抛出 `std::bad_variant_access`。结果按载荷类型支持复制或移动构造，不支持赋值；左值访问返回借用引用，右值访问返回拥有值。`[[nodiscard]]` 会诊断直接丢弃结果，显式 `(void)` 仍允许有意忽略。它不自动捕获分配或载荷构造异常。
+
+CMake 配置时自动在构建目录生成 `compile_commands.json`；新增源或目标后须重新配置。clangd 等工具可使用所选构建目录的数据库，根目录入口应指向当前配置，生成文件不提交。
 
 [黄金数据说明](tests/fixtures/golden/README.md)记录原创输入、许可证、字节清单和原始 RSS 字段预期。完整性测试核对数据并对损坏副本进行检查，不验证搜索引擎或生产 TXT/RSS 解析器。
 

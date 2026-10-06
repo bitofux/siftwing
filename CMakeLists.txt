@@ -22,6 +22,10 @@ if(SIFTWING_ENABLE_SANITIZERS)
     target_link_options(siftwing_build_options INTERFACE -fsanitize=address,undefined)
 endif()
 
+add_library(siftwing_base INTERFACE)
+target_include_directories(siftwing_base INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(siftwing_base INTERFACE siftwing_build_options)
+
 add_library(siftwing_bootstrap STATIC src/bootstrap/byte_probe.cpp)
 target_include_directories(siftwing_bootstrap PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(siftwing_bootstrap PUBLIC siftwing_build_options)
@@ -47,4 +51,17 @@ if(BUILD_TESTING)
             --project-license "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
     )
     set_tests_properties(fixtures.integrity PROPERTIES TIMEOUT 15)
+
+    add_executable(siftwing_result_test tests/unit/result_test.cpp)
+    target_link_libraries(siftwing_result_test PRIVATE siftwing_base)
+    add_test(NAME base.result COMMAND siftwing_result_test)
+    set_tests_properties(base.result PROPERTIES TIMEOUT 10)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+        add_test(NAME base.result_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/result-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/result_compile_contract.cmake")
+        set_tests_properties(base.result_compile_contract PROPERTIES TIMEOUT 30)
+    endif()
 endif()
