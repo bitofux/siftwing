@@ -1,3 +1,11 @@
+/*
+ * PROJECT : SIFTWING
+ * FILE    : checked_test.cpp
+ * AUTHOR  : bitofux
+ * DATE    : 2026-10-06
+ * BRIEF   : 验证受检整数运算的边界、符号组合、独立数学参考与错误所有权
+ */
+
 #include "siftwing/base/checked.h"
 
 #include <cstddef>
@@ -39,7 +47,7 @@ void expect_value(const Result<T>& result, T expected, const char* label) {
 
 template <typename T>
 void exhaustive_arithmetic() {
-    // 独立参考：8位输入的加法/乘法在int内精确计算，不重复guard算法。
+    // 独立参考：8 位输入的和与积都能由 int 精确表示，因此 oracle 不重复生产 guard 算法。
     constexpr int minimum = std::numeric_limits<T>::min();
     constexpr int maximum = std::numeric_limits<T>::max();
     for (int lhs = minimum; lhs <= maximum; ++lhs) {
@@ -64,6 +72,7 @@ void exhaustive_arithmetic() {
 
 template <typename To, typename From>
 void exhaustive_conversion() {
+    // int 同时覆盖这里所有 8 位源/目标值域，可直接判断成员关系而不复用生产转换。
     constexpr int minimum = std::numeric_limits<From>::min();
     constexpr int maximum = std::numeric_limits<From>::max();
     constexpr int target_min = std::numeric_limits<To>::min();
@@ -76,7 +85,7 @@ void exhaustive_conversion() {
     }
 }
 
-// 记录布局验收夹具；不写文件、不冻结生产格式。
+// 记录布局验收夹具证明调用者按“乘法→加法→窄化”短路；不写文件、不冻结生产格式。
 Result<std::uint32_t> layout_offset(std::uint64_t count, std::uint64_t width,
                                     std::uint64_t offset) {
     const auto bytes = checked_mul(count, width, "layout bytes");
@@ -91,6 +100,7 @@ Result<std::uint32_t> layout_offset(std::uint64_t count, std::uint64_t width,
 }
 
 void wide_boundaries() {
+    // 直接覆盖最值相邻点、零、min/-1 和全部 signedness 转换方向。
     using U = std::uint64_t;
     using S = std::int64_t;
     constexpr U umax = std::numeric_limits<U>::max();
@@ -172,6 +182,7 @@ void caller_and_ownership() {
     check(!narrow_failure && narrow_failure.error().context == "layout field", "caller stops at field conversion");
     expect_value(layout_offset(0, maximum, 9), std::uint32_t{9}, "zero count ignores large width safely");
 
+    // 局部 string 含 NUL 且随后被改写，用于证明失败 Error 拥有完整 context 副本。
     const auto owned_error = [maximum] {
         std::string context{"input\0offset", 12};
         const auto result = checked_add(maximum, std::uint64_t{1}, context);

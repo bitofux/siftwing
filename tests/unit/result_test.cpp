@@ -1,3 +1,11 @@
+/*
+ * PROJECT : SIFTWING
+ * FILE    : result_test.cpp
+ * AUTHOR  : bitofux
+ * DATE    : 2026-10-06
+ * BRIEF   : 验证 Result 的分支、值类别、所有权、异常传播和 RAII 合同
+ */
+
 #include "siftwing/base/result.h"
 
 #include <iostream>
@@ -55,7 +63,7 @@ void check_bad_access(Operation operation, std::string_view label) {
     }
 }
 
-// 验收夹具：生产结果再由上游分支处理，不是生产业务入口。
+// 以最小生产者/调用者链验证失败必须由 Result 分支传播，而不是由载荷内容猜测。
 Result<int> positive_value(int input) {
     if (input <= 0) {
         return Result<int>::failure({"value must be positive", "positive_value"});
@@ -104,6 +112,7 @@ struct Tracked final {
 };
 
 void check_construction_failures() {
+    // 计数型载荷独立观察资源释放；主动抛出的复制/移动排除“异常被吞掉”与泄漏。
     {
         auto original = Result<Tracked>::success(Tracked{9});
         check(Tracked::live == 1, "one owned payload after factory temporaries");
@@ -145,6 +154,7 @@ void check_construction_failures() {
 }  // namespace
 
 int main() {
+    // 同一 success 载荷经可变/const 左值访问时必须借用同一对象。
     auto success = positive_value(7);
     check(success.has_value() && static_cast<bool>(success) && success.value() == 7,
           "producer to caller success branch");
@@ -154,6 +164,7 @@ int main() {
     check(Result<int>::success(0).has_value(), "zero value is a success");
     check(Result<bool>::success(false).has_value(), "false payload is a success");
 
+    // 空错误文本仍是 failure，局部源字符串变化也不能影响 Result 已拥有的诊断。
     auto failure = positive_value(-1);
     check(!failure && !failure.has_value(), "producer to caller failure branch");
     check(failure.error().message == "value must be positive" &&
@@ -173,6 +184,7 @@ int main() {
     check(!bad_void && bad_void.error().context == "positive_value",
           "void caller propagates the original error context");
 
+    // 所有错误分支访问均应抛 bad_variant_access，且错误访问不得切换既有分支。
     check_bad_access([&success] { (void)success.error(); }, "error on successful value throws");
     check_bad_access([&failure] { (void)failure.value(); }, "value on failure throws");
     check_bad_access([&const_success] { (void)const_success.error(); }, "const wrong error throws");
@@ -184,6 +196,7 @@ int main() {
     check(success.has_value() && !failure && good_void && !bad_void,
           "wrong accesses do not change branches");
 
+    // 复制结果必须拥有独立载荷；修改副本不能回写源对象。
     auto copy = success;
     copy.value() = 42;
     check(success.value() == 8 && copy.value() == 42, "copied values are independent");
@@ -195,6 +208,7 @@ int main() {
           "void errors are copyable");
 
     auto pointer = std::make_unique<int>(21);
+    // move-only 载荷验证工厂、移动构造和右值提取的资源交接及 moved-from 分支稳定性。
     auto owner = Result<std::unique_ptr<int>>::success(std::move(pointer));
     check(!pointer && owner.has_value() && *owner.value() == 21, "factory takes move-only ownership");
     auto moved_owner = std::move(owner);
@@ -215,6 +229,7 @@ int main() {
           "const void rvalue error extraction owns a copy");
 
     auto error_value = Result<Error>::success({"data", "payload"});
+    // 以索引而非类型区分分支，保证 T=Error 时 success 与 failure 仍不混淆。
     auto error_failure = Result<Error>::failure({"reason", "operation"});
     check(error_value.has_value() && error_value.value().context == "payload" &&
               !error_failure && error_failure.error().context == "operation",
