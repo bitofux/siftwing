@@ -29,6 +29,9 @@ target_link_libraries(siftwing_base INTERFACE siftwing_build_options)
 add_library(siftwing_document INTERFACE)
 target_link_libraries(siftwing_document INTERFACE siftwing_base)
 
+add_library(siftwing_document_reader STATIC src/document/document_reader.cpp)
+target_link_libraries(siftwing_document_reader PUBLIC siftwing_document)
+
 add_library(siftwing_bootstrap STATIC src/bootstrap/byte_probe.cpp)
 target_include_directories(siftwing_bootstrap PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(siftwing_bootstrap PUBLIC siftwing_build_options)
@@ -71,7 +74,19 @@ if(BUILD_TESTING)
     target_link_libraries(siftwing_document_record_test PRIVATE siftwing_document)
     add_test(NAME document.record COMMAND siftwing_document_record_test)
     set_tests_properties(document.record PROPERTIES TIMEOUT 10)
+    add_executable(siftwing_document_reader_test tests/unit/document_reader_test.cpp)
+    target_link_libraries(siftwing_document_reader_test PRIVATE siftwing_document_reader)
+    target_compile_definitions(siftwing_document_reader_test PRIVATE
+        SIFTWING_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/golden")
+    add_test(NAME document.reader COMMAND siftwing_document_reader_test)
+    set_tests_properties(document.reader PROPERTIES TIMEOUT 10)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+        add_test(NAME document.reader_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/document-reader-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/document_reader_compile_contract.cmake")
+        set_tests_properties(document.reader_compile_contract PROPERTIES TIMEOUT 30)
         add_test(NAME base.result_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
                 "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
