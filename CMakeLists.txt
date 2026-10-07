@@ -32,6 +32,23 @@ target_link_libraries(siftwing_document INTERFACE siftwing_base)
 add_library(siftwing_document_reader STATIC src/document/document_reader.cpp)
 target_link_libraries(siftwing_document_reader PUBLIC siftwing_document)
 
+# 固定官方归档及哈希；只使用头文件，避免引入上游安装规则或测试项目。
+include(FetchContent)
+if(POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+endif()
+FetchContent_Declare(utf8cpp
+    URL https://codeload.github.com/nemtrif/utfcpp/tar.gz/refs/tags/v4.0.6
+    URL_HASH SHA256=6920a6a5d6a04b9a89b2a89af7132f8acefd46e0c2a7b190350539e9213816c0
+    SOURCE_SUBDIR source
+)
+FetchContent_MakeAvailable(utf8cpp)
+add_library(siftwing_utf8cpp INTERFACE)
+target_include_directories(siftwing_utf8cpp SYSTEM INTERFACE "${utf8cpp_SOURCE_DIR}/source")
+
+add_library(siftwing_txt_reader STATIC src/document/txt_reader.cpp)
+target_link_libraries(siftwing_txt_reader PUBLIC siftwing_document_reader PRIVATE siftwing_utf8cpp)
+
 add_library(siftwing_bootstrap STATIC src/bootstrap/byte_probe.cpp)
 target_include_directories(siftwing_bootstrap PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(siftwing_bootstrap PUBLIC siftwing_build_options)
@@ -80,7 +97,17 @@ if(BUILD_TESTING)
         SIFTWING_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/golden")
     add_test(NAME document.reader COMMAND siftwing_document_reader_test)
     set_tests_properties(document.reader PROPERTIES TIMEOUT 10)
+    add_executable(siftwing_txt_reader_test tests/unit/txt_reader_test.cpp)
+    target_link_libraries(siftwing_txt_reader_test PRIVATE siftwing_txt_reader)
+    add_test(NAME document.txt_reader COMMAND siftwing_txt_reader_test)
+    set_tests_properties(document.txt_reader PROPERTIES TIMEOUT 15)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+        add_test(NAME document.txt_reader_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/txt-reader-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/txt_reader_compile_contract.cmake")
+        set_tests_properties(document.txt_reader_compile_contract PROPERTIES TIMEOUT 30)
         add_test(NAME document.reader_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
                 "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
