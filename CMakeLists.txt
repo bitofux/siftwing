@@ -26,6 +26,9 @@ add_library(siftwing_base INTERFACE)
 target_include_directories(siftwing_base INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(siftwing_base INTERFACE siftwing_build_options)
 
+add_library(siftwing_document INTERFACE)
+target_link_libraries(siftwing_document INTERFACE siftwing_base)
+
 add_library(siftwing_bootstrap STATIC src/bootstrap/byte_probe.cpp)
 target_include_directories(siftwing_bootstrap PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(siftwing_bootstrap PUBLIC siftwing_build_options)
@@ -64,6 +67,10 @@ if(BUILD_TESTING)
     target_link_libraries(siftwing_id_test PRIVATE siftwing_base)
     add_test(NAME base.id COMMAND siftwing_id_test)
     set_tests_properties(base.id PROPERTIES TIMEOUT 10)
+    add_executable(siftwing_document_record_test tests/unit/document_record_test.cpp)
+    target_link_libraries(siftwing_document_record_test PRIVATE siftwing_document)
+    add_test(NAME document.record COMMAND siftwing_document_record_test)
+    set_tests_properties(document.record PROPERTIES TIMEOUT 10)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
         add_test(NAME base.result_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
@@ -83,5 +90,11 @@ if(BUILD_TESTING)
                 "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/id-compile-contract"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/id_compile_contract.cmake")
         set_tests_properties(base.id_compile_contract PROPERTIES TIMEOUT 60)
+        add_test(NAME document.record_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/document-record-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/document_record_compile_contract.cmake")
+        set_tests_properties(document.record_compile_contract PROPERTIES TIMEOUT 30)
     endif()
 endif()
