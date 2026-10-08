@@ -101,6 +101,14 @@ if(BUILD_TESTING)
     target_link_libraries(siftwing_txt_reader_test PRIVATE siftwing_txt_reader)
     add_test(NAME document.txt_reader COMMAND siftwing_txt_reader_test)
     set_tests_properties(document.txt_reader PROPERTIES TIMEOUT 15)
+    # 显式文件接入验收探针；公开CTest只生成原创输入，不依赖私有语料。
+    add_executable(siftwing_txt_corpus_probe tests/integration/txt_corpus_probe.cpp)
+    target_link_libraries(siftwing_txt_corpus_probe PRIVATE siftwing_txt_reader)
+    add_test(NAME document.txt_file_ingestion
+        COMMAND Python3::Interpreter -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/txt_file_ingestion_test.py"
+            --probe "$<TARGET_FILE:siftwing_txt_corpus_probe>")
+    set_tests_properties(document.txt_file_ingestion PROPERTIES TIMEOUT 60)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
         add_test(NAME document.txt_reader_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
