@@ -173,6 +173,34 @@ TXT/RSS显式接线。验收探针参数为
 使用的cppjieba5.6.7、limonp固定提交、许可证、内存补丁、词典来源及SHA详见
 [第三方依赖记录](docs/DEPENDENCIES.md)。生产文本管线、停用词和索引仍待后续模块。
 
+[term_frequency.h](include/siftwing/text/term_frequency.h)与目标`siftwing_term_frequency`
+提供内存停用词配置、过滤及统计。`StopWords::parse`合并显式UTF-8字节源：每源首BOM
+剥离，LF/CRLF分行，复用ASCII小写/Unicode White_Space折叠及trim，空白行忽略，重复
+折叠；内部空白拒绝。`#`和标点为字面词条，不作注释，不把条目再次分词。调用者承担文件
+加载及配置身份，空源允许禁用停用词；正配置预算约束原输入/唯一条数/词条和词表字节。
+
+`analyze_tokens`接收已经显式规范化/分词的拥有序列和只读StopWords；按完整token字节
+精确匹配，保留顺序、大小写和重复，返回拥有型`TokenAnalysis`（过滤序列+单文档TF）。
+例如停用词`the/的`、输入`the/中国/中国/的/a1`得到`中国/中国/a1`，TF中国2、a1 1。
+过滤不隐式lower，输入`THE`仍保留；所有输入token包括将被滤掉的词都检查UTF-8/NUL、
+非空/无Unicode White_Space及单词预算。七正预算分别约束输入条数/字节、单token字节、
+输出条数/字节和TF唯一词数/键字节；完整编码检查先于输出超限，失败无部分序列或统计。
+
+`accumulate_recommendation`将一个文档TF合入`RecommendationFrequencies`并返回新表，
+输入不变；所有次数为受检uint64，外部表也验证正频、合法词键和total_tokens总和一致。
+推荐累计按调用者显式选择的文档交付次数统计，空文档也计1，重复交付重复累计，不隐式
+SimHash去重。例如再交付`中国`得到推荐中国3、a1 1；搜索DF中国2属于后续去重文档集合
+的统计，本模块不计算DF/N/TF-IDF或词项ID。五正累计预算覆盖文档次数/唯一词数/单词字节/
+词表字节/总出现次数，溢出拒绝且不改变已有表。map/set按UTF-8字节字典序稳定遍历。
+
+本模块无文件/网络IO、生产文本管线或新增第三方。复用已有normalize与utfcpp，来源/许可
+见[依赖记录](docs/DEPENDENCIES.md)。分配/未知异常上传，预算不含容器开销，不是进程硬
+资源限；累计复制已有词表，当前未声称性能优化。原创手写黄金、Python独立Counter、
+公共头合同及TXT/RSS测试显式接线验证行为。测试探针`siftwing_term_frequency_probe EN_OR_DASH CN_OR_DASH`
+仅作验收：stdin每文档以`@`行开始、其后每行一个UTF-8 token的hex，stdout为停用词集合、
+过滤序列、各文档TF与推荐累计JSON；输入/资源/内容失败1、参数/hex错误2、成功0。
+它有独立装载预算，不提供生产配置或持久化合同。
+
 使用 GCC/Clang 单独执行 ASan/UBSan 检查：
 
 ```sh

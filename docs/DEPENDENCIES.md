@@ -1,6 +1,6 @@
 # 第三方依赖
 
-当前TXT/RSS适配器、HTML辅助、共用文本规范化及英文/中文分词使用 [utfcpp](https://github.com/nemtrif/utfcpp) 4.0.6（也称utf8cpp），
+当前TXT/RSS适配器、HTML辅助、共用文本规范化、英文/中文分词及停用词/词频使用 [utfcpp](https://github.com/nemtrif/utfcpp) 4.0.6（也称utf8cpp），
 负责严格UTF-8验证和码点遍历。它是头文件库，许可证为BSL-1.0；
 许可原文保留在 [utfcpp-LICENSE.txt](../third_party/licenses/utfcpp-LICENSE.txt)。
 
@@ -132,6 +132,15 @@ log(freq/主词典总频率)。主词典与用户词典各自内部拒绝重复�
 共享兼容资源身份，`cppjieba_tokenization_policy_version=1`只标识适配分段规则。
 文件预算不包含解析容器/Trie，token预算不包含库临时DAG/HMM分配，均非进程硬资源限。
 分配与未知异常上传，未承诺上游在OOM下注入故障的强异常保证。
+
+## 停用词与词频复用依赖
+
+M1.13无新第三方库。`siftwing_term_frequency`通过CMake私有依赖复用
+`siftwing_text_normalization`和固定utfcpp4.0.6：配置条目使用既有ASCII小写/Unicode空白
+规范化；全部token/词键先严格校验UTF-8。过滤/单文档TF/推荐累计由标准库set/map及既有
+受检整数运算实现，公共头不暴露utfcpp，不调用cppjieba的停用词或关键词组件。
+停用词输入由调用者提供字节，许可/来源/版本属于调用者配置责任；公开测试只用原创条目，
+不复制私有停用列表。升级utfcpp/normalize须复验编码优先级、配置匹配、内部空白和预算。
 
 ## 计划中的依赖
 

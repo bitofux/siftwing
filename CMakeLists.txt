@@ -78,6 +78,10 @@ target_include_directories(siftwing_cppjieba SYSTEM INTERFACE
 add_library(siftwing_cppjieba_tokenizer STATIC src/text/cppjieba_tokenizer.cpp)
 target_link_libraries(siftwing_cppjieba_tokenizer PUBLIC siftwing_tokenizer PRIVATE siftwing_cppjieba siftwing_utf8cpp)
 
+# 精确停用词与词频只接收内存token/配置，不耦合文件装载或生产管线。
+add_library(siftwing_term_frequency STATIC src/text/term_frequency.cpp)
+target_link_libraries(siftwing_term_frequency PUBLIC siftwing_tokenizer PRIVATE siftwing_text_normalization siftwing_utf8cpp)
+
 add_library(siftwing_txt_reader STATIC src/document/txt_reader.cpp)
 target_link_libraries(siftwing_txt_reader PUBLIC siftwing_document_reader PRIVATE siftwing_utf8cpp)
 
@@ -249,7 +253,26 @@ if(BUILD_TESTING)
         siftwing_text_normalization siftwing_txt_reader siftwing_rss_reader)
     add_test(NAME text.cppjieba_ingestion COMMAND siftwing_cppjieba_ingestion_test)
     set_tests_properties(text.cppjieba_tokenizer text.cppjieba_reference text.cppjieba_ingestion PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_term_frequency_test tests/unit/term_frequency_test.cpp)
+    target_link_libraries(siftwing_term_frequency_test PRIVATE siftwing_term_frequency)
+    add_test(NAME text.term_frequency COMMAND siftwing_term_frequency_test)
+    add_executable(siftwing_term_frequency_probe tests/integration/term_frequency_probe.cpp)
+    target_link_libraries(siftwing_term_frequency_probe PRIVATE siftwing_term_frequency)
+    add_test(NAME text.term_frequency_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/term_frequency_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_term_frequency_probe>")
+    add_executable(siftwing_term_frequency_ingestion_test tests/integration/term_frequency_ingestion_test.cpp)
+    target_link_libraries(siftwing_term_frequency_ingestion_test PRIVATE siftwing_term_frequency
+        siftwing_cppjieba_tokenizer siftwing_text_normalization siftwing_txt_reader siftwing_rss_reader)
+    add_test(NAME text.term_frequency_ingestion COMMAND siftwing_term_frequency_ingestion_test)
+    set_tests_properties(text.term_frequency text.term_frequency_reference text.term_frequency_ingestion PROPERTIES TIMEOUT 60)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+        add_test(NAME text.term_frequency_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/term-frequency-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/term_frequency_compile_contract.cmake")
+        set_tests_properties(text.term_frequency_compile_contract PROPERTIES TIMEOUT 30)
         add_test(NAME text.cppjieba_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
                 "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
