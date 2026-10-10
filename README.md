@@ -6,7 +6,7 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 
 ## 项目状态
 
-仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper；分词、文本管线集成、搜索、索引、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
+仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口和有界ASCII英文/数字分词；中文分词、文本管线集成、搜索、索引、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
 
 ## 在 Ubuntu 上构建与测试
 
@@ -25,7 +25,7 @@ build/debug/siftwing_build_probe a banana
 # 3
 ```
 
-探针只统计精确字节，不涉及文本、编码或搜索语义。参数非法时退出 2，输出失败时退出 1。Ubuntu GCC/Clang 配置须实际发现并运行全部二十六项测试（两项构建探针、fixtures.integrity、九项基础/文档/文本行为测试、五项接入/参考集成测试及九项编译合同检查），仅编译成功不足以确认验证通过。
+探针只统计精确字节，不涉及文本、编码或搜索语义。参数非法时退出 2，输出失败时退出 1。Ubuntu GCC/Clang 配置须实际发现并运行全部三十项测试（两项构建探针、fixtures.integrity、十项基础/文档/文本行为测试、七项接入/参考集成测试及十项编译合同检查），仅编译成功不足以确认验证通过。
 
 基础结果模型位于 [result.h](include/siftwing/base/result.h)，通过 CMake 目标 `siftwing_base` 使用。调用方先检查 `has_value()` 或显式布尔分支，再读取 `value()` / `error()`；访问错分支抛出 `std::bad_variant_access`。结果按载荷类型支持复制或移动构造，不支持赋值；左值访问返回借用引用，右值访问返回拥有值。`[[nodiscard]]` 会诊断直接丢弃结果，显式 `(void)` 仍允许有意忽略。它不自动捕获分配或载荷构造异常。
 
@@ -122,11 +122,36 @@ UTF-8/NUL校验，最后预计算最终输出大小并分配；失败不含部�
 保持原值；独立调用无共享可变状态，无文件或网络访问，预算不是全进程资源硬限。
 
 公开单元验证规则/临界/拥有性，Python独立参考覆盖除NUL外全部合法Unicode标量及原创混合
-文本；接入测试用实际TXT/RSS适配器生成记录后显式调用同一helper。该接线测试尚不表示
-Tokenizer或完整建库/查询文本管线已实现。启用测试时的`siftwing_normalize_probe`支持
+文本；接入测试用实际TXT/RSS适配器生成记录后显式调用同一helper。该接线测试只验证规范化，
+英文分词见下文；完整建库/查询文本管线尚未实现。启用测试时的`siftwing_normalize_probe`支持
 `INPUT_BYTES OUTPUT_BYTES < text`，stdout为版本加hex字符串JSON；退出0表示成功，失败或
 装载超限1、配置错误2，仅为验收工具，不是生产装载/持久化接口。utfcpp来源/版本/许可仍见
 [DEPENDENCIES.md](docs/DEPENDENCIES.md)，本模块没有新增第三方库。
+
+[tokenizer.h](include/siftwing/text/tokenizer.h)提供同步`Tokenizer`抽象与拥有型
+`TokenSequence`（`vector<string>`）；[english_tokenizer.h](include/siftwing/text/english_tokenizer.h)
+中的`EnglishTokenizer`通过目标`siftwing_tokenizer`实现同一接口，供未来建库和查询共用。
+英文规则版本`english_tokenization_policy_version=1`：最大连续`[A-Za-z0-9]+`为token，
+保留顺序、重复和大小写；标点、空白及全部非ASCII字符作为分隔，不产生空token。
+例如`don't`→`don/t`、`a1`保持一个词、`3.14`→`3/14`、`foo中文bar`→`foo/bar`、
+`café`→`caf`。它不音译、不做Unicode词边界或中文分词；大小写由调用方先显式规范化。
+
+调用方提供四项正预算：输入UTF-8字节、token条数、单token字节、所有token字节之和；
+重复词按条计数，分隔符不计输出，等于上限合法。配置/输入字节→完整UTF-8/NUL→
+按源token顺序检查单token/条数/累计字节→分配/复制；非法编码不会被输出超限掩盖。
+空/仅分隔符/纯非ASCII输入成功为空序列，failure不交付部分词。Error.context为
+`tokenizer.limits/input_bytes/utf8/nul/token_bytes/tokens/output_bytes`，编码/NUL含0基
+字节位置。输入同步借用且不能被并发写入；输出独立拥有，未知分配/标准库异常上传。
+英文实现无共享可变状态，抽象接口的const方法不自动保证未来派生实现线程安全。
+限额不含容器/分配器开销，不是进程内存或CPU硬限。
+
+原创测试验证多态、词边界、预算/失败优先级与拥有性，Python独立ASCII正则覆盖全部合法
+非NUL Unicode标量及混合序列；TXT/RSS抽取与查询形状文字在测试中显式规范化后调用同一
+Tokenizer。它们尚不构成生产文本管线、停用词过滤、词频统计或索引/搜索服务。
+验收工具`siftwing_english_tokenizer_probe INPUT_BYTES TOKENS TOKEN_BYTES OUTPUT_BYTES < text`
+仅在启用测试时构建，stdout为规则版本及`tokens_hex`数组JSON；成功0、输入/内容失败1、
+参数错误2。它不隐式规范化，也不提供生产装载/持久化合同。本模块无新第三方库，
+继续复用[utfcpp记录](docs/DEPENDENCIES.md)。
 
 使用 GCC/Clang 单独执行 ASan/UBSan 检查：
 

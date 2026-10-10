@@ -54,6 +54,10 @@ target_include_directories(siftwing_utf8cpp SYSTEM INTERFACE "${utf8cpp_SOURCE_D
 add_library(siftwing_text_normalization STATIC src/text/normalize.cpp)
 target_link_libraries(siftwing_text_normalization PUBLIC siftwing_base PRIVATE siftwing_utf8cpp)
 
+# 分词接口不暴露第三方类型；英文实现与规范化解耦，调用方显式组装。
+add_library(siftwing_tokenizer STATIC src/text/english_tokenizer.cpp)
+target_link_libraries(siftwing_tokenizer PUBLIC siftwing_base PRIVATE siftwing_utf8cpp)
+
 add_library(siftwing_txt_reader STATIC src/document/txt_reader.cpp)
 target_link_libraries(siftwing_txt_reader PUBLIC siftwing_document_reader PRIVATE siftwing_utf8cpp)
 
@@ -197,7 +201,28 @@ if(BUILD_TESTING)
         siftwing_text_normalization siftwing_txt_reader siftwing_rss_reader)
     add_test(NAME text.normalization_ingestion COMMAND siftwing_normalization_ingestion_test)
     set_tests_properties(text.normalization_ingestion PROPERTIES TIMEOUT 15)
+    add_executable(siftwing_english_tokenizer_test tests/unit/english_tokenizer_test.cpp)
+    target_link_libraries(siftwing_english_tokenizer_test PRIVATE siftwing_tokenizer)
+    add_test(NAME text.english_tokenizer COMMAND siftwing_english_tokenizer_test)
+    set_tests_properties(text.english_tokenizer PROPERTIES TIMEOUT 15)
+    add_executable(siftwing_english_tokenizer_probe tests/integration/english_tokenizer_probe.cpp)
+    target_link_libraries(siftwing_english_tokenizer_probe PRIVATE siftwing_tokenizer)
+    add_test(NAME text.english_tokenizer_reference
+        COMMAND Python3::Interpreter -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/english_tokenizer_reference_test.py"
+            --probe "$<TARGET_FILE:siftwing_english_tokenizer_probe>")
+    set_tests_properties(text.english_tokenizer_reference PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_english_tokenizer_ingestion_test tests/integration/english_tokenizer_ingestion_test.cpp)
+    target_link_libraries(siftwing_english_tokenizer_ingestion_test PRIVATE
+        siftwing_tokenizer siftwing_text_normalization siftwing_txt_reader siftwing_rss_reader)
+    add_test(NAME text.english_tokenizer_ingestion COMMAND siftwing_english_tokenizer_ingestion_test)
+    set_tests_properties(text.english_tokenizer_ingestion PROPERTIES TIMEOUT 15)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+        add_test(NAME text.tokenizer_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/tokenizer-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tokenizer_compile_contract.cmake")
+        set_tests_properties(text.tokenizer_compile_contract PROPERTIES TIMEOUT 30)
         add_test(NAME text.normalization_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
                 "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
