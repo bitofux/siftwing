@@ -50,6 +50,10 @@ FetchContent_MakeAvailable(utf8cpp)
 add_library(siftwing_utf8cpp INTERFACE)
 target_include_directories(siftwing_utf8cpp SYSTEM INTERFACE "${utf8cpp_SOURCE_DIR}/source")
 
+# 共用规范化只依赖基础结果/受检运算及固定版本UTF-8库，不耦合输入适配器。
+add_library(siftwing_text_normalization STATIC src/text/normalize.cpp)
+target_link_libraries(siftwing_text_normalization PUBLIC siftwing_base PRIVATE siftwing_utf8cpp)
+
 add_library(siftwing_txt_reader STATIC src/document/txt_reader.cpp)
 target_link_libraries(siftwing_txt_reader PUBLIC siftwing_document_reader PRIVATE siftwing_utf8cpp)
 
@@ -178,7 +182,28 @@ if(BUILD_TESTING)
             --probe "$<TARGET_FILE:siftwing_rss_corpus_probe>"
             --rss "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/golden/rss/original.xml")
     set_tests_properties(document.rss_ingestion PROPERTIES TIMEOUT 30)
+    add_executable(siftwing_normalize_test tests/unit/normalize_test.cpp)
+    target_link_libraries(siftwing_normalize_test PRIVATE siftwing_text_normalization)
+    add_test(NAME text.normalization COMMAND siftwing_normalize_test)
+    set_tests_properties(text.normalization PROPERTIES TIMEOUT 15)
+    add_executable(siftwing_normalize_probe tests/integration/normalize_probe.cpp)
+    target_link_libraries(siftwing_normalize_probe PRIVATE siftwing_text_normalization)
+    add_test(NAME text.normalization_reference
+        COMMAND Python3::Interpreter -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/normalize_reference_test.py"
+            --probe "$<TARGET_FILE:siftwing_normalize_probe>")
+    set_tests_properties(text.normalization_reference PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_normalization_ingestion_test tests/integration/text_normalization_ingestion_test.cpp)
+    target_link_libraries(siftwing_normalization_ingestion_test PRIVATE
+        siftwing_text_normalization siftwing_txt_reader siftwing_rss_reader)
+    add_test(NAME text.normalization_ingestion COMMAND siftwing_normalization_ingestion_test)
+    set_tests_properties(text.normalization_ingestion PROPERTIES TIMEOUT 15)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+        add_test(NAME text.normalization_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/normalization-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/normalize_compile_contract.cmake")
+        set_tests_properties(text.normalization_compile_contract PROPERTIES TIMEOUT 30)
         add_test(NAME document.rss_reader_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
                 "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"

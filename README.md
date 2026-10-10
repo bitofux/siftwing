@@ -6,7 +6,7 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 
 ## 项目状态
 
-仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；搜索、索引、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
+仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper；分词、文本管线集成、搜索、索引、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
 
 ## 在 Ubuntu 上构建与测试
 
@@ -25,7 +25,7 @@ build/debug/siftwing_build_probe a banana
 # 3
 ```
 
-探针只统计精确字节，不涉及文本、编码或搜索语义。参数非法时退出 2，输出失败时退出 1。Ubuntu GCC/Clang 配置须实际发现并运行全部二十二项测试（两项构建探针、fixtures.integrity、八项基础/文档行为测试、三项接入/片段集成测试及八项编译合同检查），仅编译成功不足以确认验证通过。
+探针只统计精确字节，不涉及文本、编码或搜索语义。参数非法时退出 2，输出失败时退出 1。Ubuntu GCC/Clang 配置须实际发现并运行全部二十六项测试（两项构建探针、fixtures.integrity、九项基础/文档/文本行为测试、五项接入/参考集成测试及九项编译合同检查），仅编译成功不足以确认验证通过。
 
 基础结果模型位于 [result.h](include/siftwing/base/result.h)，通过 CMake 目标 `siftwing_base` 使用。调用方先检查 `has_value()` 或显式布尔分支，再读取 `value()` / `error()`；访问错分支抛出 `std::bad_variant_access`。结果按载荷类型支持复制或移动构造，不支持赋值；左值访问返回借用引用，右值访问返回拥有值。`[[nodiscard]]` 会诊断直接丢弃结果，显式 `(void)` 仍允许有意忽略。它不自动捕获分配或载荷构造异常。
 
@@ -107,6 +107,26 @@ build/debug/siftwing_rss_corpus_probe 3 1048576 1048576 1000 8388608 100000 128 
 stop，输入装载或报告合同失败退出1，参数/身份数量违约退出2。它不提供生产文件加载API，
 输出不是持久化格式。`document.rss_ingestion`使用原创黄金输入及独立手写文字预期，
 不依赖私有语料；私有报告须保存到输入根之外。
+
+[normalize.h](include/siftwing/text/normalize.h)通过目标`siftwing_text_normalization`提供
+`normalize_utf8(input, limits)`，返回拥有型`Result<std::string>`。规则版本
+`normalization_policy_version=1`：ASCII A—Z转小写，Unicode15.1 White_Space折成单个ASCII
+空格并去首尾空白，CR/LF也折空格；数字、标点、中文、非ASCII大小写和其他合法码点原样保留。
+它不做完整Unicode case folding或NFC/NFKC；U+FEFF不是该空白集合，在所有位置保留，文件
+BOM处理属于适配器。该规则与locale无关，足够预算下重复规范化不变，不删除标点拼接词语。
+
+调用方提供输入和最终输出两项正字节预算，等于上限合法。配置/输入大小先检查，再完整
+UTF-8/NUL校验，最后预计算最终输出大小并分配；失败不含部分字符串，Error.context定位
+`normalize.limits/input_bytes/utf8/nul/output_bytes`，非法序列/NUL诊断含0基字节位置。
+空/全空白输入成功为空串，分配/未知异常上传。输入同步借用，输出拥有且原DocumentRecord
+保持原值；独立调用无共享可变状态，无文件或网络访问，预算不是全进程资源硬限。
+
+公开单元验证规则/临界/拥有性，Python独立参考覆盖除NUL外全部合法Unicode标量及原创混合
+文本；接入测试用实际TXT/RSS适配器生成记录后显式调用同一helper。该接线测试尚不表示
+Tokenizer或完整建库/查询文本管线已实现。启用测试时的`siftwing_normalize_probe`支持
+`INPUT_BYTES OUTPUT_BYTES < text`，stdout为版本加hex字符串JSON；退出0表示成功，失败或
+装载超限1、配置错误2，仅为验收工具，不是生产装载/持久化接口。utfcpp来源/版本/许可仍见
+[DEPENDENCIES.md](docs/DEPENDENCIES.md)，本模块没有新增第三方库。
 
 使用 GCC/Clang 单独执行 ASan/UBSan 检查：
 
