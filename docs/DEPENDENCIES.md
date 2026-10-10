@@ -55,7 +55,34 @@ CMake使用FetchContent下载并校验固定归档，在构建目录保存源码
 原创行为测试、公开黄金RSS字段集成及公共头编译合同覆盖实体、段落、非正文过滤、恢复、
 拥有性和限额；升级依赖须重新验证这些规则及模块依赖树。
 
+## RSS XML结构读取：tinyxml2
+
+RSS适配器使用[tinyxml2](https://github.com/leethomason/tinyxml2) **11.0.0**，负责内存中
+XML DOM构造、直接Text/CDATA和属性读取；HTML正文字段仍由Lexbor处理。公共RSS接口不暴露
+第三方类型。官方tag归档及固定校验值：
+
+```text
+https://codeload.github.com/leethomason/tinyxml2/tar.gz/refs/tags/11.0.0
+SHA-256: 5556deb5081fb246ee92afae73efd943c889cef0cafea92b0b82422d6a18f289
+```
+
+许可证为Zlib，完整原文保留在[tinyxml2-LICENSE.txt](../third_party/licenses/tinyxml2-LICENSE.txt)。
+分发含该静态库的程序须保留相关许可证及归属；项目自身继续MIT，不修改或改标上游代码。
+CMake FetchContent校验下载，只编译`tinyxml2.cpp`形成`siftwing_tinyxml2`静态目标，SYSTEM
+include声明头路径；不运行上游安装/工具/示例/测试，没有额外下载依赖，也不系统安装。
+项目C++17和禁用扩展同时适用于该目标；五类项目警告不施加到第三方实现，ASan/UBSan配置
+插桩该实现。所有解析器实例按次独立，栈对象管理DOM生命周期。
+
+离线可设置`-DFETCHCONTENT_SOURCE_DIR_TINYXML2=/ABS/VERIFIED/tinyxml2-11.0.0`，覆盖绕过
+CMake下载哈希检查，使用者须独立核实源码版本、完整性和许可证。下载失败/哈希不匹配使
+配置失败，不静默换版本。
+
+库的Parse成功不能证明本项目XML支持合同：tinyxml2容许部分声明/实体/命名空间情况，
+项目另做UTF-8、XML1.0字符/实体/声明、DTD禁用和命名空间检查。RSS支持范围和正文选择
+由项目承担，不声称任意XML均可接入。tinyxml2内部元素深度限制500，项目XML节点/深度预算
+在完整建树后检查；输入字节预算在解析前实施，但不承诺进程内存/CPU硬上限。业务不调用
+LoadFile或联网，也不加载外部实体。升级须重新验证上述边界、RSS行为与许可。
+
 ## 计划中的依赖
 
-cppjieba、tinyxml2及SimHash组件属于后续模块规划，当前构建不引入它们。
-tinyxml2将承担RSS XML结构读取，与本节HTML片段解析职责分别记录。
+cppjieba及SimHash组件属于后续模块规划，当前构建不引入它们。

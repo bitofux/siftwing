@@ -6,11 +6,11 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 
 ## 项目状态
 
-仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS解析、搜索、索引、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
+仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；搜索、索引、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
 
 ## 在 Ubuntu 上构建与测试
 
-需要 CMake 3.20+、C++17 编译器；启用测试时还需要 Python 3.8+。TXT适配使用固定版本/归档哈希的utfcpp 4.0.6头文件库，首次配置需要网络或已核实的本地依赖源码；组件与BSL-1.0许可说明见[DEPENDENCIES.md](docs/DEPENDENCIES.md)。不安装系统依赖。
+需要 CMake 3.20+、C++17 编译器；启用测试时还需要 Python 3.8+。文本处理使用utfcpp 4.0.6，HTML片段使用Lexbor 3.0.0，RSS XML使用tinyxml2 11.0.0，均固定版本及归档哈希。首次配置需要网络或已核实的本地依赖源码；来源、许可与离线配置见[DEPENDENCIES.md](docs/DEPENDENCIES.md)。不安装系统依赖。
 
 ```sh
 cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug
@@ -25,7 +25,7 @@ build/debug/siftwing_build_probe a banana
 # 3
 ```
 
-探针只统计精确字节，不涉及文本、编码或搜索语义。参数非法时退出 2，输出失败时退出 1。Ubuntu GCC/Clang 配置须实际发现并运行全部十六项测试（两项构建探针、fixtures.integrity、六项基础/文档行为测试、TXT文件接入测试及六项编译合同检查），仅编译成功不足以确认验证通过。
+探针只统计精确字节，不涉及文本、编码或搜索语义。参数非法时退出 2，输出失败时退出 1。Ubuntu GCC/Clang 配置须实际发现并运行全部二十二项测试（两项构建探针、fixtures.integrity、八项基础/文档行为测试、三项接入/片段集成测试及八项编译合同检查），仅编译成功不足以确认验证通过。
 
 基础结果模型位于 [result.h](include/siftwing/base/result.h)，通过 CMake 目标 `siftwing_base` 使用。调用方先检查 `has_value()` 或显式布尔分支，再读取 `value()` / `error()`；访问错分支抛出 `std::bad_variant_access`。结果按载荷类型支持复制或移动构造，不支持赋值；左值访问返回借用引用，右值访问返回拥有值。`[[nodiscard]]` 会诊断直接丢弃结果，显式 `(void)` 仍允许有意忽略。它不自动捕获分配或载荷构造异常。
 
@@ -37,7 +37,7 @@ build/debug/siftwing_build_probe a banana
 
 [document_reader.h](include/siftwing/document/document_reader.h) 通过目标 `siftwing_document_reader` 使用。`read_documents` 同步借用调用方已装载的输入字节，按相对输入名字典序调用适配器；`ReadSink::emit` 按条接收拥有型结果，返回 `false` 后适配器须立即停止。报告区分完整、警告、无文字、拒绝和失败；部分提取必须说明未覆盖范围，组装默认策略拒绝，显式允许后仍保留警告。外层 `Result` 成功只表示报告合同成立，调用方还须检查各条状态及 `report.stop`。
 
-调用方显式配置四项正数上限：单输入字节、单篇标题加正文的字节、所有状态结果条数及接纳文本总字节。等于上限合法；单输入/单篇超限拒绝，批量条数/总字节不足则明确停止并保留此前报告，无静默截短。接收端验证来源、严格递增来源序号和已接纳文档 ID 的批量唯一性；不生成编号。接纳限额不等于整个进程内存上限，适配器须在解析/增长前实施自身限制，输入装载成本属于调用方。[原创结果夹具](tests/fixtures/reader_contract/README.md)验证共用交付控制；具体TXT字节适配见下文。尚无RSS解析或通用文件装载入口；当前不实施JSONL解析/导入。
+调用方显式配置四项正数上限：单输入字节、单篇标题加正文的字节、所有状态结果条数及接纳文本总字节。等于上限合法；单输入/单篇超限拒绝，批量条数/总字节不足则明确停止并保留此前报告，无静默截短。接收端验证来源、严格递增来源序号和已接纳文档 ID 的批量唯一性；不生成编号。接纳限额不等于整个进程内存上限，适配器须在解析/增长前实施自身限制，输入装载成本属于调用方。[原创结果夹具](tests/fixtures/reader_contract/README.md)验证共用交付控制；具体TXT字节适配见下文。RSS字节适配见下文；尚无通用生产文件装载入口，当前不实施JSONL解析/导入。
 
 [txt_reader.h](include/siftwing/document/txt_reader.h)通过目标`siftwing_txt_reader`使用。`TxtDocumentReader`按值拥有输入名到`TxtDocumentMetadata`的映射：调用方显式提供文档ID和可选标题，不自动编号；相同输入与配置可确定地复读。请求名未配置会抛出`std::out_of_range`，属于调用方配置违约，不伪装成文件失败。它沿用`read_documents`的已装载字节接口，不遍历目录或负责文件装载。
 
@@ -66,7 +66,7 @@ stdout输出验收用schema1 JSON，字符串使用hex表示字节。退出0仅�
 
 [html_text.h](include/siftwing/document/html_text.h)通过目标`siftwing_html_text`提供
 `extract_html_text`，同步借用UTF-8 HTML片段，返回拥有正文和解析恢复标记的`Result<HtmlText>`。
-它为后续RSS正文处理提供辅助能力，尚无生产RSS适配器或独立HTML文件入口。
+它供下述RSS适配器处理正文字段，尚无独立HTML文件入口。
 实体由Lexbor按HTML规则还原一次；普通空白折叠、块元素和`br`保留段落边界，`pre`保留
 解析后的空白。`script/style/template/noscript`、嵌入资源及`hidden`子树过滤，链接只取文字；
 不执行JS、解释CSS或加载URL/图片。空正文明确为空字符串，HTML语法恢复由`recovered`表示。
@@ -74,8 +74,39 @@ stdout输出验收用schema1 JSON，字符串使用hex表示字节。退出0仅�
 调用方显式配置输入字节、输出字节、token、DOM节点和深度五项正预算；等于上限合法，
 超限返回有上下文的失败，不交付截短正文。输入/解析/结构/输出分别检查，节点预算在解析后
 检查，这些限额不等于进程内存或CPU硬上限。公共行为、编译合同和原创黄金RSS字段集成
-通过真实CTest注册；字段优先及回退策略留给RSS模块。使用的utfcpp、Lexbor版本、来源、
+通过真实CTest注册；字段优先及回退由下述RSS适配器实施。使用的utfcpp、Lexbor和tinyxml2版本、来源、
 哈希和许可证集中记录在[DEPENDENCIES.md](docs/DEPENDENCIES.md)。
+
+[rss_reader.h](include/siftwing/document/rss_reader.h)通过目标`siftwing_rss_reader`提供
+`RssDocumentReader`和`RssParseLimits`。调用方按输入名显式提供每个原item位置的ID向量，
+包括无正文和拒绝位置；缺配置抛`std::out_of_range`，成功解析后的item数不匹配抛
+`std::invalid_argument`，数量检查在发布任何item前完成。不隐式生成生产身份。
+
+适配器接纳无命名空间RSS2的`rss version="2.0"/channel/item`，只解析已装载字节。
+正文依次选择content命名空间URI的`encoded`、无命名空间本地`content`、`description`；
+前缀可改名，按URI解析最近祖先声明。字段连接全部直接Text/CDATA；缺失或抽取空才回退，
+选用非首选字段有警告。首选失败或超限拒绝该item，不用后续摘要掩盖；消费字段含XML元素
+孩子或已识别字段重复也明确拒绝。未知扩展忽略。title只作XML解码纯文本并裁剪外空白，
+空标题用文件stem加`#`和原0基ordinal；link、优先dc:creator否则author及pubDate单独拥有，
+日期原文不解析。HTML恢复保留警告；正文空为no_text，不交付部分正文。
+
+XML使用tinyxml2建树，项目在其前后检查严格UTF-8、XML1.0字符/实体/声明和命名空间；
+拒绝DTD，不访问外部实体、文件或URL。坏XML整文件失败，不发布前面item；不支持Atom/RDF
+或任意转换XML。调用方提供XML节点/深度及HTML五项正预算，另沿用共用读取四预算。
+XML节点/深度在DOM建立后、逐item前检查，tinyxml2另有500层内部限制；这些预算不提供
+进程内存或CPU硬上限。接收端false后立即停止下一item，最终正文/元数据不借用DOM或输入。
+
+启用测试时的`siftwing_rss_corpus_probe`从stdin受限装载单份XML，以参数显式给定原item数：
+
+```sh
+build/debug/siftwing_rss_corpus_probe 3 1048576 1048576 1000 8388608 100000 128 1048576 1048576 100000 100000 128 < tests/fixtures/golden/rss/original.xml
+```
+
+参数为item数、共用四预算、XML节点/深度、HTML输入/输出字节/token/节点/深度。
+仅该验收调用方按位置配置0起ID；stdout为schema1 hex字符串JSON，退出0仍须查看各状态和
+stop，输入装载或报告合同失败退出1，参数/身份数量违约退出2。它不提供生产文件加载API，
+输出不是持久化格式。`document.rss_ingestion`使用原创黄金输入及独立手写文字预期，
+不依赖私有语料；私有报告须保存到输入根之外。
 
 使用 GCC/Clang 单独执行 ASan/UBSan 检查：
 

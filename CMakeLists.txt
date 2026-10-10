@@ -78,6 +78,22 @@ endif()
 add_library(siftwing_html_text STATIC src/document/html_text.cpp)
 target_link_libraries(siftwing_html_text PUBLIC siftwing_base PRIVATE siftwing_lexbor siftwing_utf8cpp)
 
+# 固定tinyxml2官方归档；直接编译单实现，不执行上游安装、工具或测试。
+FetchContent_Declare(tinyxml2
+    URL https://codeload.github.com/leethomason/tinyxml2/tar.gz/refs/tags/11.0.0
+    URL_HASH SHA256=5556deb5081fb246ee92afae73efd943c889cef0cafea92b0b82422d6a18f289
+    SOURCE_SUBDIR source
+)
+FetchContent_MakeAvailable(tinyxml2)
+add_library(siftwing_tinyxml2 STATIC "${tinyxml2_SOURCE_DIR}/tinyxml2.cpp")
+target_include_directories(siftwing_tinyxml2 SYSTEM PUBLIC "${tinyxml2_SOURCE_DIR}")
+if(SIFTWING_ENABLE_SANITIZERS)
+    target_compile_options(siftwing_tinyxml2 PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+endif()
+add_library(siftwing_rss_reader STATIC src/document/rss_reader.cpp)
+target_link_libraries(siftwing_rss_reader PUBLIC siftwing_document_reader
+    PRIVATE siftwing_tinyxml2 siftwing_utf8cpp siftwing_html_text)
+
 add_library(siftwing_bootstrap STATIC src/bootstrap/byte_probe.cpp)
 target_include_directories(siftwing_bootstrap PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(siftwing_bootstrap PUBLIC siftwing_build_options)
@@ -150,7 +166,25 @@ if(BUILD_TESTING)
             --probe "$<TARGET_FILE:siftwing_html_fragment_probe>"
             --rss "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/golden/rss/original.xml")
     set_tests_properties(document.html_fragment_integration PROPERTIES TIMEOUT 30)
+    add_executable(siftwing_rss_reader_test tests/unit/rss_reader_test.cpp)
+    target_link_libraries(siftwing_rss_reader_test PRIVATE siftwing_rss_reader)
+    add_test(NAME document.rss_reader COMMAND siftwing_rss_reader_test)
+    set_tests_properties(document.rss_reader PROPERTIES TIMEOUT 30)
+    add_executable(siftwing_rss_corpus_probe tests/integration/rss_corpus_probe.cpp)
+    target_link_libraries(siftwing_rss_corpus_probe PRIVATE siftwing_rss_reader)
+    add_test(NAME document.rss_ingestion
+        COMMAND Python3::Interpreter -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/rss_ingestion_test.py"
+            --probe "$<TARGET_FILE:siftwing_rss_corpus_probe>"
+            --rss "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/golden/rss/original.xml")
+    set_tests_properties(document.rss_ingestion PROPERTIES TIMEOUT 30)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+        add_test(NAME document.rss_reader_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/rss-reader-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/rss_reader_compile_contract.cmake")
+        set_tests_properties(document.rss_reader_compile_contract PROPERTIES TIMEOUT 30)
         add_test(NAME document.html_text_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
                 "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
