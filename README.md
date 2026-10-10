@@ -6,11 +6,11 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 
 ## 项目状态
 
-仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口和有界ASCII英文/数字分词；中文分词、文本管线集成、搜索、索引、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
+仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线；搜索、索引、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
 
 ## 在 Ubuntu 上构建与测试
 
-需要 CMake 3.20+、C++17 编译器；启用测试时还需要 Python 3.8+。文本处理使用utfcpp 4.0.6，HTML片段使用Lexbor 3.0.0，RSS XML使用tinyxml2 11.0.0，均固定版本及归档哈希。首次配置需要网络或已核实的本地依赖源码；来源、许可与离线配置见[DEPENDENCIES.md](docs/DEPENDENCIES.md)。不安装系统依赖。
+需要 CMake 3.20+、C++17 编译器；启用测试时还需要 Python 3.8+。文本处理使用utfcpp 4.0.6，HTML片段使用Lexbor 3.0.0，RSS XML使用tinyxml2 11.0.0，中文分词使用cppjieba 5.6.7及固定limonp子模块，均固定版本及归档哈希。首次配置需要网络或已核实的本地依赖源码；来源、许可与离线配置见[DEPENDENCIES.md](docs/DEPENDENCIES.md)。不安装系统依赖。
 
 ```sh
 cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug
@@ -25,7 +25,7 @@ build/debug/siftwing_build_probe a banana
 # 3
 ```
 
-探针只统计精确字节，不涉及文本、编码或搜索语义。参数非法时退出 2，输出失败时退出 1。Ubuntu GCC/Clang 配置须实际发现并运行全部三十项测试（两项构建探针、fixtures.integrity、十项基础/文档/文本行为测试、七项接入/参考集成测试及十项编译合同检查），仅编译成功不足以确认验证通过。
+探针只统计精确字节，不涉及文本、编码或搜索语义。参数非法时退出 2，输出失败时退出 1。Ubuntu GCC/Clang 配置须实际发现并运行全部四十二项测试（基础/文档/文本行为、接入/独立参考及公共头编译合同检查），仅编译成功不足以确认验证通过。
 
 基础结果模型位于 [result.h](include/siftwing/base/result.h)，通过 CMake 目标 `siftwing_base` 使用。调用方先检查 `has_value()` 或显式布尔分支，再读取 `value()` / `error()`；访问错分支抛出 `std::bad_variant_access`。结果按载荷类型支持复制或移动构造，不支持赋值；左值访问返回借用引用，右值访问返回拥有值。`[[nodiscard]]` 会诊断直接丢弃结果，显式 `(void)` 仍允许有意忽略。它不自动捕获分配或载荷构造异常。
 
@@ -123,7 +123,7 @@ UTF-8/NUL校验，最后预计算最终输出大小并分配；失败不含部�
 
 公开单元验证规则/临界/拥有性，Python独立参考覆盖除NUL外全部合法Unicode标量及原创混合
 文本；接入测试用实际TXT/RSS适配器生成记录后显式调用同一helper。该接线测试只验证规范化，
-英文分词见下文；完整建库/查询文本管线尚未实现。启用测试时的`siftwing_normalize_probe`支持
+英文分词与统一文本管线见下文；完整建库/查询程序尚未实现。启用测试时的`siftwing_normalize_probe`支持
 `INPUT_BYTES OUTPUT_BYTES < text`，stdout为版本加hex字符串JSON；退出0表示成功，失败或
 装载超限1、配置错误2，仅为验收工具，不是生产装载/持久化接口。utfcpp来源/版本/许可仍见
 [DEPENDENCIES.md](docs/DEPENDENCIES.md)，本模块没有新增第三方库。
@@ -147,7 +147,7 @@ UTF-8/NUL校验，最后预计算最终输出大小并分配；失败不含部�
 
 原创测试验证多态、词边界、预算/失败优先级与拥有性，Python独立ASCII正则覆盖全部合法
 非NUL Unicode标量及混合序列；TXT/RSS抽取与查询形状文字在测试中显式规范化后调用同一
-Tokenizer。它们尚不构成生产文本管线、停用词过滤、词频统计或索引/搜索服务。
+Tokenizer；统一管线、停用词及词频见后文，完整索引/搜索服务仍待实现。
 验收工具`siftwing_english_tokenizer_probe INPUT_BYTES TOKENS TOKEN_BYTES OUTPUT_BYTES < text`
 仅在启用测试时构建，stdout为规则版本及`tokens_hex`数组JSON；成功0、输入/内容失败1、
 参数错误2。它不隐式规范化，也不提供生产装载/持久化合同。本模块无新第三方库，
@@ -171,7 +171,7 @@ TXT/RSS显式接线。验收探针参数为
 `siftwing_cppjieba_tokenizer_probe INPUT_BYTES TOKENS TOKEN_BYTES OUTPUT_BYTES DICT HMM USER_OR_DASH FILE_BYTES HMM_ON < text`，
 `USER_OR_DASH`为`-`则无用户词典，`HMM_ON`为`0`或`1`；输出/退出约定沿英文探针。
 使用的cppjieba5.6.7、limonp固定提交、许可证、内存补丁、词典来源及SHA详见
-[第三方依赖记录](docs/DEPENDENCIES.md)。生产文本管线、停用词和索引仍待后续模块。
+[第三方依赖记录](docs/DEPENDENCIES.md)。共用管线与停用词见后文，索引仍待后续模块。
 
 [term_frequency.h](include/siftwing/text/term_frequency.h)与目标`siftwing_term_frequency`
 提供内存停用词配置、过滤及统计。`StopWords::parse`合并显式UTF-8字节源：每源首BOM
@@ -202,6 +202,25 @@ SimHash去重。例如再交付`中国`得到推荐中国3、a1 1；搜索DF中�
 它有独立装载预算，不提供生产配置或持久化合同。
 
 使用 GCC/Clang 单独执行 ASan/UBSan 检查：
+
+## 共用文本管线
+
+[text_pipeline.h](include/siftwing/text/text_pipeline.h)通过目标`siftwing_text_pipeline`使用。
+`TextPipeline::create(unique_ptr<Tokenizer>, StopWords)`接管已初始化分词器并保存拥有型停用集合，
+成功返回非空`unique_ptr<TextPipeline>`，空分词器失败为`pipeline.tokenizer`；对象不复制/移动，
+以指针转移拥有权。工厂不读取分词资源或停用词文件，资源装载沿各组件原合同由调用者完成。
+
+建库正文和查询文字都调用`analyze(string_view, const TextPipelineLimits&)`：完整正配置预检后，
+依次执行`normalize_utf8`→`Tokenizer::tokenize`→`analyze_tokens`，返回拥有的有序保留词序列和
+单文档TF。三组2/4/7正预算分别计原文/规范化文字、未过滤token和保留序列/唯一词键；
+建库与查询可设不同上限，预算充分时使用同一规则、分词资源和停用集合得到相同词项。
+零预算返回`pipeline.limits`；其余阶段失败保留原诊断且停止下游，不发布部分结果，分配/未知异常上传。
+
+空文字、无词或全过滤在文本层成功返回空分析；查询合法性由后续Query层判断。输入正文/标题和
+来源元数据不修改，返回结果不借用输入或管线；不隐式拼接标题、累计推荐词频、生成DF/身份或写索引。
+线程安全依赖所选Tokenizer的实际合同，`const`本身不提供保证；预算不是整个进程硬资源限。
+管线不保存未来快照资源身份，也不提供运行时替换配置。同一入口集成测试覆盖原创TXT/RSS/查询，
+独立参考校验英文Unicode边界及手算中文黄金；尚未提供完整建库、搜索或推荐程序。
 
 ```sh
 cmake -S . -B build/sanitize -DCMAKE_BUILD_TYPE=Debug -DSIFTWING_ENABLE_SANITIZERS=ON

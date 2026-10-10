@@ -82,6 +82,10 @@ target_link_libraries(siftwing_cppjieba_tokenizer PUBLIC siftwing_tokenizer PRIV
 add_library(siftwing_term_frequency STATIC src/text/term_frequency.cpp)
 target_link_libraries(siftwing_term_frequency PUBLIC siftwing_tokenizer PRIVATE siftwing_text_normalization siftwing_utf8cpp)
 
+# 建库与查询共享拥有型管线，生产目标只组合文本阶段，不耦合文档读取或具体中文实现。
+add_library(siftwing_text_pipeline STATIC src/text/text_pipeline.cpp)
+target_link_libraries(siftwing_text_pipeline PUBLIC siftwing_text_normalization siftwing_term_frequency)
+
 add_library(siftwing_txt_reader STATIC src/document/txt_reader.cpp)
 target_link_libraries(siftwing_txt_reader PUBLIC siftwing_document_reader PRIVATE siftwing_utf8cpp)
 
@@ -266,7 +270,27 @@ if(BUILD_TESTING)
         siftwing_cppjieba_tokenizer siftwing_text_normalization siftwing_txt_reader siftwing_rss_reader)
     add_test(NAME text.term_frequency_ingestion COMMAND siftwing_term_frequency_ingestion_test)
     set_tests_properties(text.term_frequency text.term_frequency_reference text.term_frequency_ingestion PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_text_pipeline_test tests/unit/text_pipeline_test.cpp)
+    target_link_libraries(siftwing_text_pipeline_test PRIVATE siftwing_text_pipeline)
+    add_test(NAME text.pipeline COMMAND siftwing_text_pipeline_test)
+    add_executable(siftwing_text_pipeline_ingestion_test tests/integration/text_pipeline_ingestion_test.cpp)
+    target_link_libraries(siftwing_text_pipeline_ingestion_test PRIVATE siftwing_text_pipeline
+        siftwing_cppjieba_tokenizer siftwing_txt_reader siftwing_rss_reader)
+    add_test(NAME text.pipeline_ingestion COMMAND siftwing_text_pipeline_ingestion_test)
+    set_tests_properties(text.pipeline text.pipeline_ingestion PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_text_pipeline_probe tests/integration/text_pipeline_probe.cpp)
+    target_link_libraries(siftwing_text_pipeline_probe PRIVATE siftwing_text_pipeline siftwing_cppjieba_tokenizer)
+    add_test(NAME text.pipeline_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/text_pipeline_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_text_pipeline_probe>")
+    set_tests_properties(text.pipeline_reference PROPERTIES TIMEOUT 120)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+        add_test(NAME text.pipeline_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/text-pipeline-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/text_pipeline_compile_contract.cmake")
+        set_tests_properties(text.pipeline_compile_contract PROPERTIES TIMEOUT 30)
         add_test(NAME text.term_frequency_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
                 "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"

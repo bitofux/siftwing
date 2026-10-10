@@ -142,6 +142,14 @@ M1.13无新第三方库。`siftwing_term_frequency`通过CMake私有依赖复用
 停用词输入由调用者提供字节，许可/来源/版本属于调用者配置责任；公开测试只用原创条目，
 不复制私有停用列表。升级utfcpp/normalize须复验编码优先级、配置匹配、内部空白和预算。
 
+## 文本管线复用依赖
+
+M1.14无新第三方库。`siftwing_text_pipeline`通过CMake公开链接共用normalize和term_frequency目标，
+以Tokenizer虚接口接管调用方选择的英文或cppjieba实例，公共头不暴露第三方类型。
+不自行加载分词/停用资源，不链接额外HTML/XML库，不使用cppjieba停用词/关键词模块。
+已有utfcpp、cppjieba/limonp、Lexbor和tinyxml2的版本、来源、SHA及许可证记录保持；
+具体分词资源与停用集合决定词项兼容性，管线对象身份不能替代未来快照的配置摘要。
+
 ## 计划中的依赖
 
 SimHash组件仍属后续模块规划，当前构建不引入它。
