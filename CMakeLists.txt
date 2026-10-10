@@ -58,6 +58,26 @@ target_link_libraries(siftwing_text_normalization PUBLIC siftwing_base PRIVATE s
 add_library(siftwing_tokenizer STATIC src/text/english_tokenizer.cpp)
 target_link_libraries(siftwing_tokenizer PUBLIC siftwing_base PRIVATE siftwing_utf8cpp)
 
+# 固定cppjieba及其limonp子模块；不运行上游安装/测试，也不加载关键词资源。
+FetchContent_Declare(cppjieba
+    URL https://codeload.github.com/yanyiwu/cppjieba/tar.gz/refs/tags/v5.6.7
+    URL_HASH SHA256=08322f7c2a06a88e52eb0fdbc286ec86a85abae5b2a33b1e1430dba50b71960e
+    SOURCE_SUBDIR source
+)
+FetchContent_Declare(limonp
+    URL https://codeload.github.com/yanyiwu/limonp/tar.gz/9d74077dfcdf8073536c97a00bb79d7a3c3fdaba
+    URL_HASH SHA256=2fff67ade507900ab7acb3c630b7b91232ff882f1b6240990875056befaa731b
+    SOURCE_SUBDIR source
+)
+FetchContent_MakeAvailable(cppjieba limonp)
+include(third_party/patches/cppjieba_memory.cmake)
+siftwing_prepare_cppjieba("${cppjieba_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/cppjieba-memory/include")
+add_library(siftwing_cppjieba INTERFACE)
+target_include_directories(siftwing_cppjieba SYSTEM INTERFACE
+    "${CMAKE_CURRENT_BINARY_DIR}/cppjieba-memory/include" "${limonp_SOURCE_DIR}/include")
+add_library(siftwing_cppjieba_tokenizer STATIC src/text/cppjieba_tokenizer.cpp)
+target_link_libraries(siftwing_cppjieba_tokenizer PUBLIC siftwing_tokenizer PRIVATE siftwing_cppjieba siftwing_utf8cpp)
+
 add_library(siftwing_txt_reader STATIC src/document/txt_reader.cpp)
 target_link_libraries(siftwing_txt_reader PUBLIC siftwing_document_reader PRIVATE siftwing_utf8cpp)
 
@@ -216,7 +236,26 @@ if(BUILD_TESTING)
         siftwing_tokenizer siftwing_text_normalization siftwing_txt_reader siftwing_rss_reader)
     add_test(NAME text.english_tokenizer_ingestion COMMAND siftwing_english_tokenizer_ingestion_test)
     set_tests_properties(text.english_tokenizer_ingestion PROPERTIES TIMEOUT 15)
+    add_executable(siftwing_cppjieba_tokenizer_test tests/unit/cppjieba_tokenizer_test.cpp)
+    target_link_libraries(siftwing_cppjieba_tokenizer_test PRIVATE siftwing_cppjieba_tokenizer)
+    add_test(NAME text.cppjieba_tokenizer COMMAND siftwing_cppjieba_tokenizer_test)
+    add_executable(siftwing_cppjieba_tokenizer_probe tests/integration/cppjieba_tokenizer_probe.cpp)
+    target_link_libraries(siftwing_cppjieba_tokenizer_probe PRIVATE siftwing_cppjieba_tokenizer)
+    add_test(NAME text.cppjieba_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/cppjieba_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_cppjieba_tokenizer_probe>")
+    add_executable(siftwing_cppjieba_ingestion_test tests/integration/cppjieba_tokenizer_ingestion_test.cpp)
+    target_link_libraries(siftwing_cppjieba_ingestion_test PRIVATE siftwing_cppjieba_tokenizer
+        siftwing_text_normalization siftwing_txt_reader siftwing_rss_reader)
+    add_test(NAME text.cppjieba_ingestion COMMAND siftwing_cppjieba_ingestion_test)
+    set_tests_properties(text.cppjieba_tokenizer text.cppjieba_reference text.cppjieba_ingestion PROPERTIES TIMEOUT 60)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+        add_test(NAME text.cppjieba_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/cppjieba-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/cppjieba_compile_contract.cmake")
+        set_tests_properties(text.cppjieba_compile_contract PROPERTIES TIMEOUT 30)
         add_test(NAME text.tokenizer_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
                 "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"

@@ -1,6 +1,6 @@
 # 第三方依赖
 
-当前TXT/RSS适配器、HTML辅助、共用文本规范化及英文分词使用 [utfcpp](https://github.com/nemtrif/utfcpp) 4.0.6（也称utf8cpp），
+当前TXT/RSS适配器、HTML辅助、共用文本规范化及英文/中文分词使用 [utfcpp](https://github.com/nemtrif/utfcpp) 4.0.6（也称utf8cpp），
 负责严格UTF-8验证和码点遍历。它是头文件库，许可证为BSL-1.0；
 许可原文保留在 [utfcpp-LICENSE.txt](../third_party/licenses/utfcpp-LICENSE.txt)。
 
@@ -21,7 +21,7 @@ SHA-256: 6920a6a5d6a04b9a89b2a89af7132f8acefd46e0c2a7b190350539e9213816c0
 冒称已验证的4.0.6归档。组件升级需重新核对接口、许可与各适配器/规范化行为。M1.10复用该库校验/遍历UTF-8；
 ASCII小写及Unicode15.1 White_Space固定规则由项目实现，不新增Unicode大小写/规范等价库。
 M1.11通过`siftwing_tokenizer`的私有依赖复用utfcpp做完整输入验证；ASCII英文/数字词段规则
-由项目实现，不使用locale、不新增分词库，cppjieba仍待后续模块。英文分词不隐式规范化，
+由项目实现，不使用locale、不新增分词库；中文适配见下文cppjieba。英文分词不隐式规范化，
 不声称Unicode词边界或中文分词；升级utfcpp须同时重新验证分词编码与失败优先级。
 
 ## HTML片段抽取：Lexbor
@@ -87,6 +87,52 @@ CMake下载哈希检查，使用者须独立核实源码版本、完整性和许
 在完整建树后检查；输入字节预算在解析前实施，但不承诺进程内存/CPU硬上限。业务不调用
 LoadFile或联网，也不加载外部实体。升级须重新验证上述边界、RSS行为与许可。
 
+## 中文分词：cppjieba与limonp
+
+[cppjieba](https://github.com/yanyiwu/cppjieba) **5.6.7**（tag提交
+`b3602bef7d1f67521a61788a74fb5801a0e62cd3`）承担中文Trie/DAG/HMM分词。
+其头文件依赖[limonp](https://github.com/yanyiwu/limonp)，固定到该tag子模块提交
+`9d74077dfcdf8073536c97a00bb79d7a3c3fdaba`。两库均MIT，原文分别保留于
+[cppjieba许可证](../third_party/licenses/cppjieba-LICENSE.txt)和
+[limonp许可证](../third_party/licenses/limonp-LICENSE.txt)。分发须保留版权及许可原文。
+
+```text
+https://codeload.github.com/yanyiwu/cppjieba/tar.gz/refs/tags/v5.6.7
+SHA-256: 08322f7c2a06a88e52eb0fdbc286ec86a85abae5b2a33b1e1430dba50b71960e
+https://codeload.github.com/yanyiwu/limonp/tar.gz/9d74077dfcdf8073536c97a00bb79d7a3c3fdaba
+SHA-256: 2fff67ade507900ab7acb3c630b7b91232ff882f1b6240990875056befaa731b
+```
+
+CMake FetchContent核验归档，不执行上游安装/示例/测试。SYSTEM INTERFACE目标
+`siftwing_cppjieba`只给适配器私有使用；公共头隔离第三方类型。没有系统安装或其他新增库。
+离线覆盖为`FETCHCONTENT_SOURCE_DIR_CPPJIEBA`和`FETCHCONTENT_SOURCE_DIR_LIMONP`，
+使用者需独立验证完整源码，覆盖绕过归档检查。首次联网失败/哈希不符即配置失败。
+头文件算法编译进入`siftwing_cppjieba_tokenizer`，随项目C++17及ASan/UBSan插桩。
+
+[本地内存初始化补丁](../third_party/patches/cppjieba_memory.cmake)先核对两个原始头SHA，
+再复制到构建目录，新增拥有型DictTrie构造及默认HMMModel构造；原归档保持原样，
+保留原路径API，不更改DAG/HMM算法。适配器只读装载一次并严格验证，绕开路径重读、
+全局路径词典缓存和坏资源XCHECK终止。默认用户词权重取主词典中位数；显式频率取
+log(freq/主词典总频率)。主词典与用户词典各自内部拒绝重复，用户词可覆盖主词。
+升级必须核对原头哈希/构造布局/Trie指针生命周期、算法输出、初始化失败、同路径
+新资源及三配置测试，不能仅改URL或绕过补丁检查。
+
+资源由调用方显式提供绝对普通文件路径，无符号链接组件。运行时不推断构建目录、
+下载路径或系统默认资源；主词典/HMM必需，可选单一用户词典。官方tag归档中的默认资源：
+
+| 资源 | 字节 | SHA-256 |
+| --- | ---: | --- |
+| `dict/jieba.dict.utf8` | 5071207 | `6f7d4350e8861ef4139b2e3a6fad05430c19ae71f4b8378190edecac8aae2e6a` |
+| `dict/hmm_model.utf8` | 519739 | `f17790586ac86dd048c8adffed052c4bd2b28ed0682972c1275e59040c0589a7` |
+| `dict/user.dict.utf8`（示例，可选） | 36 | `24e5caba06a8a0bf707b00ff6e1c78afa4d878517dc2cf8b7a88707b980512d3` |
+
+上述资源来自同一MIT仓库归档，项目未另行下载词典；自供资源需由使用者确认许可及版本。
+资源不复制进公开测试夹具；原创测试用小词典与可手算HMM，不以库自身输出生成黄金答案。
+不装载IDF/关键词/停用词资源。词边界依赖词典/模型/user/HMM开关；未来索引和查询须
+共享兼容资源身份，`cppjieba_tokenization_policy_version=1`只标识适配分段规则。
+文件预算不包含解析容器/Trie，token预算不包含库临时DAG/HMM分配，均非进程硬资源限。
+分配与未知异常上传，未承诺上游在OOM下注入故障的强异常保证。
+
 ## 计划中的依赖
 
-cppjieba及SimHash组件属于后续模块规划，当前构建不引入它们。
+SimHash组件仍属后续模块规划，当前构建不引入它。

@@ -153,6 +153,26 @@ Tokenizer。它们尚不构成生产文本管线、停用词过滤、词频统�
 参数错误2。它不隐式规范化，也不提供生产装载/持久化合同。本模块无新第三方库，
 继续复用[utfcpp记录](docs/DEPENDENCIES.md)。
 
+[cppjieba_tokenizer.h](include/siftwing/text/cppjieba_tokenizer.h)新增`CppJiebaTokenizer`，
+目标`siftwing_cppjieba_tokenizer`实现同一`Tokenizer`。工厂`create(CppJiebaConfig)`接收
+主词典/HMM/可选单一用户词典的绝对普通文件路径及正`max_file_bytes`，返回
+`Result<unique_ptr<CppJiebaTokenizer>>`；默认启用HMM。路径各组件禁止符号链接，
+资源完整UTF-8/NUL/格式/数值验证后从内存初始化，失败返回`cppjieba.*`诊断。
+已建对象拥有资源，之后文件变化不影响它；新对象读取本次文件，不按路径缓存。
+
+最大连续汉字段交cppjieba，ASCII仍为`[A-Za-z0-9]+`，其他字符分隔；汉字范围为
+U+3007和头文件明示的固定CJK块，非完整Unicode Han属性。保留大小写/顺序/重复，
+调用方先显式规范化。四项token预算与失败无前缀合同沿用；另有`INT_MAX/4`实际输入
+字节限制以保护库内部索引。库临时分词内存不受输出预算硬限制。
+例如原创词典中的“中文A1中国”产生“中文/A1/中国”；实际中文边界随资源及HMM变化。
+
+测试覆盖原创词典/HMM/user、初始化坏资源、预算、拥有性、同路径更新、独立参考和
+TXT/RSS显式接线。验收探针参数为
+`siftwing_cppjieba_tokenizer_probe INPUT_BYTES TOKENS TOKEN_BYTES OUTPUT_BYTES DICT HMM USER_OR_DASH FILE_BYTES HMM_ON < text`，
+`USER_OR_DASH`为`-`则无用户词典，`HMM_ON`为`0`或`1`；输出/退出约定沿英文探针。
+使用的cppjieba5.6.7、limonp固定提交、许可证、内存补丁、词典来源及SHA详见
+[第三方依赖记录](docs/DEPENDENCIES.md)。生产文本管线、停用词和索引仍待后续模块。
+
 使用 GCC/Clang 单独执行 ASan/UBSan 检查：
 
 ```sh
