@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
-project(siftwing LANGUAGES CXX)
+project(siftwing LANGUAGES C CXX)
+
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -48,6 +52,31 @@ target_include_directories(siftwing_utf8cpp SYSTEM INTERFACE "${utf8cpp_SOURCE_D
 
 add_library(siftwing_txt_reader STATIC src/document/txt_reader.cpp)
 target_link_libraries(siftwing_txt_reader PUBLIC siftwing_document_reader PRIVATE siftwing_utf8cpp)
+
+# 固定Lexbor归档；只构建HTML及其core/dom/ns/tag依赖，不执行上游安装或其他模块。
+FetchContent_Declare(lexbor
+    URL https://codeload.github.com/lexbor/lexbor/tar.gz/refs/tags/v3.0.0
+    URL_HASH SHA256=eafaa79ef9871f0bbb1978eda8677d184f7ecdcaa203d7cd25b3f86e32c014c2
+    SOURCE_SUBDIR source
+)
+FetchContent_MakeAvailable(lexbor)
+set(siftwing_lexbor_sources)
+foreach(module core dom html ns tag)
+    file(GLOB_RECURSE module_sources CONFIGURE_DEPENDS "${lexbor_SOURCE_DIR}/source/lexbor/${module}/*.c")
+    list(APPEND siftwing_lexbor_sources ${module_sources})
+endforeach()
+file(GLOB_RECURSE lexbor_ports CONFIGURE_DEPENDS "${lexbor_SOURCE_DIR}/source/lexbor/ports/posix/*.c")
+add_library(siftwing_lexbor STATIC ${siftwing_lexbor_sources} ${lexbor_ports})
+target_include_directories(siftwing_lexbor SYSTEM PUBLIC "${lexbor_SOURCE_DIR}/source")
+target_compile_definitions(siftwing_lexbor PUBLIC LEXBOR_STATIC PRIVATE _POSIX_C_SOURCE=199309L)
+target_link_libraries(siftwing_lexbor PRIVATE m)
+if(SIFTWING_ENABLE_SANITIZERS)
+    # 解析库本体也插桩；项目自身的五警告选项不施加到未修改的上游C代码。
+    target_compile_options(siftwing_lexbor PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+endif()
+
+add_library(siftwing_html_text STATIC src/document/html_text.cpp)
+target_link_libraries(siftwing_html_text PUBLIC siftwing_base PRIVATE siftwing_lexbor siftwing_utf8cpp)
 
 add_library(siftwing_bootstrap STATIC src/bootstrap/byte_probe.cpp)
 target_include_directories(siftwing_bootstrap PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -109,7 +138,25 @@ if(BUILD_TESTING)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/txt_file_ingestion_test.py"
             --probe "$<TARGET_FILE:siftwing_txt_corpus_probe>")
     set_tests_properties(document.txt_file_ingestion PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_html_text_test tests/unit/html_text_test.cpp)
+    target_link_libraries(siftwing_html_text_test PRIVATE siftwing_html_text)
+    add_test(NAME document.html_text COMMAND siftwing_html_text_test)
+    set_tests_properties(document.html_text PROPERTIES TIMEOUT 20)
+    add_executable(siftwing_html_fragment_probe tests/integration/html_fragment_probe.cpp)
+    target_link_libraries(siftwing_html_fragment_probe PRIVATE siftwing_html_text)
+    add_test(NAME document.html_fragment_integration
+        COMMAND Python3::Interpreter -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/html_fragment_integration_test.py"
+            --probe "$<TARGET_FILE:siftwing_html_fragment_probe>"
+            --rss "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/golden/rss/original.xml")
+    set_tests_properties(document.html_fragment_integration PROPERTIES TIMEOUT 30)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+        add_test(NAME document.html_text_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/html-text-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/html_text_compile_contract.cmake")
+        set_tests_properties(document.html_text_compile_contract PROPERTIES TIMEOUT 30)
         add_test(NAME document.txt_reader_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
                 "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
