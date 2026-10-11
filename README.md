@@ -6,7 +6,7 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 
 ## 项目状态
 
-仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线；搜索、索引、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
+仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线及基于TF的64位SimHash指纹；搜索、索引、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
 
 ## 在 Ubuntu 上构建与测试
 
@@ -25,7 +25,7 @@ build/debug/siftwing_build_probe a banana
 # 3
 ```
 
-探针只统计精确字节，不涉及文本、编码或搜索语义。参数非法时退出 2，输出失败时退出 1。Ubuntu GCC/Clang 配置须实际发现并运行全部四十二项测试（基础/文档/文本行为、接入/独立参考及公共头编译合同检查），仅编译成功不足以确认验证通过。
+探针只统计精确字节，不涉及文本、编码或搜索语义。参数非法时退出 2，输出失败时退出 1。Ubuntu GCC/Clang 配置须实际发现并运行全部四十六项测试（基础/文档/文本行为、接入/独立参考及公共头编译合同检查），仅编译成功不足以确认验证通过。
 
 基础结果模型位于 [result.h](include/siftwing/base/result.h)，通过 CMake 目标 `siftwing_base` 使用。调用方先检查 `has_value()` 或显式布尔分支，再读取 `value()` / `error()`；访问错分支抛出 `std::bad_variant_access`。结果按载荷类型支持复制或移动构造，不支持赋值；左值访问返回借用引用，右值访问返回拥有值。`[[nodiscard]]` 会诊断直接丢弃结果，显式 `(void)` 仍允许有意忽略。它不自动捕获分配或载荷构造异常。
 
@@ -221,6 +221,27 @@ SimHash去重。例如再交付`中国`得到推荐中国3、a1 1；搜索DF中�
 线程安全依赖所选Tokenizer的实际合同，`const`本身不提供保证；预算不是整个进程硬资源限。
 管线不保存未来快照资源身份，也不提供运行时替换配置。同一入口集成测试覆盖原创TXT/RSS/查询，
 独立参考校验英文Unicode边界及手算中文黄金；尚未提供完整建库、搜索或推荐程序。
+
+[simhash.h](include/siftwing/document/simhash.h)通过目标`siftwing_simhash`提供
+`make_simhash(DocumentTermFrequencies, SimHashLimits)`和`hamming_distance`。
+前者消费调用方明确选择的、过滤后完整单文档TF，不重新规范化/分词/过滤，不使用推荐累计或搜索DF。
+规则版本`simhash_policy_version=1`：每个唯一词按UTF-8字节作FNV-1a64后接fmix64，原始TF为整数权重，
+每位正票严格多数置1、平票0。固定常量及顺序在公共头中定义，不依赖`std::hash`、locale或浮点。
+
+输入须为严格UTF-8、无NUL/空词/Unicode15.1 White_Space的正词频表，次数之和等于`total_tokens`。
+四项正预算分别限制唯一词数、单词字节、唯一词键总字节与总TF；等于上限合法，支持总TF至`UINT64_MAX`。
+配置、唯一词数、词键字节预算、完整编码、词键/正频/总和、总次数预算依次检查。
+成功返回拥有型`optional<SimHash64>`；空表且总数0返回`nullopt`，非空指纹数值0仍合法。
+普通错误返回`simhash.*`诊断且无部分指纹，诊断分配/未知异常上传；输入同步借用，结果不借用输入。
+
+计算使用固定64项栈票数，工作量为词键字节扫描加64×唯一词数，不按重复次数展开；
+预算不限制调用方已装载TF/管线临时对象或进程总资源。函数无IO/共享可变状态，不修改`DocumentRecord`。
+汉明距离仅返回0—64的不同位数，不内置阈值或决定保留/丢弃。指纹不是加密哈希或唯一内容身份，
+碰撞和近似误判可能发生；原创小改动样例通过不证明通用去重质量。去重决策、文档库和索引尚未实现。
+
+CTest包含固定词哈希/手算投票、完整uint64权重/坏输入/预算/独立逐位距离、
+原创TXT/RSS与中英文管线接线、Python任意精度有符号投票参考和公共头编译合同。
+`siftwing_simhash_probe`仅为测试验收入口，受限读取显式TF批次，不是生产CLI或持久化格式。
 
 ```sh
 cmake -S . -B build/sanitize -DCMAKE_BUILD_TYPE=Debug -DSIFTWING_ENABLE_SANITIZERS=ON

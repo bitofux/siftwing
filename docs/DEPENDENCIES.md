@@ -150,6 +150,16 @@ M1.14无新第三方库。`siftwing_text_pipeline`通过CMake公开链接共用n
 已有utfcpp、cppjieba/limonp、Lexbor和tinyxml2的版本、来源、SHA及许可证记录保持；
 具体分词资源与停用集合决定词项兼容性，管线对象身份不能替代未来快照的配置摘要。
 
-## 计划中的依赖
+## SimHash组件评估与复用依赖
 
-SimHash组件仍属后续模块规划，当前构建不引入它。
+M1.15评估了[yanyiwu/simhash](https://github.com/yanyiwu/simhash/tree/24625edde9bd86ea0ba4deabd57e905d30b3a894)
+固定提交`24625edde9bd86ea0ba4deabd57e905d30b3a894`的README、Simhasher.hpp、jenkins.h及CMake。
+README声明MIT并链接作者许可页；该提交文件树未提供独立LICENSE文件，本项目未引入或分发其代码。
+默认入口另行持有完整Jieba并加载IDF/停用资源、提取topN关键词，predefined入口仍include完整Jieba并用double权重；
+不适合直接保留现有完整TF的uint64精确投票、空输入与预算合同。因此采用项目小型整数实现，无新增第三方库，
+不复制上游Simhasher/Jenkins源码，不把评估当作已完成依赖接入或去重准确率验证。
+
+`siftwing_simhash`公开依赖既有`siftwing_term_frequency`，私有复用固定utfcpp4.0.6校验词键与遍历标量。
+哈希使用明确的FNV-1a64字节递推与fmix64整数变换，常量、模2^64、权重/平票规则作为项目版本1合同固定；
+不使用平台相关`std::hash`、课程源码或新哈希库。首次构建的已有五库下载/许可/哈希/离线失败行为保持。
+升级utfcpp须重验词键编码与Unicode空白边界；改指纹规则须升版本，未来快照兼容信息另行设计。
