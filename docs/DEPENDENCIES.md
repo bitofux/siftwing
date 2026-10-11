@@ -179,3 +179,10 @@ M1.17 无新第三方依赖。`siftwing_record_format` 公开依赖 `siftwing_do
 既有 DocumentRecord、DocumentId、Result 与 checked 算术，使用 C++17 标准库字符串和流。
 CRC-32/ISO-HDLC 采用显式逐位递推；公开 Python 测试以标准库 struct/zlib 独立核对字节，
 Python 不进入生产库。既有五库的版本、来源、SHA 与许可证保持。
+
+## 偏移表与随机读取复用依赖
+
+M1.18 无新第三方库。`siftwing_document_store` 公开依赖 `siftwing_record_format`，使用
+既有记录校验、强身份与受检算术；Linux/POSIX open/fstat/pread/close 由内部 RAII 管理。
+测试的 GNU ld `--wrap=pread` 仅注入短读/EINTR/EOF/EIO，不进入生产目标。
+Python struct/zlib 只用于独立格式参考，既有五依赖来源/版本/SHA/许可证保持。

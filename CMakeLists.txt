@@ -39,6 +39,9 @@ target_link_libraries(siftwing_document_reader PUBLIC siftwing_document)
 add_library(siftwing_record_format STATIC src/document/record_format.cpp)
 target_link_libraries(siftwing_record_format PUBLIC siftwing_document)
 
+add_library(siftwing_document_store STATIC src/document/document_store.cpp)
+target_link_libraries(siftwing_document_store PUBLIC siftwing_record_format)
+
 # 固定官方归档及哈希；只使用头文件，避免引入上游安装规则或测试项目。
 include(FetchContent)
 if(POLICY CMP0135)
@@ -191,6 +194,16 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_format_reference_test.py"
         --probe "$<TARGET_FILE:siftwing_record_format_probe>")
     set_tests_properties(document.record_format document.record_format_reference PROPERTIES TIMEOUT 30)
+    add_executable(siftwing_document_store_test tests/unit/document_store_test.cpp)
+    target_link_libraries(siftwing_document_store_test PRIVATE siftwing_document_store)
+    target_link_options(siftwing_document_store_test PRIVATE "-Wl,--wrap=pread")
+    add_test(NAME document.store COMMAND siftwing_document_store_test "${CMAKE_CURRENT_BINARY_DIR}")
+    add_executable(siftwing_document_store_probe tests/integration/document_store_probe.cpp)
+    target_link_libraries(siftwing_document_store_probe PRIVATE siftwing_document_store)
+    add_test(NAME document.store_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/document_store_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_document_store_probe>")
+    set_tests_properties(document.store document.store_reference PROPERTIES TIMEOUT 30)
     set_tests_properties(document.record PROPERTIES TIMEOUT 10)
     add_executable(siftwing_document_reader_test tests/unit/document_reader_test.cpp)
     target_link_libraries(siftwing_document_reader_test PRIVATE siftwing_document_reader)
@@ -331,6 +344,12 @@ if(BUILD_TESTING)
         --probe "$<TARGET_FILE:siftwing_duplicate_decision_probe>")
     set_tests_properties(document.duplicate_decision document.duplicate_ingestion document.duplicate_reference PROPERTIES TIMEOUT 30)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+        add_test(NAME document.store_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/document-store-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/document_store_compile_contract.cmake")
+        set_tests_properties(document.store_compile_contract PROPERTIES TIMEOUT 30)
         add_test(NAME document.duplicate_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
                 "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
