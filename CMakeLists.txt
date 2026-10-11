@@ -449,6 +449,17 @@ if(BUILD_TESTING)
         "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/reader-contract"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/reader_compile_contract.cmake")
     set_tests_properties(snapshot.reader snapshot.reader_reference snapshot.reader_compile_contract PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_roundtrip_probe tests/integration/roundtrip_probe.cpp)
+    target_link_libraries(siftwing_roundtrip_probe PRIVATE siftwing_snapshot_reader siftwing_snapshot_writer)
+    add_executable(siftwing_roundtrip_pipeline_test tests/integration/roundtrip_pipeline_test.cpp)
+    target_link_libraries(siftwing_roundtrip_pipeline_test PRIVATE siftwing_snapshot_reader siftwing_snapshot_writer
+        siftwing_txt_reader siftwing_rss_reader siftwing_text_pipeline siftwing_tokenizer siftwing_duplicate_decision)
+    add_test(NAME snapshot.roundtrip COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/roundtrip_test.py"
+        --writer "$<TARGET_FILE:siftwing_writer_probe>" --reader "$<TARGET_FILE:siftwing_reader_probe>"
+        --republish "$<TARGET_FILE:siftwing_roundtrip_probe>" --pipeline "$<TARGET_FILE:siftwing_roundtrip_pipeline_test>"
+        --parent "${CMAKE_CURRENT_BINARY_DIR}")
+    set_tests_properties(snapshot.roundtrip PROPERTIES TIMEOUT 120)
     add_executable(siftwing_text_pipeline_test tests/unit/text_pipeline_test.cpp)
     target_link_libraries(siftwing_text_pipeline_test PRIVATE siftwing_text_pipeline)
     add_test(NAME text.pipeline COMMAND siftwing_text_pipeline_test)

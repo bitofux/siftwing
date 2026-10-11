@@ -6,7 +6,7 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 
 ## 项目状态
 
-仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线、基于TF的64位SimHash指纹及独立批量去重决策；搜索、索引、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
+仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线、基于TF的64位SimHash指纹及独立批量去重决策；搜索查询、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
 
 ## 在 Ubuntu 上构建与测试
 
@@ -51,13 +51,13 @@ TXT默认一文件一篇，作者、出处、章节和标记作为正文保留�
 `siftwing_document_store` 提供[偏移表与随机读取](docs/DOCUMENT_STORE.md)：只读扫描生成
 按 DocId 排序的 SWDI v1 表，检查整库覆盖，再用拥有只读 fd 的读者校验全部记录对应关系。
 随机读取使用 pread，返回独立拥有的文档；拒绝越界、截断、损坏和错位身份。文件须由调用方
-保持稳定，快照 manifest 和发布尚未实现。
+保持稳定；完整快照的清单、发布与加载由下文的snapshot目标组合提供。
 
 `siftwing_lexicon` 提供[固定词表与推荐字符索引](docs/LEXICON.md)。固定唯一词表按 UTF-8
 字节序从 0 编号，同词集合的顺序/重复不影响 TermId；词表变化可以改编号，ID 属于对应
 词典/快照。搜索 Lexicon 与推荐词典独立，后者保存显式选择语料的累计词频和 Unicode
 标量→唯一词项集合，不默认搜索去重，不计算 DF 或文档倒排。输入词键须由上游产生，
-本组件严格校验但不隐式规范化/过滤；提供确定性内存枚举，快照持久化与推荐查询尚未实现。
+本组件严格校验但不隐式规范化/过滤；提供确定性内存枚举，快照持久化由Writer/Reader提供，推荐查询仍待后续模块。
 
 CMake 配置时自动在构建目录生成 `compile_commands.json`；新增源或目标后须重新配置。clangd 等工具可使用所选构建目录的数据库，根目录入口应指向当前配置，生成文件不提交。
 
@@ -328,3 +328,7 @@ DF 和文档/语料统计；不自行去重、不使用推荐累计，尚不计�
 核八文件集合、manifest/COMPLETE、六文件尺寸/SHA及记录、原TF/DF/权重、推荐字符跨文件关系，
 成功后只读拥有全部数据且不保留fd。数值运行环境须复现保存的规范权重字节；
 在线热切换、查询与建库CLI尚未实现。
+
+[快照往返验收](docs/SNAPSHOT_ROUNDTRIP.md)通过真实Writer/Reader及独立Python参考，验证
+固定元数据下重复构建、输入排列变化和加载后再发布的八文件一致性；另有原创TXT/RSS经
+英文文本管线、SimHash去重及独立推荐累计到快照加载的完整测试链路。
