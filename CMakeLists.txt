@@ -90,6 +90,9 @@ target_link_libraries(siftwing_text_pipeline PUBLIC siftwing_text_normalization 
 add_library(siftwing_simhash STATIC src/document/simhash.cpp)
 target_link_libraries(siftwing_simhash PUBLIC siftwing_term_frequency PRIVATE siftwing_utf8cpp)
 
+add_library(siftwing_duplicate_decision STATIC src/document/duplicate_decision.cpp)
+target_link_libraries(siftwing_duplicate_decision PUBLIC siftwing_document siftwing_simhash)
+
 add_library(siftwing_txt_reader STATIC src/document/txt_reader.cpp)
 target_link_libraries(siftwing_txt_reader PUBLIC siftwing_document_reader PRIVATE siftwing_utf8cpp)
 
@@ -301,7 +304,26 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/simhash_reference_test.py"
         --probe "$<TARGET_FILE:siftwing_simhash_probe>")
     set_tests_properties(document.simhash document.simhash_ingestion document.simhash_reference PROPERTIES TIMEOUT 30)
+    add_executable(siftwing_duplicate_decision_test tests/unit/duplicate_decision_test.cpp)
+    target_link_libraries(siftwing_duplicate_decision_test PRIVATE siftwing_duplicate_decision)
+    add_test(NAME document.duplicate_decision COMMAND siftwing_duplicate_decision_test)
+    add_executable(siftwing_duplicate_decision_ingestion_test tests/integration/duplicate_decision_ingestion_test.cpp)
+    target_link_libraries(siftwing_duplicate_decision_ingestion_test PRIVATE siftwing_duplicate_decision
+        siftwing_text_pipeline siftwing_cppjieba_tokenizer siftwing_txt_reader siftwing_rss_reader)
+    add_test(NAME document.duplicate_ingestion COMMAND siftwing_duplicate_decision_ingestion_test)
+    add_executable(siftwing_duplicate_decision_probe tests/integration/duplicate_decision_probe.cpp)
+    target_link_libraries(siftwing_duplicate_decision_probe PRIVATE siftwing_duplicate_decision)
+    add_test(NAME document.duplicate_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/duplicate_decision_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_duplicate_decision_probe>")
+    set_tests_properties(document.duplicate_decision document.duplicate_ingestion document.duplicate_reference PROPERTIES TIMEOUT 30)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+        add_test(NAME document.duplicate_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/duplicate-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/duplicate_decision_compile_contract.cmake")
+        set_tests_properties(document.duplicate_compile_contract PROPERTIES TIMEOUT 30)
         add_test(NAME document.simhash_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
                 "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"

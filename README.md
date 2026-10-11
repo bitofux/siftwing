@@ -6,7 +6,7 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 
 ## 项目状态
 
-仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线及基于TF的64位SimHash指纹；搜索、索引、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
+仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线、基于TF的64位SimHash指纹及独立批量去重决策；搜索、索引、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
 
 ## 在 Ubuntu 上构建与测试
 
@@ -237,11 +237,35 @@ SimHash去重。例如再交付`中国`得到推荐中国3、a1 1；搜索DF中�
 计算使用固定64项栈票数，工作量为词键字节扫描加64×唯一词数，不按重复次数展开；
 预算不限制调用方已装载TF/管线临时对象或进程总资源。函数无IO/共享可变状态，不修改`DocumentRecord`。
 汉明距离仅返回0—64的不同位数，不内置阈值或决定保留/丢弃。指纹不是加密哈希或唯一内容身份，
-碰撞和近似误判可能发生；原创小改动样例通过不证明通用去重质量。去重决策、文档库和索引尚未实现。
+碰撞和近似误判可能发生；原创小改动样例通过不证明通用去重质量。文档库和索引尚未实现；去重决策由下述独立入口提供。
 
 CTest包含固定词哈希/手算投票、完整uint64权重/坏输入/预算/独立逐位距离、
 原创TXT/RSS与中英文管线接线、Python任意精度有符号投票参考和公共头编译合同。
 `siftwing_simhash_probe`仅为测试验收入口，受限读取显式TF批次，不是生产CLI或持久化格式。
+
+[duplicate_decision.h](include/siftwing/document/duplicate_decision.h)通过目标
+`siftwing_duplicate_decision`提供`decide_duplicates(candidates, policy, limits)`，返回拥有型
+`DuplicateReport`。候选显式提供`DocumentId`、`SourceIdentity`和`optional<SimHash64>`，不修改
+`DocumentRecord`，不重新分析文本。调用方须保证指纹规则、分词和停用资源兼容；分析失败不能
+伪装为`nullopt`。来源标识沿读取层相对路径规则校验，并沿`std::string`字典序、文件内序号排序，
+每批文档身份及来源位置分别唯一；不按ID或传入顺序决定保留者。
+
+`DuplicatePolicy`默认距离阈值3，合法范围0—64，距离等于阈值也命中。只与已保留的有指纹文档
+比较，选最早命中者并记录身份/实际距离；命中者距离不一定最小。丢弃的候选不参与后续比较，
+不形成传递聚类。无指纹候选单列`no_features`并跳过搜索保留集合，数值0指纹仍合法。
+报告逐项给出`kept`/`duplicate`/`no_features`、来源和可选匹配，统计输入、保留、重复、无特征与
+实际比较次数；保存实际策略副本。输出不借用输入，正文/元数据保持，推荐累计仍由调用方
+按原选定语料显式执行，不自动改成搜索保留集合，也不在此计算搜索DF。
+
+四正预算限制候选数、单个来源字节、总来源字节（每候选计一次）与实际指纹比较次数。
+配置与完整输入先预检，距离预算在每次计算前检查；等于上限合法，任何普通失败返回
+`duplicate.*`且没有部分决策或统计，分配/未知异常上传。函数无IO、共享可变状态；排序
+O(n log n)，指纹比较最坏O(n²)，预算不是进程硬限，不提前分桶。结果只是近似规则命中，
+未测真实去重准确率或大规模性能；存储、manifest和建库CLI仍在后续范围。
+
+CTest使用手算非传递链和多命中、全部65×65阈值/距离组合、六候选720排列、空特征与预算失败，
+并接线原创TXT/RSS/中英文完整管线，使用独立Python逐位字符参考及公共头编译合同。
+测试probe仅消费显式身份/来源/指纹批次，不是生产CLI或磁盘格式。
 
 ```sh
 cmake -S . -B build/sanitize -DCMAKE_BUILD_TYPE=Debug -DSIFTWING_ENABLE_SANITIZERS=ON
