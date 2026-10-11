@@ -310,3 +310,7 @@ NOTICE，见[第三方依赖](docs/DEPENDENCIES.md)；分发含第三方静态�
 原始语料级关系由 [倒排索引构建](docs/INVERTED_INDEX.md) 和 `siftwing_inverted_index` 提供。
 调用方显式交付搜索保留文档的完整单文档 TF，构建器拥有固定词表、有序唯一 Posting List、
 DF 和文档/语料统计；不自行去重、不使用推荐累计，尚不计算权重或执行搜索查询。
+
+`siftwing_weights` 提供 [TF-IDF、L2归一化及规范字节导出](docs/WEIGHTS.md)。
+它显式接管原始索引，保留整数TF/DF/N，按平滑自然对数IDF生成文档单位权重，
+空文档保持零向量；输出顺序与编码固定，不依赖locale，尚不执行搜索查询或快照发布。

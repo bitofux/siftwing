@@ -99,6 +99,12 @@ target_link_libraries(siftwing_posting PUBLIC siftwing_base)
 add_library(siftwing_inverted_index STATIC src/index/inverted_index.cpp)
 target_link_libraries(siftwing_inverted_index PUBLIC siftwing_lexicon siftwing_posting)
 
+add_library(siftwing_weights STATIC src/index/weighted_index.cpp)
+target_link_libraries(siftwing_weights PUBLIC siftwing_inverted_index)
+if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+    target_compile_options(siftwing_weights PRIVATE -fno-fast-math -ffp-contract=off)
+endif()
+
 # 建库与查询共享拥有型管线，生产目标只组合文本阶段，不耦合文档读取或具体中文实现。
 add_library(siftwing_text_pipeline STATIC src/text/text_pipeline.cpp)
 target_link_libraries(siftwing_text_pipeline PUBLIC siftwing_text_normalization siftwing_term_frequency)
@@ -352,6 +358,24 @@ if(BUILD_TESTING)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/inverted_index_compile_contract.cmake")
     set_tests_properties(index.inverted_index index.inverted_index_reference
         index.inverted_index_ingestion index.inverted_index_compile_contract PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_weighted_index_test tests/unit/weighted_index_test.cpp)
+    target_link_libraries(siftwing_weighted_index_test PRIVATE siftwing_weights)
+    add_test(NAME index.weights COMMAND siftwing_weighted_index_test)
+    add_executable(siftwing_weighted_index_probe tests/integration/weighted_index_probe.cpp)
+    target_link_libraries(siftwing_weighted_index_probe PRIVATE siftwing_weights)
+    add_test(NAME index.weights_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/weighted_index_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_weighted_index_probe>")
+    add_executable(siftwing_weighted_index_ingestion_test tests/integration/weighted_index_ingestion_test.cpp)
+    target_link_libraries(siftwing_weighted_index_ingestion_test PRIVATE siftwing_weights
+        siftwing_text_pipeline siftwing_tokenizer siftwing_duplicate_decision)
+    add_test(NAME index.weights_ingestion COMMAND siftwing_weighted_index_ingestion_test)
+    add_test(NAME index.weights_compile_contract COMMAND "${CMAKE_COMMAND}"
+        "-DCXX=${CMAKE_CXX_COMPILER}" "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/weights-contract"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/weighted_index_compile_contract.cmake")
+    set_tests_properties(index.weights index.weights_reference index.weights_ingestion
+        index.weights_compile_contract PROPERTIES TIMEOUT 60)
     add_executable(siftwing_text_pipeline_test tests/unit/text_pipeline_test.cpp)
     target_link_libraries(siftwing_text_pipeline_test PRIVATE siftwing_text_pipeline)
     add_test(NAME text.pipeline COMMAND siftwing_text_pipeline_test)

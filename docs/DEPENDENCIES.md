@@ -205,3 +205,7 @@ M1.13 到单词关系的接线只在测试目标显式依赖 `siftwing_term_freq
 M1.21 无新第三方库。`siftwing_inverted_index` 公开依赖 `siftwing_lexicon` 与
 `siftwing_posting`，通过前者获得单文档 TF 接口，通过后者获得受检原始关系；
 词键验证和编号复用 Lexicon，整数受检复用 base。共享管线、SimHash、去重仅为接线测试依赖。
+
+M1.22 无新第三方库。`siftwing_weights` 仅公开依赖 `siftwing_inverted_index`，
+使用C++标准库log1p/hypot、cfenv、to_chars及memcpy；GNU/Clang目标禁用fast-math和浮点收缩。
+共享管线/SimHash/去重为原创接线测试依赖，不进入权重库的额外公开依赖。
