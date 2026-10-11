@@ -25,7 +25,7 @@ build/debug/siftwing_build_probe a banana
 # 3
 ```
 
-探针只统计精确字节，不涉及文本、编码或搜索语义。参数非法时退出 2，输出失败时退出 1。Ubuntu GCC/Clang 配置须实际发现并运行全部四十六项测试（基础/文档/文本行为、接入/独立参考及公共头编译合同检查），仅编译成功不足以确认验证通过。
+探针只统计精确字节，不涉及文本、编码或搜索语义。参数非法时退出 2，输出失败时退出 1。Ubuntu GCC/Clang 配置须实际发现并运行全部已注册测试（基础/文档/文本/索引行为、接入/独立参考及公共头编译合同检查），仅编译成功不足以确认验证通过。
 
 基础结果模型位于 [result.h](include/siftwing/base/result.h)，通过 CMake 目标 `siftwing_base` 使用。调用方先检查 `has_value()` 或显式布尔分支，再读取 `value()` / `error()`；访问错分支抛出 `std::bad_variant_access`。结果按载荷类型支持复制或移动构造，不支持赋值；左值访问返回借用引用，右值访问返回拥有值。`[[nodiscard]]` 会诊断直接丢弃结果，显式 `(void)` 仍允许有意忽略。它不自动捕获分配或载荷构造异常。
 
@@ -290,6 +290,12 @@ ctest --test-dir build/sanitize --output-on-failure --no-tests=error
 ```
 
 ## 工程原则
+
+原始词到文档关系由 [posting.h](include/siftwing/index/posting.h) 和 `siftwing_posting`
+提供：显式文档身份与正整数出现次数，受检创建并校验同词列表的严格文档次序/条数预算。
+原始 TF、列表关系数与推荐累计各自保持口径；不自动排序/合并，不含权重或词位。
+调用方仍须保证同词/同快照/搜索保留集合，详见 [POSTING.md](docs/POSTING.md)。
+倒排构建、DF/文档统计、TF-IDF 权重及查询仍在后续实现。
 
 - 优先保证正确性与明确的所有权，避免过早优化。
 - 公共合同、失败行为和线程边界须可测试。

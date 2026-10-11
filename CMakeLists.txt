@@ -92,6 +92,10 @@ target_link_libraries(siftwing_term_frequency PUBLIC siftwing_tokenizer PRIVATE 
 add_library(siftwing_lexicon STATIC src/index/lexicon.cpp)
 target_link_libraries(siftwing_lexicon PUBLIC siftwing_base siftwing_term_frequency PRIVATE siftwing_utf8cpp)
 
+# 原始Posting只依赖强文档身份/受检整数，不引入词典、分词或权重算法依赖。
+add_library(siftwing_posting STATIC src/index/posting.cpp)
+target_link_libraries(siftwing_posting PUBLIC siftwing_base)
+
 # 建库与查询共享拥有型管线，生产目标只组合文本阶段，不耦合文档读取或具体中文实现。
 add_library(siftwing_text_pipeline STATIC src/text/text_pipeline.cpp)
 target_link_libraries(siftwing_text_pipeline PUBLIC siftwing_text_normalization siftwing_term_frequency)
@@ -320,6 +324,13 @@ if(BUILD_TESTING)
         siftwing_text_pipeline siftwing_duplicate_decision)
     add_test(NAME index.lexicon_ingestion COMMAND siftwing_lexicon_ingestion_test)
     set_tests_properties(index.lexicon index.lexicon_reference index.lexicon_ingestion PROPERTIES TIMEOUT 30)
+    add_executable(siftwing_posting_test tests/unit/posting_test.cpp)
+    target_link_libraries(siftwing_posting_test PRIVATE siftwing_posting)
+    add_test(NAME index.posting COMMAND siftwing_posting_test)
+    add_executable(siftwing_posting_ingestion_test tests/integration/posting_ingestion_test.cpp)
+    target_link_libraries(siftwing_posting_ingestion_test PRIVATE siftwing_posting siftwing_term_frequency)
+    add_test(NAME index.posting_ingestion COMMAND siftwing_posting_ingestion_test)
+    set_tests_properties(index.posting index.posting_ingestion PROPERTIES TIMEOUT 15)
     add_executable(siftwing_text_pipeline_test tests/unit/text_pipeline_test.cpp)
     target_link_libraries(siftwing_text_pipeline_test PRIVATE siftwing_text_pipeline)
     add_test(NAME text.pipeline COMMAND siftwing_text_pipeline_test)
@@ -361,6 +372,12 @@ if(BUILD_TESTING)
         --probe "$<TARGET_FILE:siftwing_duplicate_decision_probe>")
     set_tests_properties(document.duplicate_decision document.duplicate_ingestion document.duplicate_reference PROPERTIES TIMEOUT 30)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+        add_test(NAME index.posting_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/posting-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/posting_compile_contract.cmake")
+        set_tests_properties(index.posting_compile_contract PROPERTIES TIMEOUT 30)
         add_test(NAME index.lexicon_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
                 "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"

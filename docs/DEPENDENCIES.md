@@ -194,3 +194,10 @@ M1.19 无新第三方库。`siftwing_lexicon` 公开依赖 `siftwing_base` 与 `
 强 TermId 与受检频次总和由 C++17 标准库和既有基础模块提供。不加载新的词典资源。
 Python 独立 bytes 排序/Unicode 集合仅用于参考测试，不进入生产库。五依赖来源/版本/
 归档 SHA 与许可证保持，字符索引不引入编辑距离或推荐查询依赖。
+
+## 原始 Posting 复用依赖
+
+M1.20 无新第三方库。`siftwing_posting` 仅公开依赖 `siftwing_base`，复用强 DocumentId、
+Result 和受检整数转换；生产目标不依赖词典、文本处理、浮点数学或资源加载。
+M1.13 到单词关系的接线只在测试目标显式依赖 `siftwing_term_frequency`。
+既有五依赖版本、来源、归档 SHA 与许可证保持。
