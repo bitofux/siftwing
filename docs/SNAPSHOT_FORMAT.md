@@ -2,11 +2,12 @@
 
 本模块已提供 `siftwing_snapshot_manifest` 的内存 manifest 编解码、SHA-256、payload
 字节校验和完成标记。公共 API 合同见 [manifest.h](../include/siftwing/snapshot/manifest.h)。
-以下目录/payload布局是本版本冻结的合同；文件写入、完整目录加载和发布尚未实现。
+以下目录/payload布局是本版本冻结的合同。[Writer](SNAPSHOT_WRITER.md)已实现规范编码、
+完整集合落盘及原子无覆盖发布；任意目录的完整SnapshotReader加载尚未实现。
 
 调用方配置输出父目录，每个正式快照使用不透明 `SnapshotVersion` 的规范无前导零
 十进制叶子目录。0及UINT64_MAX合法，数值大小不代表时间次序；发布者负责唯一性。
-临时目录命名与原子发布由后续 Writer 明确，不从原始语料目录派生或写回输入。
+Writer明确临时目录命名与原子发布，不从原始语料目录派生或写回输入。
 正式目录恰包含以下八个普通文件，不含其他文件、子目录或符号链接；本模块不访问目录，
 因此内存校验成功尚不能证明这一文件系统条件。
 
@@ -94,11 +95,12 @@ C行按标量数值严格递增，标量非NUL/代理项，<=0x10FFFF；每行�
 TermId，每词重复标量只贡献一个关系；字符索引须恰好对应推荐词键含有的标量集合。
 推荐频次之和、字符关系之和与manifest/R/S行须一致。文档库/偏移表/权重的文档ID及N
 须一致，所有posting必须属于该库；文档与词ID仍是快照局部身份。
-本模块只冻结上述payload格式，不实现这些新payload的生产编解码器或跨文件加载验证。
+manifest组件只冻结上述payload格式；Writer内部已实现新payload规范编码，
+解码任意目录并验证跨文件语义留给后续Reader。
 
 COMPLETE恰为`SIFTWING-COMPLETE 1 <SnapshotVersion> <manifest字节sha256>\n`。
 必须先成功parse完整规范manifest才生成/接受标记；逐字节严格比较，拒尾随/旧身份/旧摘要。
-manifest不列自己与COMPLETE，避免自校验循环；后续Writer在payload全部验证后写这两项，
+manifest不列自己与COMPLETE，避免自校验循环；Writer在payload全部验证后写这两项，
 Reader须同时核对marker、清单文件字节和跨文件语义。单独标记成功不表示文件已经完成或发布。
 
 诊断context为manifest.limits/metadata/statistics/version/length/overflow/file_bytes/

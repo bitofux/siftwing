@@ -109,6 +109,11 @@ endif()
 add_library(siftwing_snapshot_manifest STATIC src/snapshot/manifest.cpp)
 target_link_libraries(siftwing_snapshot_manifest PUBLIC siftwing_base)
 
+# Writer只组合已验证部件；Linux fd层负责完整集合落盘及原子无覆盖发布。
+add_library(siftwing_snapshot_writer STATIC src/snapshot/writer.cpp)
+target_link_libraries(siftwing_snapshot_writer PUBLIC siftwing_snapshot_manifest
+    siftwing_document_store siftwing_weights)
+
 # 建库与查询共享拥有型管线，生产目标只组合文本阶段，不耦合文档读取或具体中文实现。
 add_library(siftwing_text_pipeline STATIC src/text/text_pipeline.cpp)
 target_link_libraries(siftwing_text_pipeline PUBLIC siftwing_text_normalization siftwing_term_frequency)
@@ -398,6 +403,31 @@ if(BUILD_TESTING)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/manifest_compile_contract.cmake")
     set_tests_properties(snapshot.manifest snapshot.manifest_reference snapshot.manifest_ingestion
         snapshot.manifest_compile_contract PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_writer_test tests/unit/writer_test.cpp)
+    target_link_libraries(siftwing_writer_test PRIVATE siftwing_snapshot_writer)
+    foreach(operation openat write pread getrandom mkdirat fsync close fstat fdopendir renameat2)
+        target_link_options(siftwing_writer_test PRIVATE "-Wl,--wrap=${operation}")
+    endforeach()
+    add_test(NAME snapshot.writer COMMAND siftwing_writer_test "${CMAKE_CURRENT_BINARY_DIR}")
+    add_executable(siftwing_writer_probe tests/integration/writer_probe.cpp)
+    target_link_libraries(siftwing_writer_probe PRIVATE siftwing_snapshot_writer)
+    add_test(NAME snapshot.writer_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/writer_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_writer_probe>" --parent "${CMAKE_CURRENT_BINARY_DIR}")
+    add_executable(siftwing_writer_race_test tests/integration/writer_race_test.cpp)
+    target_link_libraries(siftwing_writer_race_test PRIVATE siftwing_snapshot_writer)
+    target_link_options(siftwing_writer_race_test PRIVATE "-Wl,--wrap=renameat2")
+    add_test(NAME snapshot.writer_race COMMAND siftwing_writer_race_test "${CMAKE_CURRENT_BINARY_DIR}")
+    add_executable(siftwing_writer_ingestion_test tests/integration/writer_ingestion_test.cpp)
+    target_link_libraries(siftwing_writer_ingestion_test PRIVATE siftwing_snapshot_writer
+        siftwing_text_pipeline siftwing_tokenizer)
+    add_test(NAME snapshot.writer_ingestion COMMAND siftwing_writer_ingestion_test "${CMAKE_CURRENT_BINARY_DIR}")
+    add_test(NAME snapshot.writer_compile_contract COMMAND "${CMAKE_COMMAND}"
+        "-DCXX=${CMAKE_CXX_COMPILER}" "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/writer-contract"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/writer_compile_contract.cmake")
+    set_tests_properties(snapshot.writer snapshot.writer_reference snapshot.writer_race
+        snapshot.writer_ingestion snapshot.writer_compile_contract PROPERTIES TIMEOUT 60)
     add_executable(siftwing_text_pipeline_test tests/unit/text_pipeline_test.cpp)
     target_link_libraries(siftwing_text_pipeline_test PRIVATE siftwing_text_pipeline)
     add_test(NAME text.pipeline COMMAND siftwing_text_pipeline_test)

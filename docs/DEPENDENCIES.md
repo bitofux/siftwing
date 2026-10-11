@@ -213,3 +213,11 @@ M1.22 无新第三方库。`siftwing_weights` 仅公开依赖 `siftwing_inverted
 M1.23无新第三方库。`siftwing_snapshot_manifest`仅公开依赖`siftwing_base`；
 固定大小标准SHA-256无符号运算及规范文本编解码由项目实现，独立参考用Python hashlib。
 文档存储、权重、推荐及文本管线仅在接线测试中显式依赖，不进入manifest生产库。
+
+M1.24无新第三方库。`siftwing_snapshot_writer`公开依赖`siftwing_snapshot_manifest`、
+`siftwing_document_store`、`siftwing_weights`，经权重目标复用独立词表/推荐接口。
+三个新文本payload编码只在Writer内部实现，复用既有有效部件，不复制课程/第三方源码。
+路径/fd/同步由libc/Linux openat、mkdirat、getrandom、write/pread、fsync/close及
+renameat2(RENAME_NOREPLACE)完成；没有普通rename降级，也没有外部加密库。
+测试的GNU ld --wrap只用于IO/提交点故障与竞争屏障，不进入生产目标。
+Python struct/zlib/hashlib及数学/Unicode参考仅在测试使用；文本管线只为接线测试额外依赖。
