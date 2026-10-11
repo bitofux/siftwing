@@ -1,0 +1,23 @@
+# 公共头自包含、只读借用、强身份及move-only合同；不链接生产代码。
+if(NOT DEFINED CXX OR NOT DEFINED SOURCE_DIR OR NOT DEFINED BINARY_DIR)
+    message(FATAL_ERROR "CXX/SOURCE_DIR/BINARY_DIR required")
+endif()
+file(MAKE_DIRECTORY "${BINARY_DIR}")
+function(check_case name accepted text)
+    file(WRITE "${BINARY_DIR}/${name}.cpp" "#include <siftwing/snapshot/reader.h>\n#include <type_traits>\n#include <utility>\nusing namespace siftwing;\n${text}\n")
+    execute_process(COMMAND "${CXX}" -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wshadow
+        "-I${SOURCE_DIR}/include" -fsyntax-only "${BINARY_DIR}/${name}.cpp"
+        RESULT_VARIABLE status OUTPUT_VARIABLE output ERROR_VARIABLE error)
+    if(accepted AND NOT status EQUAL 0)
+        message(FATAL_ERROR "${name}: unexpected rejection: ${error}")
+    elseif(NOT accepted AND status EQUAL 0)
+        message(FATAL_ERROR "${name}: invalid contract unexpectedly accepted")
+    endif()
+endfunction()
+check_case(public TRUE "static_assert(!std::is_copy_constructible_v<snapshot::SnapshotReader>); static_assert(std::is_nothrow_move_constructible_v<snapshot::SnapshotReader>); static_assert(std::is_nothrow_move_assignable_v<snapshot::SnapshotReader>); void f(const snapshot::SnapshotReader& r) { const snapshot::Manifest* m=r.manifest(); const index::WeightedIndex* s=r.search(); const index::RecommendationDictionary* c=r.recommendation(); const std::vector<document::DocumentRecord>* d=r.documents(); (void)m;(void)s;(void)c;(void)d; }")
+check_case(copy FALSE "void f(snapshot::SnapshotReader& r) { auto copied=r; (void)copied; }")
+check_case(temporary FALSE "void f(snapshot::SnapshotReader& r) { auto p=std::move(r).document(base::DocumentId::from_integer(0).value()); (void)p; }")
+check_case(mutate FALSE "void f(snapshot::SnapshotReader& r) { r.manifest()->build_version.clear(); }")
+check_case(identity FALSE "void f(const std::string& p,const snapshot::SnapshotReadLimits& l) { auto r=snapshot::SnapshotReader::open(p,base::DocumentId::from_integer(0).value(),l); (void)r; }")
+check_case(hidden FALSE "void f() { snapshot::SnapshotReader r; (void)r; }")
+message(STATUS "reader public contract: 6 cases passed")

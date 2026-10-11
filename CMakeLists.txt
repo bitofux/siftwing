@@ -114,6 +114,11 @@ add_library(siftwing_snapshot_writer STATIC src/snapshot/writer.cpp)
 target_link_libraries(siftwing_snapshot_writer PUBLIC siftwing_snapshot_manifest
     siftwing_document_store siftwing_weights)
 
+# Reader在完整校验后拥有所有部件，不修改已封板codec或保存长期fd。
+add_library(siftwing_snapshot_reader STATIC src/snapshot/reader.cpp)
+target_link_libraries(siftwing_snapshot_reader PUBLIC siftwing_snapshot_manifest
+    siftwing_document_store siftwing_weights)
+
 # 建库与查询共享拥有型管线，生产目标只组合文本阶段，不耦合文档读取或具体中文实现。
 add_library(siftwing_text_pipeline STATIC src/text/text_pipeline.cpp)
 target_link_libraries(siftwing_text_pipeline PUBLIC siftwing_text_normalization siftwing_term_frequency)
@@ -428,6 +433,22 @@ if(BUILD_TESTING)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/writer_compile_contract.cmake")
     set_tests_properties(snapshot.writer snapshot.writer_reference snapshot.writer_race
         snapshot.writer_ingestion snapshot.writer_compile_contract PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_reader_test tests/unit/reader_test.cpp)
+    target_link_libraries(siftwing_reader_test PRIVATE siftwing_snapshot_reader siftwing_snapshot_writer)
+    foreach(operation openat pread fstat fstatat close fdopendir readdir closedir)
+        target_link_options(siftwing_reader_test PRIVATE "-Wl,--wrap=${operation}")
+    endforeach()
+    add_test(NAME snapshot.reader COMMAND siftwing_reader_test "${CMAKE_CURRENT_BINARY_DIR}")
+    add_executable(siftwing_reader_probe tests/integration/reader_probe.cpp)
+    target_link_libraries(siftwing_reader_probe PRIVATE siftwing_snapshot_reader)
+    add_test(NAME snapshot.reader_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/reader_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_reader_probe>" --parent "${CMAKE_CURRENT_BINARY_DIR}")
+    add_test(NAME snapshot.reader_compile_contract COMMAND "${CMAKE_COMMAND}"
+        "-DCXX=${CMAKE_CXX_COMPILER}" "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/reader-contract"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/reader_compile_contract.cmake")
+    set_tests_properties(snapshot.reader snapshot.reader_reference snapshot.reader_compile_contract PROPERTIES TIMEOUT 60)
     add_executable(siftwing_text_pipeline_test tests/unit/text_pipeline_test.cpp)
     target_link_libraries(siftwing_text_pipeline_test PRIVATE siftwing_text_pipeline)
     add_test(NAME text.pipeline COMMAND siftwing_text_pipeline_test)

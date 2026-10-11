@@ -221,3 +221,8 @@ M1.24无新第三方库。`siftwing_snapshot_writer`公开依赖`siftwing_snapsh
 renameat2(RENAME_NOREPLACE)完成；没有普通rename降级，也没有外部加密库。
 测试的GNU ld --wrap只用于IO/提交点故障与竞争屏障，不进入生产目标。
 Python struct/zlib/hashlib及数学/Unicode参考仅在测试使用；文本管线只为接线测试额外依赖。
+
+M1.25无新第三方库。`siftwing_snapshot_reader`公开依赖`siftwing_snapshot_manifest`、
+`siftwing_document_store`和`siftwing_weights`，复用既有格式验证和有效搜索/推荐构建器。
+只读路径/fd由libc/Linux openat、fstat/fstatat、pread和目录枚举/close完成，无长期fd。
+测试的Writer接线和GNU ld --wrap不进入Reader生产目标，独立Python生成器不调用Writer。
