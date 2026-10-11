@@ -201,3 +201,7 @@ M1.20 无新第三方库。`siftwing_posting` 仅公开依赖 `siftwing_base`，
 Result 和受检整数转换；生产目标不依赖词典、文本处理、浮点数学或资源加载。
 M1.13 到单词关系的接线只在测试目标显式依赖 `siftwing_term_frequency`。
 既有五依赖版本、来源、归档 SHA 与许可证保持。
+
+M1.21 无新第三方库。`siftwing_inverted_index` 公开依赖 `siftwing_lexicon` 与
+`siftwing_posting`，通过前者获得单文档 TF 接口，通过后者获得受检原始关系；
+词键验证和编号复用 Lexicon，整数受检复用 base。共享管线、SimHash、去重仅为接线测试依赖。

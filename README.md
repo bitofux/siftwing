@@ -306,3 +306,7 @@ ctest --test-dir build/sanitize --output-on-failure --no-tests=error
 
 Siftwing 自身代码使用 MIT 许可证，详见 [LICENSE](LICENSE)。第三方组件保留各自许可证与
 NOTICE，见[第三方依赖](docs/DEPENDENCIES.md)；分发含第三方静态库的程序须同时附带相关声明。
+
+原始语料级关系由 [倒排索引构建](docs/INVERTED_INDEX.md) 和 `siftwing_inverted_index` 提供。
+调用方显式交付搜索保留文档的完整单文档 TF，构建器拥有固定词表、有序唯一 Posting List、
+DF 和文档/语料统计；不自行去重、不使用推荐累计，尚不计算权重或执行搜索查询。

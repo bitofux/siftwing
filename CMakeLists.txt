@@ -96,6 +96,9 @@ target_link_libraries(siftwing_lexicon PUBLIC siftwing_base siftwing_term_freque
 add_library(siftwing_posting STATIC src/index/posting.cpp)
 target_link_libraries(siftwing_posting PUBLIC siftwing_base)
 
+add_library(siftwing_inverted_index STATIC src/index/inverted_index.cpp)
+target_link_libraries(siftwing_inverted_index PUBLIC siftwing_lexicon siftwing_posting)
+
 # 建库与查询共享拥有型管线，生产目标只组合文本阶段，不耦合文档读取或具体中文实现。
 add_library(siftwing_text_pipeline STATIC src/text/text_pipeline.cpp)
 target_link_libraries(siftwing_text_pipeline PUBLIC siftwing_text_normalization siftwing_term_frequency)
@@ -331,6 +334,24 @@ if(BUILD_TESTING)
     target_link_libraries(siftwing_posting_ingestion_test PRIVATE siftwing_posting siftwing_term_frequency)
     add_test(NAME index.posting_ingestion COMMAND siftwing_posting_ingestion_test)
     set_tests_properties(index.posting index.posting_ingestion PROPERTIES TIMEOUT 15)
+    add_executable(siftwing_inverted_index_test tests/unit/inverted_index_test.cpp)
+    target_link_libraries(siftwing_inverted_index_test PRIVATE siftwing_inverted_index)
+    add_test(NAME index.inverted_index COMMAND siftwing_inverted_index_test)
+    add_executable(siftwing_inverted_index_probe tests/integration/inverted_index_probe.cpp)
+    target_link_libraries(siftwing_inverted_index_probe PRIVATE siftwing_inverted_index)
+    add_test(NAME index.inverted_index_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/inverted_index_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_inverted_index_probe>")
+    add_executable(siftwing_inverted_index_ingestion_test tests/integration/inverted_index_ingestion_test.cpp)
+    target_link_libraries(siftwing_inverted_index_ingestion_test PRIVATE siftwing_inverted_index
+        siftwing_text_pipeline siftwing_tokenizer siftwing_duplicate_decision)
+    add_test(NAME index.inverted_index_ingestion COMMAND siftwing_inverted_index_ingestion_test)
+    add_test(NAME index.inverted_index_compile_contract COMMAND "${CMAKE_COMMAND}"
+        "-DCXX=${CMAKE_CXX_COMPILER}" "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/inverted-index-contract"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/inverted_index_compile_contract.cmake")
+    set_tests_properties(index.inverted_index index.inverted_index_reference
+        index.inverted_index_ingestion index.inverted_index_compile_contract PROPERTIES TIMEOUT 60)
     add_executable(siftwing_text_pipeline_test tests/unit/text_pipeline_test.cpp)
     target_link_libraries(siftwing_text_pipeline_test PRIVATE siftwing_text_pipeline)
     add_test(NAME text.pipeline COMMAND siftwing_text_pipeline_test)
