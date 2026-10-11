@@ -88,6 +88,10 @@ target_link_libraries(siftwing_cppjieba_tokenizer PUBLIC siftwing_tokenizer PRIV
 add_library(siftwing_term_frequency STATIC src/text/term_frequency.cpp)
 target_link_libraries(siftwing_term_frequency PUBLIC siftwing_tokenizer PRIVATE siftwing_text_normalization siftwing_utf8cpp)
 
+# 固定词表与独立推荐字符索引不耦合文件装载、搜索Posting或推荐查询算法。
+add_library(siftwing_lexicon STATIC src/index/lexicon.cpp)
+target_link_libraries(siftwing_lexicon PUBLIC siftwing_base siftwing_term_frequency PRIVATE siftwing_utf8cpp)
+
 # 建库与查询共享拥有型管线，生产目标只组合文本阶段，不耦合文档读取或具体中文实现。
 add_library(siftwing_text_pipeline STATIC src/text/text_pipeline.cpp)
 target_link_libraries(siftwing_text_pipeline PUBLIC siftwing_text_normalization siftwing_term_frequency)
@@ -303,6 +307,19 @@ if(BUILD_TESTING)
         siftwing_cppjieba_tokenizer siftwing_text_normalization siftwing_txt_reader siftwing_rss_reader)
     add_test(NAME text.term_frequency_ingestion COMMAND siftwing_term_frequency_ingestion_test)
     set_tests_properties(text.term_frequency text.term_frequency_reference text.term_frequency_ingestion PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_lexicon_test tests/unit/lexicon_test.cpp)
+    target_link_libraries(siftwing_lexicon_test PRIVATE siftwing_lexicon)
+    add_test(NAME index.lexicon COMMAND siftwing_lexicon_test)
+    add_executable(siftwing_lexicon_probe tests/integration/lexicon_probe.cpp)
+    target_link_libraries(siftwing_lexicon_probe PRIVATE siftwing_lexicon)
+    add_test(NAME index.lexicon_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/lexicon_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_lexicon_probe>")
+    add_executable(siftwing_lexicon_ingestion_test tests/integration/lexicon_ingestion_test.cpp)
+    target_link_libraries(siftwing_lexicon_ingestion_test PRIVATE siftwing_lexicon
+        siftwing_text_pipeline siftwing_duplicate_decision)
+    add_test(NAME index.lexicon_ingestion COMMAND siftwing_lexicon_ingestion_test)
+    set_tests_properties(index.lexicon index.lexicon_reference index.lexicon_ingestion PROPERTIES TIMEOUT 30)
     add_executable(siftwing_text_pipeline_test tests/unit/text_pipeline_test.cpp)
     target_link_libraries(siftwing_text_pipeline_test PRIVATE siftwing_text_pipeline)
     add_test(NAME text.pipeline COMMAND siftwing_text_pipeline_test)
@@ -344,6 +361,12 @@ if(BUILD_TESTING)
         --probe "$<TARGET_FILE:siftwing_duplicate_decision_probe>")
     set_tests_properties(document.duplicate_decision document.duplicate_ingestion document.duplicate_reference PROPERTIES TIMEOUT 30)
     if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+        add_test(NAME index.lexicon_compile_contract
+            COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/lexicon-compile-contract"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/lexicon_compile_contract.cmake")
+        set_tests_properties(index.lexicon_compile_contract PROPERTIES TIMEOUT 30)
         add_test(NAME document.store_compile_contract
             COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
                 "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"

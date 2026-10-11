@@ -186,3 +186,11 @@ M1.18 无新第三方库。`siftwing_document_store` 公开依赖 `siftwing_reco
 既有记录校验、强身份与受检算术；Linux/POSIX open/fstat/pread/close 由内部 RAII 管理。
 测试的 GNU ld `--wrap=pread` 仅注入短读/EINTR/EOF/EIO，不进入生产目标。
 Python struct/zlib 只用于独立格式参考，既有五依赖来源/版本/SHA/许可证保持。
+
+## 词典与推荐字符索引复用依赖
+
+M1.19 无新第三方库。`siftwing_lexicon` 公开依赖 `siftwing_base` 与 `siftwing_term_frequency`，
+私有依赖既有固定 utf8cpp 4.0.6，严格验证并按 Unicode 标量拆分词键；有序容器、排序、
+强 TermId 与受检频次总和由 C++17 标准库和既有基础模块提供。不加载新的词典资源。
+Python 独立 bytes 排序/Unicode 集合仅用于参考测试，不进入生产库。五依赖来源/版本/
+归档 SHA 与许可证保持，字符索引不引入编辑距离或推荐查询依赖。
