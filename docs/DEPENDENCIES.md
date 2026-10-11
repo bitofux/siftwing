@@ -209,3 +209,7 @@ M1.21 无新第三方库。`siftwing_inverted_index` 公开依赖 `siftwing_lexi
 M1.22 无新第三方库。`siftwing_weights` 仅公开依赖 `siftwing_inverted_index`，
 使用C++标准库log1p/hypot、cfenv、to_chars及memcpy；GNU/Clang目标禁用fast-math和浮点收缩。
 共享管线/SimHash/去重为原创接线测试依赖，不进入权重库的额外公开依赖。
+
+M1.23无新第三方库。`siftwing_snapshot_manifest`仅公开依赖`siftwing_base`；
+固定大小标准SHA-256无符号运算及规范文本编解码由项目实现，独立参考用Python hashlib。
+文档存储、权重、推荐及文本管线仅在接线测试中显式依赖，不进入manifest生产库。

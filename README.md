@@ -314,3 +314,7 @@ DF 和文档/语料统计；不自行去重、不使用推荐累计，尚不计�
 `siftwing_weights` 提供 [TF-IDF、L2归一化及规范字节导出](docs/WEIGHTS.md)。
 它显式接管原始索引，保留整数TF/DF/N，按平滑自然对数IDF生成文档单位权重，
 空文档保持零向量；输出顺序与编码固定，不依赖locale，尚不执行搜索查询或快照发布。
+
+`siftwing_snapshot_manifest` 提供[快照目录与manifest合同](docs/SNAPSHOT_FORMAT.md)：
+固定六个payload文件，分开记录搜索/推荐的来源摘要、统计和版本，支持规范manifest
+编解码、内存SHA-256/字节校验及完成标记。目录写入、完整目录加载与发布尚未实现。

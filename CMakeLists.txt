@@ -105,6 +105,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
     target_compile_options(siftwing_weights PRIVATE -fno-fast-math -ffp-contract=off)
 endif()
 
+# 快照清单只校验内存元数据/字节，不耦合文件写入、读取或具体文本管线。
+add_library(siftwing_snapshot_manifest STATIC src/snapshot/manifest.cpp)
+target_link_libraries(siftwing_snapshot_manifest PUBLIC siftwing_base)
+
 # 建库与查询共享拥有型管线，生产目标只组合文本阶段，不耦合文档读取或具体中文实现。
 add_library(siftwing_text_pipeline STATIC src/text/text_pipeline.cpp)
 target_link_libraries(siftwing_text_pipeline PUBLIC siftwing_text_normalization siftwing_term_frequency)
@@ -376,6 +380,24 @@ if(BUILD_TESTING)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/weighted_index_compile_contract.cmake")
     set_tests_properties(index.weights index.weights_reference index.weights_ingestion
         index.weights_compile_contract PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_manifest_test tests/unit/manifest_test.cpp)
+    target_link_libraries(siftwing_manifest_test PRIVATE siftwing_snapshot_manifest)
+    add_test(NAME snapshot.manifest COMMAND siftwing_manifest_test)
+    add_executable(siftwing_manifest_probe tests/integration/manifest_probe.cpp)
+    target_link_libraries(siftwing_manifest_probe PRIVATE siftwing_snapshot_manifest)
+    add_test(NAME snapshot.manifest_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/manifest_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_manifest_probe>")
+    add_executable(siftwing_manifest_ingestion_test tests/integration/manifest_ingestion_test.cpp)
+    target_link_libraries(siftwing_manifest_ingestion_test PRIVATE siftwing_snapshot_manifest
+        siftwing_weights siftwing_document_store siftwing_text_pipeline siftwing_tokenizer)
+    add_test(NAME snapshot.manifest_ingestion COMMAND siftwing_manifest_ingestion_test)
+    add_test(NAME snapshot.manifest_compile_contract COMMAND "${CMAKE_COMMAND}"
+        "-DCXX=${CMAKE_CXX_COMPILER}" "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/manifest-contract"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/manifest_compile_contract.cmake")
+    set_tests_properties(snapshot.manifest snapshot.manifest_reference snapshot.manifest_ingestion
+        snapshot.manifest_compile_contract PROPERTIES TIMEOUT 60)
     add_executable(siftwing_text_pipeline_test tests/unit/text_pipeline_test.cpp)
     target_link_libraries(siftwing_text_pipeline_test PRIVATE siftwing_text_pipeline)
     add_test(NAME text.pipeline COMMAND siftwing_text_pipeline_test)
