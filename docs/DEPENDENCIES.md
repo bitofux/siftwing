@@ -172,3 +172,10 @@ M1.16无新第三方库。`siftwing_duplicate_decision`公开依赖既有`siftwi
 不加载分词/IDF/停用资源，不引入分桶、聚类或文件IO组件，不复制课程或上游去重代码。
 既有五库来源/版本/归档SHA/许可证保持；升级指纹规则须同步审查去重与快照兼容，而距离
 阈值不能替代分词和指纹资源的一致性。
+
+## 文档库记录格式复用依赖
+
+M1.17 无新第三方依赖。`siftwing_record_format` 公开依赖 `siftwing_document`，复用
+既有 DocumentRecord、DocumentId、Result 与 checked 算术，使用 C++17 标准库字符串和流。
+CRC-32/ISO-HDLC 采用显式逐位递推；公开 Python 测试以标准库 struct/zlib 独立核对字节，
+Python 不进入生产库。既有五库的版本、来源、SHA 与许可证保持。

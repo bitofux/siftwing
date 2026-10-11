@@ -36,6 +36,9 @@ target_link_libraries(siftwing_document INTERFACE siftwing_base)
 add_library(siftwing_document_reader STATIC src/document/document_reader.cpp)
 target_link_libraries(siftwing_document_reader PUBLIC siftwing_document)
 
+add_library(siftwing_record_format STATIC src/document/record_format.cpp)
+target_link_libraries(siftwing_record_format PUBLIC siftwing_document)
+
 # 固定官方归档及哈希；只使用头文件，避免引入上游安装规则或测试项目。
 include(FetchContent)
 if(POLICY CMP0135)
@@ -178,6 +181,16 @@ if(BUILD_TESTING)
     add_executable(siftwing_document_record_test tests/unit/document_record_test.cpp)
     target_link_libraries(siftwing_document_record_test PRIVATE siftwing_document)
     add_test(NAME document.record COMMAND siftwing_document_record_test)
+
+    add_executable(siftwing_record_format_test tests/unit/record_format_test.cpp)
+    target_link_libraries(siftwing_record_format_test PRIVATE siftwing_record_format)
+    add_test(NAME document.record_format COMMAND siftwing_record_format_test)
+    add_executable(siftwing_record_format_probe tests/integration/record_format_probe.cpp)
+    target_link_libraries(siftwing_record_format_probe PRIVATE siftwing_record_format)
+    add_test(NAME document.record_format_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_format_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_record_format_probe>")
+    set_tests_properties(document.record_format document.record_format_reference PROPERTIES TIMEOUT 30)
     set_tests_properties(document.record PROPERTIES TIMEOUT 10)
     add_executable(siftwing_document_reader_test tests/unit/document_reader_test.cpp)
     target_link_libraries(siftwing_document_reader_test PRIVATE siftwing_document_reader)
