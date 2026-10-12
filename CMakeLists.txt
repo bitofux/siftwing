@@ -252,6 +252,19 @@ if(BUILD_TESTING)
         --cli "$<TARGET_FILE:siftwing_cli>" --indexer "$<TARGET_FILE:siftwing_indexer>"
         --writer "$<TARGET_FILE:siftwing_writer_probe>" --suite failures)
     set_tests_properties(app.cli_integration app.cli_failures PROPERTIES TIMEOUT 120)
+    # 固定黄金走正式应用；探针仅观察同进程生命周期，不能以进程退出替代资源交接证明。
+    add_executable(siftwing_v1_lifecycle_probe tests/integration/v1_lifecycle_probe.cpp)
+    target_link_libraries(siftwing_v1_lifecycle_probe PRIVATE siftwing_snapshot_reader siftwing_top_k
+        siftwing_summary siftwing_highlight siftwing_recommendation siftwing_cppjieba_tokenizer)
+    foreach(suite IN ITEMS golden rejection lifecycle)
+        add_test(NAME v1.${suite} COMMAND Python3::Interpreter -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/v1_golden_test.py"
+            --indexer "$<TARGET_FILE:siftwing_indexer>" --cli "$<TARGET_FILE:siftwing_cli>"
+            --probe "$<TARGET_FILE:siftwing_v1_lifecycle_probe>"
+            --fixtures "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/golden"
+            --data "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/v1" --suite "${suite}")
+        set_tests_properties(v1.${suite} PROPERTIES TIMEOUT 120)
+    endforeach()
     add_test(NAME fixtures.integrity
         COMMAND Python3::Interpreter -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/golden_fixtures_test.py"

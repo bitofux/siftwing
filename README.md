@@ -351,3 +351,10 @@ Query、候选集合与余弦排序见上文；正式离线建库已接通；本
 输入/资源只读，已有版本不覆盖，stdout报告独立统计及来源摘要，stderr保留读取诊断。
 命令示例、有限预算、退出码、已发布但持久性未确认的处理及证据边界见[INDEXER.md](docs/INDEXER.md)。
 该程序不依赖Python或测试探针，BUILD_TESTING=OFF也可构建。
+
+## V1固定黄金集成验收
+
+[验收说明](docs/V1_TESTS.md)以原创TXT/RSS固定输入驱动正式indexer→完整快照→CLI，
+通过人工抽取/词界黄金与独立数学参考检查正确结果、八文件损坏拒绝、确定性和同进程资源交接。
+CTest注册v1.golden、v1.rejection、v1.lifecycle；原始fixture保持只读，生产接口与格式不变。
+该验收不替代阶段工程封板、性能/业务质量评估或学习者本人的调试与修改证据。

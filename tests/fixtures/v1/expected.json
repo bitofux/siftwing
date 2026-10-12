@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "origin": "原创M0.05字节上的人工抽取与词界黄金；不来自生产输出",
+  "records": [
+    {
+      "id": 0,
+      "source": "rss/original.xml",
+      "ordinal": 0,
+      "title": "Copper kettle",
+      "body": "A copper kettle rests on the workbench.\nThe lantern is blue.",
+      "url": "https://fixtures.example.invalid/kettle",
+      "english": [
+        "copper",
+        "kettle",
+        "rests",
+        "workbench",
+        "lantern",
+        "blue"
+      ],
+      "chinese": [
+        "copper",
+        "kettle",
+        "rests",
+        "workbench",
+        "lantern",
+        "blue"
+      ]
+    },
+    {
+      "id": 1,
+      "source": "rss/original.xml",
+      "ordinal": 1,
+      "title": "河边纸船",
+      "body": "纸船停在河边闸门旁。\nGreen & blue lanterns.",
+      "url": "https://fixtures.example.invalid/boat",
+      "english": [
+        "green",
+        "blue",
+        "lanterns"
+      ],
+      "chinese": [
+        "纸船",
+        "停在",
+        "河边",
+        "闸门",
+        "旁",
+        "green",
+        "blue",
+        "lanterns"
+      ]
+    },
+    {
+      "id": 4,
+      "source": "txt/en-river.txt",
+      "ordinal": 0,
+      "title": "en-river",
+      "body": "A paper boat drifts beside the river gate.\nThe lantern is green.\n",
+      "url": null,
+      "english": [
+        "paper",
+        "boat",
+        "drifts",
+        "beside",
+        "river",
+        "gate",
+        "lantern",
+        "green"
+      ],
+      "chinese": [
+        "paper",
+        "boat",
+        "drifts",
+        "beside",
+        "river",
+        "gate",
+        "lantern",
+        "green"
+      ]
+    },
+    {
+      "id": 5,
+      "source": "txt/en-workbench-copy.txt",
+      "ordinal": 0,
+      "title": "en-workbench-copy",
+      "body": "A copper kettle rests on the workbench.\nThe lantern is blue.\n",
+      "url": null,
+      "english": [
+        "copper",
+        "kettle",
+        "rests",
+        "workbench",
+        "lantern",
+        "blue"
+      ],
+      "chinese": [
+        "copper",
+        "kettle",
+        "rests",
+        "workbench",
+        "lantern",
+        "blue"
+      ]
+    },
+    {
+      "id": 6,
+      "source": "txt/en-workbench.txt",
+      "ordinal": 0,
+      "title": "en-workbench",
+      "body": "A copper kettle rests on the workbench.\nThe lantern is blue.\n",
+      "url": null,
+      "english": [
+        "copper",
+        "kettle",
+        "rests",
+        "workbench",
+        "lantern",
+        "blue"
+      ],
+      "chinese": [
+        "copper",
+        "kettle",
+        "rests",
+        "workbench",
+        "lantern",
+        "blue"
+      ]
+    },
+    {
+      "id": 7,
+      "source": "txt/zh-river.txt",
+      "ordinal": 0,
+      "title": "zh-river",
+      "body": "纸船停在河边闸门旁。\n绿色灯笼照亮小路。\n",
+      "url": null,
+      "english": [],
+      "chinese": [
+        "纸船",
+        "停在",
+        "河边",
+        "闸门",
+        "旁",
+        "绿色",
+        "灯笼",
+        "照亮",
+        "小路"
+      ]
+    },
+    {
+      "id": 8,
+      "source": "txt/zh-workbench.txt",
+      "ordinal": 0,
+      "title": "zh-workbench",
+      "body": "铜壶放在工作台上。\n蓝色灯笼照亮桌面。\n",
+      "url": null,
+      "english": [],
+      "chinese": [
+        "铜壶",
+        "放在",
+        "工作台",
+        "上",
+        "蓝色",
+        "灯笼",
+        "照亮",
+        "桌面"
+      ]
+    }
+  ],
+  "kept": {
+    "english": [
+      0,
+      1,
+      4
+    ],
+    "chinese": [
+      0,
+      1,
+      4,
+      7,
+      8
+    ]
+  },
+  "no_text_ids": [
+    2,
+    3
+  ],
+  "duplicate_ids": [
+    5,
+    6
+  ],
+  "english_no_features_ids": [
+    7,
+    8
+  ]
+}
