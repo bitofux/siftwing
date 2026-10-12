@@ -247,3 +247,6 @@ Writer/Reader、TXT/RSS与英文/原创中文资源仅用于真实评分接线�
 M1.30无新第三方库。`siftwing_top_k`仅PUBLIC依赖`siftwing_ranking`，复用完整排序后以
 vector::erase缩容，不重复浮点运算或改变旧预算。Writer/Reader、TXT/RSS、英文/中文资源仅为
 接线测试依赖，Decimal独立参考不进入生产；既有五库版本/SHA/许可证保持。
+
+动态摘要目标`siftwing_summary`公开依赖查询模型，私有复用既有utfcpp4.0.6严格解码原正文；
+不新增依赖，不把解码后的规范化匹配值用于显示文本或原文字节偏移。

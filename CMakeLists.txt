@@ -142,6 +142,10 @@ endif()
 add_library(siftwing_top_k STATIC src/query/top_k.cpp)
 target_link_libraries(siftwing_top_k PUBLIC siftwing_ranking)
 
+# 摘要只消费Query与原文；严格Unicode解码复用已固定的头文件依赖。
+add_library(siftwing_summary STATIC src/query/summary.cpp)
+target_link_libraries(siftwing_summary PUBLIC siftwing_query PRIVATE siftwing_utf8cpp)
+
 # 指纹只消费完整文档TF，不依赖读取器或具体分词资源，不决定去重保留集合。
 add_library(siftwing_simhash STATIC src/document/simhash.cpp)
 target_link_libraries(siftwing_simhash PUBLIC siftwing_term_frequency PRIVATE siftwing_utf8cpp)
@@ -534,6 +538,25 @@ if(BUILD_TESTING)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ranking_compile_contract.cmake")
     set_tests_properties(query.ranking query.ranking_reference query.ranking_snapshot
         query.ranking_compile_contract PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_summary_test tests/unit/summary_test.cpp)
+    target_link_libraries(siftwing_summary_test PRIVATE siftwing_summary)
+    add_test(NAME query.summary COMMAND siftwing_summary_test)
+    add_executable(siftwing_summary_probe tests/integration/summary_probe.cpp)
+    target_link_libraries(siftwing_summary_probe PRIVATE siftwing_summary)
+    add_test(NAME query.summary_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/summary_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_summary_probe>")
+    add_executable(siftwing_summary_snapshot_test tests/integration/summary_snapshot_test.cpp)
+    target_link_libraries(siftwing_summary_snapshot_test PRIVATE siftwing_summary siftwing_top_k
+        siftwing_snapshot_writer siftwing_snapshot_reader siftwing_txt_reader siftwing_rss_reader
+        siftwing_cppjieba_tokenizer)
+    add_test(NAME query.summary_snapshot COMMAND siftwing_summary_snapshot_test "${CMAKE_CURRENT_BINARY_DIR}")
+    add_test(NAME query.summary_compile_contract COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+        "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}" "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/summary-compile-contract"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/summary_compile_contract.cmake")
+    set_tests_properties(query.summary query.summary_reference query.summary_snapshot
+        query.summary_compile_contract PROPERTIES TIMEOUT 60)
+
     add_executable(siftwing_top_k_test tests/unit/top_k_test.cpp)
     target_link_libraries(siftwing_top_k_test PRIVATE siftwing_top_k siftwing_tokenizer)
     add_test(NAME query.top_k COMMAND siftwing_top_k_test)
