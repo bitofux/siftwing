@@ -1,6 +1,6 @@
 # 完整快照写入与发布
 
-`siftwing_snapshot_writer` 提供 [write_snapshot](../include/siftwing/snapshot/writer.h)。
+`siftwing_snapshot_writer` 提供 [write_snapshot](../include/siftwing/snapshot/writer.hpp)。
 它组合已有文档记录/偏移表、搜索权重、独立推荐词典及 [manifest v1](SNAPSHOT_FORMAT.md)，
 保持已有格式与所有权合同；不加载分词资源，不重新分析正文或去重，没有新第三方依赖。
 

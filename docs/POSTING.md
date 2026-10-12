@@ -1,7 +1,7 @@
 # 原始 Posting 合同
 
 `siftwing_posting` 只公开依赖基础层；公共权威为
-[posting.h](../include/siftwing/index/posting.h)。`Posting` 表示一个词在一个文档中的关系：
+[posting.hpp](../include/siftwing/index/posting.hpp)。`Posting` 表示一个词在一个文档中的关系：
 拥有 `DocumentId` 和正 `uint64_t` 原始出现次数。词身份由外层词典/列表调用方关联。
 本类型不携带 TermId、文档长度、DF、浮点权重或词位；语料级组合由[倒排索引](INVERTED_INDEX.md)提供。
 

@@ -2,7 +2,7 @@
 
 `siftwing_snapshot_reader` 提供
 `SnapshotReader::open(parent_path, expected_version, limits)`，调用合同见
-[reader.h](../include/siftwing/snapshot/reader.h)。它只读加载一个明确指定的正式快照，
+[reader.hpp](../include/siftwing/snapshot/reader.hpp)。它只读加载一个明确指定的正式快照，
 成功后拥有全部部件和记录；后续消费者可以使用搜索索引、独立推荐词典及按身份查找的文档。
 本模块不提供查询、CLI、CURRENT选择、在线切换或mmap。
 
@@ -36,6 +36,8 @@ FE_TONEAREST、无fast-math及固定计算顺序合同。跨CPU/libm可能存在
 manifest/尺寸预算先于载荷分配，解析根据实际行逐步建立对象，不按未核验的声明计数reserve。
 六payload总字节不包含manifest和COMPLETE；后者按生成规范的固定精确长度读取。
 全内存载荷、拥有记录、临时TF表及重建索引有额外成本，预算不是内存或CPU硬限制。
+每个部件校验并解析为拥有对象后，释放对应原载荷；临时TF在其索引构建成功后释放。
+完整八文件与语义校验仍全部执行，不因释放载荷而接受部分快照。
 
 短读/EINTR重试，提前EOF、其他IO错误、观察到尺寸/时间/身份变化均拒绝；close一次不重试。
 所有临时句柄由RAII释放，普通失败仅返回诊断，无部分Reader；分配/未知异常上传。

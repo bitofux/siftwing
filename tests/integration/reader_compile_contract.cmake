@@ -4,9 +4,9 @@ if(NOT DEFINED CXX OR NOT DEFINED SOURCE_DIR OR NOT DEFINED BINARY_DIR)
 endif()
 file(MAKE_DIRECTORY "${BINARY_DIR}")
 function(check_case name accepted text)
-    file(WRITE "${BINARY_DIR}/${name}.cpp" "#include <siftwing/snapshot/reader.h>\n#include <type_traits>\n#include <utility>\nusing namespace siftwing;\n${text}\n")
+    file(WRITE "${BINARY_DIR}/${name}.cc" "#include <siftwing/snapshot/reader.hpp>\n#include <type_traits>\n#include <utility>\nusing namespace siftwing;\n${text}\n")
     execute_process(COMMAND "${CXX}" -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wshadow
-        "-I${SOURCE_DIR}/include" -fsyntax-only "${BINARY_DIR}/${name}.cpp"
+        "-I${SOURCE_DIR}/include" -fsyntax-only "${BINARY_DIR}/${name}.cc"
         RESULT_VARIABLE status OUTPUT_VARIABLE output ERROR_VARIABLE error)
     if(accepted AND NOT status EQUAL 0)
         message(FATAL_ERROR "${name}: unexpected rejection: ${error}")

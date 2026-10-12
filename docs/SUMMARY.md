@@ -1,7 +1,7 @@
 # 动态摘要合同
 
 目标`siftwing_summary`公开依赖`siftwing_query`，实现私有复用既有utfcpp；无新第三方。
-公共权威为[summary.h](../include/siftwing/query/summary.h)。
+公共权威为[summary.hpp](../include/siftwing/query/summary.hpp)。
 `make_summary(Query,原正文,SummaryOptions,SummaryLimits)`返回独立拥有的原文连续窗口。
 调用方在[top-k](TOP_K.md)后，用同一快照的DocId取得正文再调用；库不访问Reader、标题或IO。
 

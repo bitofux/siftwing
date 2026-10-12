@@ -1,7 +1,7 @@
 # 稳定 top-k 合同
 
 目标 `siftwing_top_k` 公开依赖 `siftwing_ranking`，公共权威为
-[top_k.h](../include/siftwing/query/top_k.h)。`rank_top_k(Query,WeightedIndex,TopKLimits)`
+[top_k.hpp](../include/siftwing/query/top_k.hpp)。`rank_top_k(Query,WeightedIndex,TopKLimits)`
 先检查显式正 `max_top_k`，再检查查询请求条数，随后执行完整
 [余弦排序](RANKING.md)，返回其前 `min(k,候选数)` 条。
 

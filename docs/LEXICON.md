@@ -2,7 +2,7 @@
 
 `siftwing_lexicon` 提供两个独立的拥有对象：`Lexicon` 将词映射到局部 `TermId`，
 `RecommendationDictionary` 将 M1.13 的推荐累计表变成词频词典与 Unicode 字符索引。
-公共接口以 [lexicon.h](../include/siftwing/index/lexicon.h) 为准。
+公共接口以 [lexicon.hpp](../include/siftwing/index/lexicon.hpp) 为准。
 
 `lexicon_policy_version=1`：输入词按 UTF-8 **字节序**唯一排序，从 0 连续编号；重复与输入
 顺序不影响相同词集合的编号。空输入成功为空词表。编号仅属固定词表/快照；插入排序靠前的

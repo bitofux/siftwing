@@ -3,8 +3,8 @@ if(NOT DEFINED CXX OR NOT DEFINED SOURCE_DIR OR NOT DEFINED BINARY_DIR)
 endif()
 file(MAKE_DIRECTORY "${BINARY_DIR}")
 function(check_compile name should_pass diagnostic code)
-    set(source "${BINARY_DIR}/${name}.cpp")
-    file(WRITE "${source}" "#include <siftwing/document/rss_reader.h>\n${code}\n")
+    set(source "${BINARY_DIR}/${name}.cc")
+    file(WRITE "${source}" "#include <siftwing/document/rss_reader.hpp>\n${code}\n")
     execute_process(COMMAND "${CXX}" -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wshadow
         -fsyntax-only "-I${SOURCE_DIR}/include" "${source}"
         RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)

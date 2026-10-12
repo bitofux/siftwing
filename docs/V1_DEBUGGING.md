@@ -59,9 +59,9 @@ gdb --quiet --args "$v1_build/siftwing-indexer" \
 ```text
 set pagination off
 set print pretty on
-break apps/indexer/main.cpp:285
+break apps/indexer/main.cc:452
 break siftwing::text::TextPipeline::analyze
-break apps/indexer/main.cpp:416
+break apps/indexer/main.cc:636
 break siftwing::snapshot::write_snapshot
 run
 bt 5
@@ -72,7 +72,7 @@ print input
 ```
 
 行号是该 V1 实现的入口定位提示；先 `list` 确认所在语句，后续源码移动时用符号和
-`rg -n 'Analysis analyze|const auto &raw|write_snapshot' apps/indexer/main.cpp` 重新定位。
+`rg -n 'Analysis analyze|const auto &raw|write_snapshot' apps/indexer/main.cc` 重新定位。
 `analyze` 会分别进入 search/recommendation，管线会多次命中。用 `info breakpoints` 看编号，
 观察一次后 `disable 编号`，避免无意义重复；`continue` 到 `raw` 所在行。
 
@@ -103,7 +103,7 @@ set pagination off
 break siftwing::snapshot::SnapshotReader::open
 break siftwing::query::Query::from_text
 break siftwing::query::rank_top_k
-break apps/cli/main.cpp:289
+break apps/cli/main.cc:475
 break siftwing::query::make_summary
 break siftwing::query::make_highlight
 run
@@ -112,7 +112,7 @@ info args
 continue
 ```
 
-每次停靠先 `bt 5`/`info args` 再继续；在 `search` 第289行观察 `print q`、`print ranked`。
+每次停靠先 `bt 5`/`info args` 再继续；在 `search` 第475行观察 `print q`、`print ranked`。
 Reader 内部也会重建并核查索引，不能把其调用误认成 Query 评分；Query 未进入前，
 完整 Reader 必须已成功返回。排名是拥有结果；`reader.document(hit.document_id)` 按身份
 查原记录，DocId 不能用作 vector 下标。摘要借用完整正文，生成拥有的原文窗口；高亮
@@ -177,7 +177,7 @@ mkdir "$v1_lab/source-copy"
 git archive HEAD | tar -x -C "$v1_lab/source-copy"
 ```
 
-任务：在副本的 `tests/unit/highlight_test.cpp` 添加一个独立手算用例，同时覆盖前置
+任务：在副本的 `tests/unit/highlight_test.cc` 添加一个独立手算用例，同时覆盖前置
 HTML 特殊字符、相邻中文与 emoji 命中、合并区间及未命中后缀。自行选择 query/body，
 在运行前写出 UTF-8 原文字节表、预期跨度和完整安全 HTML；可用已有 `sample` helper，
 禁止用 `make_highlight` 输出生成期望值。不要改生产匹配/转义合同。

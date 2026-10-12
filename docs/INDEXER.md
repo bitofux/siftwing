@@ -3,7 +3,7 @@
 `siftwing-indexer` 将两项独立任务组合为一个完整快照：搜索语料经正文分析、SimHash去重、
 倒排和TF-IDF/L2权重；推荐语料经正文分析、累计出现次数、推荐词典和字符索引。
 最终由[Writer](SNAPSHOT_WRITER.md)无覆盖发布，[Reader](SNAPSHOT_READER.md)可完整加载。
-调用顺序与实际应用入口见 [main.cpp](../apps/indexer/main.cpp)。
+调用顺序与实际应用入口见 [main.cc](../apps/indexer/main.cc)。
 
 构建目标名为 `siftwing_indexer`，产物名为 `siftwing-indexer`；不依赖测试探针或Python。
 
@@ -49,6 +49,8 @@ build/release/siftwing-indexer \
 停用词可选，缺席表示明确空集合；提供空文件合法，空路径值拒绝。
 资源语法见[README中的中文分词与词频说明](../README.md)。
 程序仅分析正文，标题、URL、作者、日期保存为文档元数据，不拼入词频。
+推荐支只保留TF与交付计数，整批在局部词表中累计，不逐篇复制已有词表。
+搜索保留记录用于快照；丢弃记录及已消费的临时TF在后续构建前释放。
 
 输入路径允许相对或绝对，拒绝 `..`，规范为当前工作目录下的绝对路径并剥首斜杠形成逻辑
 来源名。逐路径组件只读openat、NOFOLLOW拒符号链接，fstat拒目录/FIFO/设备等非常规输入。
@@ -64,7 +66,7 @@ build/release/siftwing-indexer \
 no_text没有交付文档；有正文但全部词被过滤则有空TF：搜索去重报告no_features，不进入
 搜索N；推荐仍计一次显式交付，累计次数为0。搜索默认汉明距离阈值3，可用
 `--search-dedup-distance 0..64`改变；只与已保留者比较、最早命中、非传递规则沿
-[去重决策合同](../include/siftwing/document/duplicate_decision.h)。推荐不应用搜索去重；同来源在两支中的统计独立。
+[去重决策合同](../include/siftwing/document/duplicate_decision.hpp)。推荐不应用搜索去重；同来源在两支中的统计独立。
 
 两支来源摘要都由实际字节产生，不能因为选择相同文件就隐式复用：
 
@@ -77,7 +79,7 @@ F行按来源名排序，文件唯一；空集合仅有头行。摘要含原BOM/
 的规则由配置描述声明，不把抽取正文摘要冒充原始输入摘要。
 配置ASCII描述 `SIFTWING-INDEXER-CONFIG 1` 记录role、profile、适配/partial/body-only、
 normalize/lexicon/tokenizer策略、五项可调预算中该支相关项、搜索SimHash/去重/权重或推荐
-累计规则，以及停用/词典/模型/用户词典实际字节SHA和HMM开关。具体字段顺序由main.cpp的
+累计规则，以及停用/词典/模型/用户词典实际字节SHA和HMM开关。具体字段顺序由main.cc的
 analyze固定；未提供停用词/用户词典写absent。资源路径不进入config摘要，相同资源字节
 换路径不改变它；输入路径在input摘要内。发布前重新只读核对资源摘要，发现变化拒绝发布。
 build-version、输出路径、SnapshotVersion、时间不进入两支来源/配置摘要。
@@ -103,7 +105,7 @@ build-version、输出路径、SnapshotVersion、时间不进入两支来源/配
 读取预算用尽后仍有未处理来源会失败，不静默截断。两支共享这些上限值，但分别计量。
 固定profile改变须升版本并更新配置描述和本文；自定义高容量配置留待后续真实需求。
 
-仅单独 `--help` 输出帮助并退出0。其他单次选项不能重复，未知选项/值、非规范数字、
+仅单独 `--help` 输出帮助，成功退出0，实际写出失败退出4。其他单次选项不能重复，未知选项/值、非规范数字、
 缺少值和empty混用退出2。stdout只在发布后写固定 `key=value` 报告，包含快照身份、两支
 文件/读取/交付统计、搜索kept/duplicates/no_features/comparisons/N/词数/TF/posting、
 推荐交付/词数/累计次数、两支来源和配置摘要、durability与system_errno；stderr保存定位诊断。

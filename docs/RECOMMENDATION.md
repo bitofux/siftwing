@@ -1,7 +1,7 @@
 # 候选词推荐
 
 `siftwing_recommendation` 提供 `recommend_terms(key, dictionary, top_k, limits)`，返回
-`Result<RecommendedTerms>`。公共权威为 [recommendation.h](../include/siftwing/query/recommendation.h)。
+`Result<RecommendedTerms>`。公共权威为 [recommendation.hpp](../include/siftwing/query/recommendation.hpp)。
 它消费[独立推荐词典](LEXICON.md)，可直接使用 [Reader](SNAPSHOT_READER.md) 的
 `recommendation()`；搜索 Query、词→文档倒排和 TF-IDF 排序是独立支路。
 

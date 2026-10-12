@@ -1,0 +1,63 @@
+# Siftwing 自有 C++ 代码的排版约定；验证工具为 clang-format 18。
+# 只控制排版：保留 include/using 顺序、限定符、花括号和中文接口合同注释。
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++17
+
+# 四空格缩进；续行采用固定缩进，避免长函数名造成过大的右移。
+UseTab: Never
+IndentWidth: 4
+ContinuationIndentWidth: 4
+ConstructorInitializerIndentWidth: 4
+TabWidth: 4
+ColumnLimit: 100
+AlignAfterOpenBracket: DontAlign
+NamespaceIndentation: None
+AccessModifierOffset: -4
+IndentCaseLabels: true
+IndentPPDirectives: None
+
+# 将控制流和非空函数展开，便于阅读、设断点和比较 diff。
+BreakBeforeBraces: Attach
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortEnumsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: None
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments: false
+BinPackParameters: false
+BreakBeforeBinaryOperators: NonAssignment
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: BeforeColon
+
+# 沿用 Type &name / Type *name，统一运算符、逗号和控制语句间距。
+DerivePointerAlignment: false
+PointerAlignment: Right
+ReferenceAlignment: Pointer
+SpaceBeforeParens: ControlStatements
+SpaceBeforeAssignmentOperators: true
+SpacesBeforeTrailingComments: 1
+
+# 保留文本和语义敏感顺序，不让格式化器承担重构。
+SortIncludes: Never
+IncludeBlocks: Preserve
+SortUsingDeclarations: Never
+QualifierAlignment: Leave
+ReflowComments: false
+BreakStringLiterals: false
+FixNamespaceComments: false
+InsertBraces: false
+RemoveBracesLLVM: false
+RemoveParentheses: Leave
+RemoveSemicolon: false
+
+MaxEmptyLinesToKeep: 1
+KeepEmptyLinesAtTheStartOfBlocks: false
+KeepEmptyLinesAtEOF: false
+LineEnding: LF
+InsertNewlineAtEOF: true
+...

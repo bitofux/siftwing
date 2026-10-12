@@ -340,6 +340,9 @@ def failures(root):
     good = write(root, "good.txt", "red green")
     simple = arguments(output)
     check(invoke(["--help"]).stdout.startswith("用法"), "help succeeds without IO")
+    # 帮助也须等待实际写出；缓冲区暂未报错不能作为输出成功证据。
+    with open("/dev/full", "w") as full:
+        invoke(["--help"], 4, stdout=full)
     for args in [[], ["--help", "extra"], simple+["--unknown", "1"], simple+["--version", "1"],
                  simple+["--search-txt", good], simple+["--search-hmm", "off"],
                  [v if v != "0" else "00" for v in simple],

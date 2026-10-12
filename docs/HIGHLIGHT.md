@@ -1,7 +1,7 @@
 # 关键词高亮合同
 
 目标`siftwing_highlight`公开依赖`siftwing_query`，实现私有复用固定utfcpp，无新第三方。
-公共权威为[highlight.h](../include/siftwing/query/highlight.h)。
+公共权威为[highlight.hpp](../include/siftwing/query/highlight.hpp)。
 `make_highlight(Query,文字,HighlightLimits)`返回拥有型`Highlight`：安全HTML正文片段`html`
 与相对本次输入原UTF-8字节的`spans`（`byte_offset/byte_length`）。
 

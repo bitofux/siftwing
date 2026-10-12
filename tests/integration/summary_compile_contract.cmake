@@ -3,8 +3,8 @@ if(NOT DEFINED CXX OR NOT DEFINED SOURCE_DIR OR NOT DEFINED BINARY_DIR)
 endif()
 file(MAKE_DIRECTORY "${BINARY_DIR}")
 function(check_compile name should_pass diagnostic code)
-    set(source "${BINARY_DIR}/${name}.cpp")
-    file(WRITE "${source}" "#include <siftwing/query/summary.h>\n${code}\n")
+    set(source "${BINARY_DIR}/${name}.cc")
+    file(WRITE "${source}" "#include <siftwing/query/summary.hpp>\n${code}\n")
     execute_process(COMMAND "${CXX}" -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror=unused-result
         -fsyntax-only "-I${SOURCE_DIR}/include" "${source}"
         RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
@@ -34,7 +34,7 @@ check_compile(no_query FALSE "(reference|conversion|convert)" [=[
 void call() { auto r=siftwing::query::make_summary("term","body",{1,0},{1,1,1,1,1}); (void)r; }
 ]=])
 check_compile(term_id FALSE "(reference|conversion|convert)" [=[
-#include <siftwing/base/id.h>
+#include <siftwing/base/id.hpp>
 void call(siftwing::base::TermId id) { auto r=siftwing::query::make_summary(id,"",{1,0},{1,1,1,1,1}); (void)r; }
 ]=])
 message(STATUS "4 summary compile contract cases passed")

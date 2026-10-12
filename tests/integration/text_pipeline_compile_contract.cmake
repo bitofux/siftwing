@@ -3,8 +3,8 @@ if(NOT DEFINED CXX OR NOT DEFINED SOURCE_DIR OR NOT DEFINED BINARY_DIR)
 endif()
 file(MAKE_DIRECTORY "${BINARY_DIR}")
 function(check_compile name should_pass diagnostic code)
-    set(source "${BINARY_DIR}/${name}.cpp")
-    file(WRITE "${source}" "#include <siftwing/text/text_pipeline.h>\n${code}\n")
+    set(source "${BINARY_DIR}/${name}.cc")
+    file(WRITE "${source}" "#include <siftwing/text/text_pipeline.hpp>\n${code}\n")
     execute_process(COMMAND "${CXX}" -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror=unused-result
         -fsyntax-only "-I${SOURCE_DIR}/include" "${source}"
         RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
@@ -19,7 +19,7 @@ function(check_compile name should_pass diagnostic code)
 endfunction()
 # 公共头独立自足，不暴露第三方；独占拥有/结果不可忽略由编译器验证。
 check_compile(valid TRUE "" [=[
-#include <siftwing/text/english_tokenizer.h>
+#include <siftwing/text/english_tokenizer.hpp>
 #include <type_traits>
 int main() {
     using namespace siftwing::text;

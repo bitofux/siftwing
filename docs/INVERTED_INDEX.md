@@ -1,6 +1,6 @@
 # 原始倒排索引构建
 
-公共合同权威为 [inverted_index.h](../include/siftwing/index/inverted_index.h)。
+公共合同权威为 [inverted_index.hpp](../include/siftwing/index/inverted_index.hpp)。
 `siftwing_inverted_index` 从调用方显式选择的 `vector<IndexDocument>` 构建内存索引；
 每项拥有强 DocumentId 和完整 M1.13 单文档 TF。构建器拒重复 ID，不代替 M1.16 去重，
 不从推荐累计表构造单文档关系。M1.16 的 no_features 默认跳过搜索保留集；调用方若额外

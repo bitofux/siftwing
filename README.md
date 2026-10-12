@@ -18,6 +18,30 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 
 仓库提供完整离线建库与查询应用、组件行为/编译合同测试和端到端黄金集成测试；另保留最小 CMake/CTest 构建探针及原创、MIT 许可的 TXT/RSS 黄金输入。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线、基于TF的64位SimHash指纹及独立批量去重决策；Query模型、候选集合、余弦排序、稳定top-k、动态摘要、关键词高亮与候选词推荐已提供，本地完整检索执行由正式CLI提供，网络协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
 
+## C++ 代码格式化
+
+根目录的 [.clang-format](.clang-format) 使用 LLVM 基础风格、C++17、四空格缩进和 100 列，
+展开短控制语句及非空函数，保留中文结构化合同注释、include/using 顺序和限定符。
+格式工具以 Ubuntu `clang-format 18` 验证；clang-format 的主版本独立于项目的 C++17 标准。
+项目自有实现使用 `.cc`，头文件使用 `.hpp`；核心代码已格式化，测试保留原排版。
+
+从仓库根目录操作单个自有文件：
+
+```sh
+clang-format --version
+clang-format --style=file --fallback-style=none src/query/top_k.cc
+clang-format --style=file --fallback-style=none -i src/query/top_k.cc
+clang-format --style=file --fallback-style=none --dry-run --Werror src/query/top_k.cc
+git diff --check
+git diff -- src/query/top_k.cc
+```
+
+第二条命令只向终端输出预览，`-i` 才会改写文件；`--dry-run --Werror` 检查排版是否一致，
+现有未格式化文件可能返回非零。先检查 diff，再按变更验证，不用排版检查替代业务测试。
+只对 `include/`、`src/`、`apps/` 及自有测试代码按文件使用格式化器；生成物、第三方、
+私有资料和黄金输入保持原样。
+clangd 18 支持读取同一配置，编辑器可通过其格式化功能应用规则；本配置不设置自动保存行为。
+
 ## 在 Ubuntu 上构建与测试
 
 需要 CMake 3.20+、C++17 编译器；启用测试时还需要 Python 3.8+。文本处理使用utfcpp 4.0.6，HTML片段使用Lexbor 3.0.0，RSS XML使用tinyxml2 11.0.0，中文分词使用cppjieba 5.6.7及固定limonp子模块，均固定版本及归档哈希。首次配置需要网络或已核实的本地依赖源码；来源、许可与离线配置见[DEPENDENCIES.md](docs/DEPENDENCIES.md)。不安装系统依赖。
@@ -37,19 +61,19 @@ build/debug/siftwing_build_probe a banana
 
 探针只统计精确字节，不涉及文本、编码或搜索语义。参数非法时退出 2，输出失败时退出 1。Ubuntu GCC/Clang 配置须实际发现并运行全部已注册测试（基础/文档/文本/索引行为、接入/独立参考及公共头编译合同检查），仅编译成功不足以确认验证通过。
 
-基础结果模型位于 [result.h](include/siftwing/base/result.h)，通过 CMake 目标 `siftwing_base` 使用。调用方先检查 `has_value()` 或显式布尔分支，再读取 `value()` / `error()`；访问错分支抛出 `std::bad_variant_access`。结果按载荷类型支持复制或移动构造，不支持赋值；左值访问返回借用引用，右值访问返回拥有值。`[[nodiscard]]` 会诊断直接丢弃结果，显式 `(void)` 仍允许有意忽略。它不自动捕获分配或载荷构造异常。
+基础结果模型位于 [result.hpp](include/siftwing/base/result.hpp)，通过 CMake 目标 `siftwing_base` 使用。调用方先检查 `has_value()` 或显式布尔分支，再读取 `value()` / `error()`；访问错分支抛出 `std::bad_variant_access`。结果按载荷类型支持复制或移动构造，不支持赋值；左值访问返回借用引用，右值访问返回拥有值。`[[nodiscard]]` 会诊断直接丢弃结果，显式 `(void)` 仍允许有意忽略。它不自动捕获分配或载荷构造异常。
 
-同一 `siftwing_base` 目标还提供 [checked.h](include/siftwing/base/checked.h) 中的 `checked_add`、`checked_mul` 和 `checked_narrow<To>`。它们先检查整数值域，再执行加法、乘法或转换；不可表示时返回拥有操作上下文的 `Error`。加乘要求同类型整数，支持有符号和无符号；转换覆盖不同宽度和符号，拒绝 `bool`、浮点及枚举。调用前已经发生的隐式截断无法追回；业务容量上限仍由调用者检查。
+同一 `siftwing_base` 目标还提供 [checked.hpp](include/siftwing/base/checked.hpp) 中的 `checked_add`、`checked_mul` 和 `checked_narrow<To>`。它们先检查整数值域，再执行加法、乘法或转换；不可表示时返回拥有操作上下文的 `Error`。加乘要求同类型整数，支持有符号和无符号；转换覆盖不同宽度和符号，拒绝 `bool`、浮点及枚举。调用前已经发生的隐式截断无法追回；业务容量上限仍由调用者检查。
 
-同一目标的 [id.h](include/siftwing/base/id.h) 提供互不混用的 `DocumentId`、`TermId` 和 `SnapshotVersion`。通过 `Type::from_integer(value, context)` 受检创建 `Result<Type>`，成功后用 `value()` 按值读取底层整数；三者均接受零到 `UINT64_MAX`，无默认身份、整数隐式转换或 ID 算术。文档与词项身份可按数值排序，快照版本仅比较相等，不表示发布时间。身份值不拥有业务对象或视图，也不保证对象存在、编号唯一或快照归属；生成和业务校验由调用方负责。
+同一目标的 [id.hpp](include/siftwing/base/id.hpp) 提供互不混用的 `DocumentId`、`TermId` 和 `SnapshotVersion`。通过 `Type::from_integer(value, context)` 受检创建 `Result<Type>`，成功后用 `value()` 按值读取底层整数；三者均接受零到 `UINT64_MAX`，无默认身份、整数隐式转换或 ID 算术。文档与词项身份可按数值排序，快照版本仅比较相等，不表示发布时间。身份值不拥有业务对象或视图，也不保证对象存在、编号唯一或快照归属；生成和业务校验由调用方负责。
 
-文档层的 [document_record.h](include/siftwing/document/document_record.h) 通过目标 `siftwing_document` 使用，并传递依赖 `siftwing_base`。`DocumentRecord` 显式接收 `DocumentId`，按值拥有标题、正文和独立的 `DocumentSource`；来源由输入文件相对标识及从 0 开始的文件内逻辑序号定位，另存 TXT/RSS/JSONL 种类和可选 URL、作者、原始发布日期文本。JSONL在这里仅为既有来源标识，不表示已实现解析，也不列入当前导入计划。`nullopt` 与已提供的空字符串不同。记录可复制、移动和赋值，不借用解析缓冲区；空文本可表示，生产者负责 UTF-8、来源、容量及可索引性校验。此类型不分配编号、不解析日期、不访问文件或 URL，也不保存哈希、分词或索引结果；创建记录不证明读取成功。
+文档层的 [document_record.hpp](include/siftwing/document/document_record.hpp) 通过目标 `siftwing_document` 使用，并传递依赖 `siftwing_base`。`DocumentRecord` 显式接收 `DocumentId`，按值拥有标题、正文和独立的 `DocumentSource`；来源由输入文件相对标识及从 0 开始的文件内逻辑序号定位，另存 TXT/RSS/JSONL 种类和可选 URL、作者、原始发布日期文本。JSONL在这里仅为既有来源标识，不表示已实现解析，也不列入当前导入计划。`nullopt` 与已提供的空字符串不同。记录可复制、移动和赋值，不借用解析缓冲区；空文本可表示，生产者负责 UTF-8、来源、容量及可索引性校验。此类型不分配编号、不解析日期、不访问文件或 URL，也不保存哈希、分词或索引结果；创建记录不证明读取成功。
 
-[document_reader.h](include/siftwing/document/document_reader.h) 通过目标 `siftwing_document_reader` 使用。`read_documents` 同步借用调用方已装载的输入字节，按相对输入名字典序调用适配器；`ReadSink::emit` 按条接收拥有型结果，返回 `false` 后适配器须立即停止。报告区分完整、警告、无文字、拒绝和失败；部分提取必须说明未覆盖范围，组装默认策略拒绝，显式允许后仍保留警告。外层 `Result` 成功只表示报告合同成立，调用方还须检查各条状态及 `report.stop`。
+[document_reader.hpp](include/siftwing/document/document_reader.hpp) 通过目标 `siftwing_document_reader` 使用。`read_documents` 同步借用调用方已装载的输入字节，按相对输入名字典序调用适配器；`ReadSink::emit` 按条接收拥有型结果，返回 `false` 后适配器须立即停止。报告区分完整、警告、无文字、拒绝和失败；部分提取必须说明未覆盖范围，组装默认策略拒绝，显式允许后仍保留警告。外层 `Result` 成功只表示报告合同成立，调用方还须检查各条状态及 `report.stop`。
 
 调用方显式配置四项正数上限：单输入字节、单篇标题加正文的字节、所有状态结果条数及接纳文本总字节。等于上限合法；单输入/单篇超限拒绝，批量条数/总字节不足则明确停止并保留此前报告，无静默截短。接收端验证来源、严格递增来源序号和已接纳文档 ID 的批量唯一性；不生成编号。接纳限额不等于整个进程内存上限，适配器须在解析/增长前实施自身限制，输入装载成本属于调用方。[原创结果夹具](tests/fixtures/reader_contract/README.md)验证共用交付控制；具体TXT字节适配见下文。RSS字节适配见下文。正式[indexer](docs/INDEXER.md)负责受检文件装载并组装该字节接口；Reader组件本身不负责文件遍历或装载。当前不实施JSONL解析/导入。
 
-[txt_reader.h](include/siftwing/document/txt_reader.h)通过目标`siftwing_txt_reader`使用。`TxtDocumentReader`按值拥有输入名到`TxtDocumentMetadata`的映射：调用方显式提供文档ID和可选标题，不自动编号；相同输入与配置可确定地复读。请求名未配置会抛出`std::out_of_range`，属于调用方配置违约，不伪装成文件失败。它沿用`read_documents`的已装载字节接口，不遍历目录或负责文件装载。
+[txt_reader.hpp](include/siftwing/document/txt_reader.hpp)通过目标`siftwing_txt_reader`使用。`TxtDocumentReader`按值拥有输入名到`TxtDocumentMetadata`的映射：调用方显式提供文档ID和可选标题，不自动编号；相同输入与配置可确定地复读。请求名未配置会抛出`std::out_of_range`，属于调用方配置违约，不伪装成文件失败。它沿用`read_documents`的已装载字节接口，不遍历目录或负责文件装载。
 
 TXT默认一文件一篇，作者、出处、章节和标记作为正文保留。严格校验UTF-8、拒绝NUL；仅去除开头UTF-8 BOM，将CRLF/CR变为LF，不裁剪正常正文。空或全为Unicode15.1 White_Space的正文报告无文字。非空白显式标题原值优先，否则用文件名去最后扩展名并报告回退警告。最终标题加正文的字节预算在正文分配前检查，超限拒绝整篇，不截断；原始输入预算仍包含BOM和原换行。非法编码、标题和大小问题有定位或原因，返回报告拥有文本，不依赖输入或适配器存活。这里的读取是字节适配，文件装载前容量和文件系统路径安全仍由调用方负责。
 
@@ -91,7 +115,7 @@ stdout输出验收用schema1 JSON，字符串使用hex表示字节。退出0仅�
 
 [黄金数据说明](tests/fixtures/golden/README.md)记录原创输入、许可证、字节清单和原始 RSS 字段预期。完整性测试核对数据并对损坏副本进行检查，不验证搜索引擎或生产 TXT/RSS 解析器。
 
-[html_text.h](include/siftwing/document/html_text.h)通过目标`siftwing_html_text`提供
+[html_text.hpp](include/siftwing/document/html_text.hpp)通过目标`siftwing_html_text`提供
 `extract_html_text`，同步借用UTF-8 HTML片段，返回拥有正文和解析恢复标记的`Result<HtmlText>`。
 它供下述RSS适配器处理正文字段，尚无独立HTML文件入口。
 实体由Lexbor按HTML规则还原一次；普通空白折叠、块元素和`br`保留段落边界，`pre`保留
@@ -104,7 +128,7 @@ stdout输出验收用schema1 JSON，字符串使用hex表示字节。退出0仅�
 通过真实CTest注册；字段优先及回退由下述RSS适配器实施。使用的utfcpp、Lexbor和tinyxml2版本、来源、
 哈希和许可证集中记录在[DEPENDENCIES.md](docs/DEPENDENCIES.md)。
 
-[rss_reader.h](include/siftwing/document/rss_reader.h)通过目标`siftwing_rss_reader`提供
+[rss_reader.hpp](include/siftwing/document/rss_reader.hpp)通过目标`siftwing_rss_reader`提供
 `RssDocumentReader`和`RssParseLimits`。调用方按输入名显式提供每个原item位置的ID向量，
 包括无正文和拒绝位置；缺配置抛`std::out_of_range`，成功解析后的item数不匹配抛
 `std::invalid_argument`，数量检查在发布任何item前完成。不隐式生成生产身份。
@@ -135,7 +159,7 @@ stop，输入装载或报告合同失败退出1，参数/身份数量违约退�
 输出不是持久化格式。`document.rss_ingestion`使用原创黄金输入及独立手写文字预期，
 不依赖私有语料；私有报告须保存到输入根之外。
 
-[normalize.h](include/siftwing/text/normalize.h)通过目标`siftwing_text_normalization`提供
+[normalize.hpp](include/siftwing/text/normalize.hpp)通过目标`siftwing_text_normalization`提供
 `normalize_utf8(input, limits)`，返回拥有型`Result<std::string>`。规则版本
 `normalization_policy_version=1`：ASCII A—Z转小写，Unicode15.1 White_Space折成单个ASCII
 空格并去首尾空白，CR/LF也折空格；数字、标点、中文、非ASCII大小写和其他合法码点原样保留。
@@ -155,8 +179,8 @@ UTF-8/NUL校验，最后预计算最终输出大小并分配；失败不含部�
 装载超限1、配置错误2，仅为验收工具，不是生产装载/持久化接口。utfcpp来源/版本/许可仍见
 [DEPENDENCIES.md](docs/DEPENDENCIES.md)，本模块没有新增第三方库。
 
-[tokenizer.h](include/siftwing/text/tokenizer.h)提供同步`Tokenizer`抽象与拥有型
-`TokenSequence`（`vector<string>`）；[english_tokenizer.h](include/siftwing/text/english_tokenizer.h)
+[tokenizer.hpp](include/siftwing/text/tokenizer.hpp)提供同步`Tokenizer`抽象与拥有型
+`TokenSequence`（`vector<string>`）；[english_tokenizer.hpp](include/siftwing/text/english_tokenizer.hpp)
 中的`EnglishTokenizer`通过目标`siftwing_tokenizer`实现同一接口，由正式建库和查询通过共享文本管线复用。
 英文规则版本`english_tokenization_policy_version=1`：最大连续`[A-Za-z0-9]+`为token，
 保留顺序、重复和大小写；标点、空白及全部非ASCII字符作为分隔，不产生空token。
@@ -180,7 +204,7 @@ Tokenizer；统一管线、停用词及词频见后文，内存索引由倒排�
 参数错误2。它不隐式规范化，也不提供生产装载/持久化合同。本模块无新第三方库，
 继续复用[utfcpp记录](docs/DEPENDENCIES.md)。
 
-[cppjieba_tokenizer.h](include/siftwing/text/cppjieba_tokenizer.h)新增`CppJiebaTokenizer`，
+[cppjieba_tokenizer.hpp](include/siftwing/text/cppjieba_tokenizer.hpp)新增`CppJiebaTokenizer`，
 目标`siftwing_cppjieba_tokenizer`实现同一`Tokenizer`。工厂`create(CppJiebaConfig)`接收
 主词典/HMM/可选单一用户词典的绝对普通文件路径及正`max_file_bytes`，返回
 `Result<unique_ptr<CppJiebaTokenizer>>`；默认启用HMM。路径各组件禁止符号链接，
@@ -200,7 +224,7 @@ TXT/RSS显式接线。验收探针参数为
 使用的cppjieba5.6.7、limonp固定提交、许可证、内存补丁、词典来源及SHA详见
 [第三方依赖记录](docs/DEPENDENCIES.md)。共用管线与停用词见后文，索引由[倒排组件](docs/INVERTED_INDEX.md)和[权重组件](docs/WEIGHTS.md)提供。
 
-[term_frequency.h](include/siftwing/text/term_frequency.h)与目标`siftwing_term_frequency`
+[term_frequency.hpp](include/siftwing/text/term_frequency.hpp)与目标`siftwing_term_frequency`
 提供内存停用词配置、过滤及统计。`StopWords::parse`合并显式UTF-8字节源：每源首BOM
 剥离，LF/CRLF分行，复用ASCII小写/Unicode White_Space折叠及trim，空白行忽略，重复
 折叠；内部空白拒绝。`#`和标点为字面词条，不作注释，不把条目再次分词。调用者承担文件
@@ -215,6 +239,8 @@ TXT/RSS显式接线。验收探针参数为
 
 `accumulate_recommendation`将一个文档TF合入`RecommendationFrequencies`并返回新表，
 输入不变；所有次数为受检uint64，外部表也验证正频、合法词键和total_tokens总和一致。
+`accumulate_recommendation_batch`从空统计累计整批TF，在局部词表中合并并一次返回；
+不逐篇校验或复制已有累计表，失败仍无部分结果，输入保持不变。
 推荐累计按调用者显式选择的文档交付次数统计，空文档也计1，重复交付重复累计，不隐式
 SimHash去重。例如再交付`中国`得到推荐中国3、a1 1；搜索DF中国2属于后续去重文档集合
 的统计，本模块不计算DF/N/TF-IDF或词项ID。五正累计预算覆盖文档次数/唯一词数/单词字节/
@@ -232,7 +258,7 @@ SimHash去重。例如再交付`中国`得到推荐中国3、a1 1；搜索DF中�
 
 ## 共用文本管线
 
-[text_pipeline.h](include/siftwing/text/text_pipeline.h)通过目标`siftwing_text_pipeline`使用。
+[text_pipeline.hpp](include/siftwing/text/text_pipeline.hpp)通过目标`siftwing_text_pipeline`使用。
 `TextPipeline::create(unique_ptr<Tokenizer>, StopWords)`接管已初始化分词器并保存拥有型停用集合，
 成功返回非空`unique_ptr<TextPipeline>`，空分词器失败为`pipeline.tokenizer`；对象不复制/移动，
 以指针转移拥有权。工厂不读取分词资源或停用词文件，资源装载沿各组件原合同由调用者完成。
@@ -249,7 +275,7 @@ SimHash去重。例如再交付`中国`得到推荐中国3、a1 1；搜索DF中�
 管线不保存快照配置摘要；该身份由[indexer](docs/INDEXER.md)组装并写入manifest。管线不提供运行时替换配置。同一入口集成测试覆盖原创TXT/RSS/查询，
 独立参考校验英文Unicode边界及手算中文黄金；离线建库见[INDEXER.md](docs/INDEXER.md)，本地查询见[CLI.md](docs/CLI.md)。
 
-[simhash.h](include/siftwing/document/simhash.h)通过目标`siftwing_simhash`提供
+[simhash.hpp](include/siftwing/document/simhash.hpp)通过目标`siftwing_simhash`提供
 `make_simhash(DocumentTermFrequencies, SimHashLimits)`和`hamming_distance`。
 前者消费调用方明确选择的、过滤后完整单文档TF，不重新规范化/分词/过滤，不使用推荐累计或搜索DF。
 规则版本`simhash_policy_version=1`：每个唯一词按UTF-8字节作FNV-1a64后接fmix64，原始TF为整数权重，
@@ -270,7 +296,7 @@ CTest包含固定词哈希/手算投票、完整uint64权重/坏输入/预算/�
 原创TXT/RSS与中英文管线接线、Python任意精度有符号投票参考和公共头编译合同。
 `siftwing_simhash_probe`仅为测试验收入口，受限读取显式TF批次，不是生产CLI或持久化格式。
 
-[duplicate_decision.h](include/siftwing/document/duplicate_decision.h)通过目标
+[duplicate_decision.hpp](include/siftwing/document/duplicate_decision.hpp)通过目标
 `siftwing_duplicate_decision`提供`decide_duplicates(candidates, policy, limits)`，返回拥有型
 `DuplicateReport`。候选显式提供`DocumentId`、`SourceIdentity`和`optional<SimHash64>`，不修改
 `DocumentRecord`，不重新分析文本。调用方须保证指纹规则、分词和停用资源兼容；分析失败不能
@@ -302,7 +328,7 @@ ctest --test-dir build/sanitize --output-on-failure --no-tests=error
 
 ## 工程原则
 
-原始词到文档关系由 [posting.h](include/siftwing/index/posting.h) 和 `siftwing_posting`
+原始词到文档关系由 [posting.hpp](include/siftwing/index/posting.hpp) 和 `siftwing_posting`
 提供：显式文档身份与正整数出现次数，受检创建并校验同词列表的严格文档次序/条数预算。
 原始 TF、列表关系数与推荐累计各自保持口径；不自动排序/合并，不含权重或词位。
 调用方仍须保证同词/同快照/搜索保留集合，详见 [POSTING.md](docs/POSTING.md)。

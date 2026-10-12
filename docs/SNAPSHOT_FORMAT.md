@@ -1,7 +1,7 @@
 # 快照目录与 manifest v1
 
 本模块已提供 `siftwing_snapshot_manifest` 的内存 manifest 编解码、SHA-256、payload
-字节校验和完成标记。公共 API 合同见 [manifest.h](../include/siftwing/snapshot/manifest.h)。
+字节校验和完成标记。公共 API 合同见 [manifest.hpp](../include/siftwing/snapshot/manifest.hpp)。
 以下目录/payload布局是本版本冻结的合同。[Writer](SNAPSHOT_WRITER.md)已实现规范编码、
 完整集合落盘及原子无覆盖发布；[Reader](SNAPSHOT_READER.md)已实现指定正式版本的完整加载和跨文件校验。
 
