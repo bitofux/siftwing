@@ -66,7 +66,7 @@ int main() {
         check(upper && upper.value() == TokenSequence{"GREEN"}, "tokenizer has no hidden lowercase step");
         check(raw_txt.find("\r\n") != raw_txt.npos && raw_rss.find("<p>") != raw_rss.npos,
               "adapter source input bytes remain unchanged");
-        // 此处由测试显式组装已有组件；生产文本管线、中文和停用词接口尚未提供。
+        // 测试直接组合读取器和英文分词器，验证适配后文字的分词行为。
     } catch (const std::exception& e) { ++failures; std::cerr << "FAIL: unexpected exception: " << e.what() << '\n'; }
     std::cout << "English tokenizer ingestion checks=" << checks << " failures=" << failures << '\n';
     return failures == 0 ? 0 : 1;

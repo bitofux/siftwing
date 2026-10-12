@@ -243,3 +243,7 @@ M1.29无新第三方库。`siftwing_ranking` PUBLIC依赖`siftwing_candidates`�
 只用标准库vector、sort、lower_bound、hypot及cfenv，GNU/Clang目标禁fast-math及浮点收缩。
 Writer/Reader、TXT/RSS与英文/原创中文资源仅用于真实评分接线测试；Python Decimal高精度
 数学参考不进入生产依赖，不读取生产IDF/单位权重来生成期望。既有五库版本/SHA/许可证保持。
+
+M1.30无新第三方库。`siftwing_top_k`仅PUBLIC依赖`siftwing_ranking`，复用完整排序后以
+vector::erase缩容，不重复浮点运算或改变旧预算。Writer/Reader、TXT/RSS、英文/中文资源仅为
+接线测试依赖，Decimal独立参考不进入生产；既有五库版本/SHA/许可证保持。

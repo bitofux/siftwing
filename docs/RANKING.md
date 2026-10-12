@@ -51,3 +51,5 @@ CTest注册`query.ranking`、`query.ranking_reference`、`query.ranking_snapshot
 Python从原始TF逐文档以60位Decimal独立算IDF/平方和余弦，并比较两个新进程输出；
 原创TXT/RSS及英文/原创中文词典经Writer/Reader验证真实加载后的评分；公共头验证
 强身份、nodiscard和禁止外部候选。测试探针不是生产CLI，不证明搜索质量、性能或并发。
+
+[稳定top-k](TOP_K.md)复用本完整排序并取前k条，保留全部候选与评分准入；本接口继续返回全量结果。

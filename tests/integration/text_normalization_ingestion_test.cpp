@@ -3,7 +3,7 @@
  * FILE    : text_normalization_ingestion_test.cpp
  * AUTHOR  : bitofux
  * DATE    : 2026-10-10
- * BRIEF   : 用原创等价TXT/RSS验证共用规范化入口，保留抽取记录并明确尚未组装文本管线
+ * BRIEF   : 用原创等价TXT/RSS验证共用规范化入口及抽取记录，直接调用规范化组件
  */
 
 #include "siftwing/document/rss_reader.h"

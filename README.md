@@ -9,9 +9,10 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 查询层已有[Query模型](docs/QUERY.md)：复用建库文本管线，拥有过滤后词项/重复词频，
 校验AND/OR和top_k，并区分空查询错误与未知词。[候选集合](docs/CANDIDATES.md)已按AND/OR
 合并倒排，返回拥有的递增唯一文档身份。[余弦排序](docs/RANKING.md)组合同索引候选与
-单位TF-IDF权重，返回完整分数降序、同分DocId升序结果；top-k选取、摘要、推荐查询与正式CLI由后续模块提供。
+单位TF-IDF权重，返回完整分数降序、同分DocId升序结果；[稳定top-k](docs/TOP_K.md)复用完整排序返回前k条，
+保留完整准入与精确分数。摘要、推荐查询与正式CLI由后续模块提供。
 
-仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线、基于TF的64位SimHash指纹及独立批量去重决策；Query模型、候选集合与余弦排序已提供，完整检索执行、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
+仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线、基于TF的64位SimHash指纹及独立批量去重决策；Query模型、候选集合、余弦排序与稳定top-k已提供，完整检索执行、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
 
 ## 在 Ubuntu 上构建与测试
 
@@ -168,7 +169,7 @@ UTF-8/NUL校验，最后预计算最终输出大小并分配；失败不含部�
 
 原创测试验证多态、词边界、预算/失败优先级与拥有性，Python独立ASCII正则覆盖全部合法
 非NUL Unicode标量及混合序列；TXT/RSS抽取与查询形状文字在测试中显式规范化后调用同一
-Tokenizer；统一管线、停用词及词频见后文，完整索引/搜索服务仍待实现。
+Tokenizer；统一管线、停用词及词频见后文，内存索引由倒排与权重组件提供；正式搜索服务尚未提供。
 验收工具`siftwing_english_tokenizer_probe INPUT_BYTES TOKENS TOKEN_BYTES OUTPUT_BYTES < text`
 仅在启用测试时构建，stdout为规则版本及`tokens_hex`数组JSON；成功0、输入/内容失败1、
 参数错误2。它不隐式规范化，也不提供生产装载/持久化合同。本模块无新第三方库，
@@ -192,7 +193,7 @@ TXT/RSS显式接线。验收探针参数为
 `siftwing_cppjieba_tokenizer_probe INPUT_BYTES TOKENS TOKEN_BYTES OUTPUT_BYTES DICT HMM USER_OR_DASH FILE_BYTES HMM_ON < text`，
 `USER_OR_DASH`为`-`则无用户词典，`HMM_ON`为`0`或`1`；输出/退出约定沿英文探针。
 使用的cppjieba5.6.7、limonp固定提交、许可证、内存补丁、词典来源及SHA详见
-[第三方依赖记录](docs/DEPENDENCIES.md)。共用管线与停用词见后文，索引仍待后续模块。
+[第三方依赖记录](docs/DEPENDENCIES.md)。共用管线与停用词见后文，索引由[倒排组件](docs/INVERTED_INDEX.md)和[权重组件](docs/WEIGHTS.md)提供。
 
 [term_frequency.h](include/siftwing/text/term_frequency.h)与目标`siftwing_term_frequency`
 提供内存停用词配置、过滤及统计。`StopWords::parse`合并显式UTF-8字节源：每源首BOM

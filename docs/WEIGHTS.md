@@ -60,5 +60,6 @@ binary64 数值位模式，+0 为 0000000000000000；不写 C++ 对象布局或�
 weights.serialization_limits/serialization_bytes，无部分字符串，分配/未知异常上传。
 
 构建复杂度 O(D + V + P log D)，额外权重空间 O(P+D+V)，原始输入由移动接管，不复制。
-导出复杂度随字节长度，成功拥有输出。没有文件 IO、Reader、manifest、发布、CLI、
-候选集合、查询向量或打分排序；这些仍由后续各模块单独授权实现。
+导出复杂度随字节长度，成功拥有输出。本组件只负责内存权重与规范导出；
+[Writer](SNAPSHOT_WRITER.md)/[Reader](SNAPSHOT_READER.md)组合持久化，[排序](RANKING.md)组合候选与查询向量，
+[稳定top-k](TOP_K.md)限制返回条数。正式CLI由其模块承担。

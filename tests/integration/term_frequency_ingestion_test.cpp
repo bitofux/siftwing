@@ -102,7 +102,7 @@ int main() {
         check(first.content == before_txt && second.content == before_rss &&
                   ta.value() == hand_written,
               "filtering and accumulation preserve source records and original tokens");
-        // 测试显式接通现有组件，生产管线/搜索DF/词项ID仍由后续模块实现。
+        // 测试显式组合分词、过滤与词频组件，独立验证单次交付的统计。
     } catch (const std::exception &e) {
         ++failures;
         std::cerr << "FAIL: unexpected exception: " << e.what() << '\n';

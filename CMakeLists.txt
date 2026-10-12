@@ -138,6 +138,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
     target_compile_options(siftwing_ranking PRIVATE -fno-fast-math -ffp-contract=off)
 endif()
 
+# top-k只缩小完整排序的拥有结果，保留评分与完整工作准入。
+add_library(siftwing_top_k STATIC src/query/top_k.cpp)
+target_link_libraries(siftwing_top_k PUBLIC siftwing_ranking)
+
 # 指纹只消费完整文档TF，不依赖读取器或具体分词资源，不决定去重保留集合。
 add_library(siftwing_simhash STATIC src/document/simhash.cpp)
 target_link_libraries(siftwing_simhash PUBLIC siftwing_term_frequency PRIVATE siftwing_utf8cpp)
@@ -530,6 +534,25 @@ if(BUILD_TESTING)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ranking_compile_contract.cmake")
     set_tests_properties(query.ranking query.ranking_reference query.ranking_snapshot
         query.ranking_compile_contract PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_top_k_test tests/unit/top_k_test.cpp)
+    target_link_libraries(siftwing_top_k_test PRIVATE siftwing_top_k siftwing_tokenizer)
+    add_test(NAME query.top_k COMMAND siftwing_top_k_test)
+    add_executable(siftwing_top_k_probe tests/integration/top_k_probe.cpp)
+    target_link_libraries(siftwing_top_k_probe PRIVATE siftwing_top_k siftwing_tokenizer)
+    add_test(NAME query.top_k_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/top_k_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_top_k_probe>")
+    add_executable(siftwing_top_k_snapshot_test tests/integration/top_k_snapshot_test.cpp)
+    target_link_libraries(siftwing_top_k_snapshot_test PRIVATE siftwing_top_k siftwing_tokenizer
+        siftwing_cppjieba_tokenizer siftwing_txt_reader siftwing_rss_reader
+        siftwing_snapshot_writer siftwing_snapshot_reader)
+    add_test(NAME query.top_k_snapshot COMMAND siftwing_top_k_snapshot_test "${CMAKE_CURRENT_BINARY_DIR}")
+    add_test(NAME query.top_k_compile_contract COMMAND "${CMAKE_COMMAND}"
+        "-DCXX=${CMAKE_CXX_COMPILER}" "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/top-k-contract"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/top_k_compile_contract.cmake")
+    set_tests_properties(query.top_k query.top_k_reference query.top_k_snapshot
+        query.top_k_compile_contract PROPERTIES TIMEOUT 60)
     add_executable(siftwing_text_pipeline_test tests/unit/text_pipeline_test.cpp)
     target_link_libraries(siftwing_text_pipeline_test PRIVATE siftwing_text_pipeline)
     add_test(NAME text.pipeline COMMAND siftwing_text_pipeline_test)

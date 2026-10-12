@@ -36,7 +36,7 @@ int main(){
         const document::OffsetTable table{{{did,0,static_cast<std::uint64_t>(library.size())}},static_cast<std::uint64_t>(library.size())};
         const document::DocumentStoreLimits dl{{1000,10000},10,100000,10000};
         const auto offsets=document::encode_offset_table(table,dl).value();
-        // 三个新payload编码由测试手写黄金提供，生产codec留在后续获授权模块。
+        // 三个payload使用独立手写黄金验证规范，避免用生产Writer编码生成自身期望。
         const std::array<std::string,6> payloads{{library,offsets,
             "SIFTWING-LEXICON 1\nS 2\nT 0 626c7565\nT 1 726564\n",weighted.serialize({10000}).value(),
             "SIFTWING-RECOMMENDATION 1\nS 2 6 2\nT 0 626c7565 2\nT 1 726564 4\n",
