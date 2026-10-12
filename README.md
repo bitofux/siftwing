@@ -13,9 +13,10 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 保留完整准入与精确分数。[动态摘要](docs/SUMMARY.md)围绕原文首个查询词截取UTF-8标量窗口，
 保留原文字节与偏移，缺失正文返回空摘要。[关键词高亮](docs/HIGHLIGHT.md)合并原文重叠及相邻命中，
 完整转义正文后生成固定mark标签，并返回原字节区间。[候选词推荐](docs/RECOMMENDATION.md)使用
-独立字符索引召回、Unicode编辑距离和推荐词频稳定取前k；正式离线建库已由`siftwing-indexer`提供；本地SEARCH/SUGGEST命令留给其模块。
+独立字符索引召回、Unicode编辑距离和推荐词频稳定取前k；正式离线建库由`siftwing-indexer`提供，
+本地SEARCH/SUGGEST由[siftwing-cli](docs/CLI.md)从完整快照独立执行。
 
-仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线、基于TF的64位SimHash指纹及独立批量去重决策；Query模型、候选集合、余弦排序、稳定top-k、动态摘要、关键词高亮与候选词推荐已提供，完整检索执行、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
+仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线、基于TF的64位SimHash指纹及独立批量去重决策；Query模型、候选集合、余弦排序、稳定top-k、动态摘要、关键词高亮与候选词推荐已提供，本地完整检索执行由正式CLI提供，网络协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
 
 ## 在 Ubuntu 上构建与测试
 
@@ -246,7 +247,7 @@ SimHash去重。例如再交付`中国`得到推荐中国3、a1 1；搜索DF中�
 来源元数据不修改，返回结果不借用输入或管线；不隐式拼接标题、累计推荐词频、生成DF/身份或写索引。
 线程安全依赖所选Tokenizer的实际合同，`const`本身不提供保证；预算不是整个进程硬资源限。
 管线不保存未来快照资源身份，也不提供运行时替换配置。同一入口集成测试覆盖原创TXT/RSS/查询，
-独立参考校验英文Unicode边界及手算中文黄金；离线建库见[INDEXER.md](docs/INDEXER.md)，本地SEARCH/SUGGEST程序留给其模块。
+独立参考校验英文Unicode边界及手算中文黄金；离线建库见[INDEXER.md](docs/INDEXER.md)，本地查询见[CLI.md](docs/CLI.md)。
 
 [simhash.h](include/siftwing/document/simhash.h)通过目标`siftwing_simhash`提供
 `make_simhash(DocumentTermFrequencies, SimHashLimits)`和`hamming_distance`。
@@ -337,7 +338,7 @@ DF 和文档/语料统计；该构建器不自行去重、不使用推荐累计�
 `siftwing_snapshot_reader`提供[完整快照加载](docs/SNAPSHOT_READER.md)：显式选择正式版本，
 核八文件集合、manifest/COMPLETE、六文件尺寸/SHA及记录、原TF/DF/权重、推荐字符跨文件关系，
 成功后只读拥有全部数据且不保留fd。数值运行环境须复现保存的规范权重字节；
-Query、候选集合与余弦排序见上文；正式离线建库已接通；在线热切换与本地SEARCH/SUGGEST命令留给其模块。
+Query、候选集合与余弦排序见上文；正式离线建库已接通；本地查询见[CLI.md](docs/CLI.md)，在线热切换留给其模块。
 
 [快照往返验收](docs/SNAPSHOT_ROUNDTRIP.md)通过真实Writer/Reader及独立Python参考，验证
 固定元数据下重复构建、输入排列变化和加载后再发布的八文件一致性；另有原创TXT/RSS经

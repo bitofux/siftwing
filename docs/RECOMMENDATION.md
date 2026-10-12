@@ -56,7 +56,7 @@ candidates/candidate_bytes/work/output_bytes`。失败只返回拥有诊断，�
 索引查找、关系并集和字节/标量准入；工作空间 `O(M+C+Lmax+H)`，H 为返回词字节。
 距离预算仅计非边界 DP 单元，不计边界初始化、查找/并集、排序、容器或分配器开销；
 不等于进程硬 CPU/内存限额。未做性能、真实 OOM、并发、跨平台或私有语料推荐质量评估。
-正式 CLI 和网络接线留后续模块。
+正式本地SUGGEST见[CLI.md](CLI.md)，网络接线留后续模块。
 
 验证包括手算黄金、独立 Python 字符集合/完整距离矩阵、原创 TXT/RSS 英文中文管线
 推荐累计→Writer→Reader→建议接线及公共头合同。显式行为检查在 Release 下仍执行；

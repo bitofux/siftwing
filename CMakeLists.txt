@@ -219,6 +219,12 @@ target_link_libraries(siftwing_indexer PRIVATE siftwing_txt_reader siftwing_rss_
     siftwing_text_pipeline siftwing_cppjieba_tokenizer siftwing_duplicate_decision
     siftwing_snapshot_writer siftwing_tinyxml2)
 
+# 本地查询入口只消费完整只读快照；显示/推荐沿用各自核心，JSON限于固定结果schema。
+add_executable(siftwing_cli apps/cli/main.cpp)
+set_target_properties(siftwing_cli PROPERTIES OUTPUT_NAME siftwing-cli)
+target_link_libraries(siftwing_cli PRIVATE siftwing_snapshot_reader siftwing_top_k
+    siftwing_summary siftwing_highlight siftwing_recommendation siftwing_cppjieba_tokenizer siftwing_utf8cpp)
+
 include(CTest)
 if(BUILD_TESTING)
     find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
@@ -237,6 +243,15 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/indexer_test.py"
         --indexer "$<TARGET_FILE:siftwing_indexer>" --reader "$<TARGET_FILE:siftwing_reader_probe>" --suite failures)
     set_tests_properties(app.indexer_integration app.indexer_failures PROPERTIES TIMEOUT 120)
+    add_test(NAME app.cli_integration COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/cli_test.py"
+        --cli "$<TARGET_FILE:siftwing_cli>" --indexer "$<TARGET_FILE:siftwing_indexer>"
+        --writer "$<TARGET_FILE:siftwing_writer_probe>" --suite integration)
+    add_test(NAME app.cli_failures COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/cli_test.py"
+        --cli "$<TARGET_FILE:siftwing_cli>" --indexer "$<TARGET_FILE:siftwing_indexer>"
+        --writer "$<TARGET_FILE:siftwing_writer_probe>" --suite failures)
+    set_tests_properties(app.cli_integration app.cli_failures PROPERTIES TIMEOUT 120)
     add_test(NAME fixtures.integrity
         COMMAND Python3::Interpreter -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/golden_fixtures_test.py"

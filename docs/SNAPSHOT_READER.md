@@ -51,4 +51,10 @@ Reader不可复制，noexcept移动转交唯一State，源为空，自移动保�
 测试包含独立Python struct/zlib/hashlib与数学/Unicode生成器，以及真实Writer接线和GNU ld IO故障包装。
 
 正式离线应用[siftwing-indexer](INDEXER.md)分别组装搜索保留集和推荐累计，产生本格式的完整快照；
-组件的旧API、预算/所有权、来源声明与发布/加载边界保持。正式本地SEARCH/SUGGEST入口由后续模块提供。
+组件的旧API、预算/所有权、来源声明与发布/加载边界保持。正式本地SEARCH/SUGGEST消费者见下节。
+
+## 本地查询消费者
+
+正式[siftwing-cli](CLI.md)两种命令均完整加载本Reader，不跳过另一支校验；SEARCH按排名
+原DocId向同一Reader回查，SUGGEST借用独立recommendation部件。应用本次调用独占拥有
+Reader，结果JSON在所有校验/显示成功后写出；不扫描CURRENT或修理输入，旧Reader合同保持。

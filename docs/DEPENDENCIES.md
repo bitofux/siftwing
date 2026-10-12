@@ -267,3 +267,11 @@ utfcpp4.0.6解码查询/候选标量；set并集、单行Levenshtein与三键排
 直接tinyxml2仅为准备RSS原item的身份，正式字段/编码/命名空间验证仍由RssDocumentReader完成。
 生产应用不依赖Python或测试探针；Python仅在BUILD_TESTING时运行独立应用验收。
 两支资源路径都由调用方显式提供，程序不隐式读取上游自带词典。详见[INDEXER.md](INDEXER.md)。
+
+## 正式本地查询应用
+
+`siftwing_cli`（产物`siftwing-cli`）PRIVATE链接Reader、top-k、摘要、高亮、独立推荐、
+cppjieba适配与既有utfcpp目标。固定schema的有界JSON字符串/整数/有限分数输出由项目及
+C++17标准库实现，不新增JSON库或第三方依赖；严格UTF-8验证复用utfcpp。应用不依赖Python
+或Writer探针；它们仅在BUILD_TESTING时构造原创快照、运行真实进程与独立参考。
+所有五库版本/SHA/许可证保持，资源仍由调用方显式提供，详见[CLI.md](CLI.md)。
