@@ -230,3 +230,7 @@ M1.25无新第三方库。`siftwing_snapshot_reader`公开依赖`siftwing_snapsh
 M1.26无新第三方库或生产依赖。快照往返测试只组合已有Writer/Reader；原创TXT/RSS管线
 接线另链接TXT、RSS、英文Tokenizer、文本管线及去重目标。Python标准库与既有独立参考
 仅用于测试，不进入生产接口；测试探针不构成生产indexer/CLI。
+
+M1.27无新第三方库。`siftwing_query`仅PUBLIC依赖`siftwing_text_pipeline`，
+查询词键/重复词频由已有文本阶段提供，不引入索引或快照依赖。英文与原创cppjieba资源、
+TXT/RSS只用于对应真实接线测试；Python正则/Counter独立参考及探针不是生产查询入口。

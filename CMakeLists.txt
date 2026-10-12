@@ -123,6 +123,10 @@ target_link_libraries(siftwing_snapshot_reader PUBLIC siftwing_snapshot_manifest
 add_library(siftwing_text_pipeline STATIC src/text/text_pipeline.cpp)
 target_link_libraries(siftwing_text_pipeline PUBLIC siftwing_text_normalization siftwing_term_frequency)
 
+# Query只借用共享管线生成拥有TF，不依赖快照、候选合并或排序。
+add_library(siftwing_query STATIC src/query/query.cpp)
+target_link_libraries(siftwing_query PUBLIC siftwing_text_pipeline)
+
 # 指纹只消费完整文档TF，不依赖读取器或具体分词资源，不决定去重保留集合。
 add_library(siftwing_simhash STATIC src/document/simhash.cpp)
 target_link_libraries(siftwing_simhash PUBLIC siftwing_term_frequency PRIVATE siftwing_utf8cpp)
@@ -460,6 +464,23 @@ if(BUILD_TESTING)
         --republish "$<TARGET_FILE:siftwing_roundtrip_probe>" --pipeline "$<TARGET_FILE:siftwing_roundtrip_pipeline_test>"
         --parent "${CMAKE_CURRENT_BINARY_DIR}")
     set_tests_properties(snapshot.roundtrip PROPERTIES TIMEOUT 120)
+    add_executable(siftwing_query_test tests/unit/query_test.cpp)
+    target_link_libraries(siftwing_query_test PRIVATE siftwing_query siftwing_tokenizer)
+    add_test(NAME query.model COMMAND siftwing_query_test)
+    add_executable(siftwing_query_probe tests/integration/query_probe.cpp)
+    target_link_libraries(siftwing_query_probe PRIVATE siftwing_query siftwing_tokenizer)
+    add_test(NAME query.reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/query_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_query_probe>")
+    add_executable(siftwing_query_ingestion_test tests/integration/query_ingestion_test.cpp)
+    target_link_libraries(siftwing_query_ingestion_test PRIVATE siftwing_query siftwing_tokenizer
+        siftwing_cppjieba_tokenizer siftwing_txt_reader siftwing_rss_reader)
+    add_test(NAME query.ingestion COMMAND siftwing_query_ingestion_test)
+    add_test(NAME query.compile_contract COMMAND "${CMAKE_COMMAND}"
+        "-DCXX=${CMAKE_CXX_COMPILER}" "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/query-contract"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/query_compile_contract.cmake")
+    set_tests_properties(query.model query.reference query.ingestion query.compile_contract PROPERTIES TIMEOUT 60)
     add_executable(siftwing_text_pipeline_test tests/unit/text_pipeline_test.cpp)
     target_link_libraries(siftwing_text_pipeline_test PRIVATE siftwing_text_pipeline)
     add_test(NAME text.pipeline COMMAND siftwing_text_pipeline_test)
