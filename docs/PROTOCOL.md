@@ -1,7 +1,7 @@
 # V2 帧头与字节序合同
 
-本文是 V2 协议版本 1 的线格式合同，供客户端、服务端及内存 codec 使用。当前仓库仅有
-本规范和黄金字节例子；Buffer、codec、socket、Reactor 与网络应用尚未实现。JSON 业务
+本文是 V2 协议版本 1 的线格式合同，供客户端、服务端及内存 codec 使用。当前仓库有
+本规范、黄金字节例子及[有界连续 Buffer](BUFFER.md)；codec、socket、Reactor 与网络应用尚未实现。JSON 业务
 字段由对应后续模块定义，本文不将 V1 CLI 输出直接指定为网络响应。
 
 ## 传输与帧边界
@@ -148,5 +148,5 @@ SEARCH_REQUEST 头部，body_length 为 `0xffffffff`，request_id 为 1：
 ## 实现与学习入口
 
 V1 的离线能力与限制仍见 [V1基线](V1.md)。本规范不改变其快照格式、CLI、查询接口或
-资源相容前提。后续先实现 Buffer，再实现增量 codec 和编码/协议错误，完成内存级验证
+资源相容前提。已有最小 Buffer，后续实现增量 codec 和编码/协议错误，完成内存级验证
 后才接入 socket；此顺序不能由一份协议文档替代。

@@ -30,6 +30,9 @@ add_library(siftwing_base INTERFACE)
 target_include_directories(siftwing_base INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(siftwing_base INTERFACE siftwing_build_options)
 
+add_library(siftwing_buffer STATIC src/net/buffer.cc)
+target_link_libraries(siftwing_buffer PUBLIC siftwing_base)
+
 add_library(siftwing_document INTERFACE)
 target_link_libraries(siftwing_document INTERFACE siftwing_base)
 
@@ -227,6 +230,10 @@ target_link_libraries(siftwing_cli PRIVATE siftwing_snapshot_reader siftwing_top
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(siftwing_buffer_test tests/unit/buffer_test.cc)
+    target_link_libraries(siftwing_buffer_test PRIVATE siftwing_buffer)
+    add_test(NAME net.buffer COMMAND siftwing_buffer_test)
+    set_tests_properties(net.buffer PROPERTIES TIMEOUT 30)
     find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
     add_executable(siftwing_byte_probe_test tests/unit/byte_probe_test.cc)
     target_link_libraries(siftwing_byte_probe_test PRIVATE siftwing_bootstrap)
