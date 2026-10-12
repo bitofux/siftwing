@@ -128,8 +128,9 @@ log(freq/主词典总频率)。主词典与用户词典各自内部拒绝重复�
 
 上述资源来自同一MIT仓库归档，项目未另行下载词典；自供资源需由使用者确认许可及版本。
 资源不复制进公开测试夹具；原创测试用小词典与可手算HMM，不以库自身输出生成黄金答案。
-不装载IDF/关键词/停用词资源。词边界依赖词典/模型/user/HMM开关；未来索引和查询须
-共享兼容资源身份，`cppjieba_tokenization_policy_version=1`只标识适配分段规则。
+不装载IDF/关键词/停用词资源。词边界依赖词典/模型/user/HMM开关；正式索引和查询须
+使用兼容资源；indexer保存配置摘要，CLI报告实际资源SHA，调用方负责相容性。
+`cppjieba_tokenization_policy_version=1`只标识适配分段规则。
 文件预算不包含解析容器/Trie，token预算不包含库临时DAG/HMM分配，均非进程硬资源限。
 分配与未知异常上传，未承诺上游在OOM下注入故障的强异常保证。
 
@@ -148,7 +149,8 @@ M1.14无新第三方库。`siftwing_text_pipeline`通过CMake公开链接共用n
 以Tokenizer虚接口接管调用方选择的英文或cppjieba实例，公共头不暴露第三方类型。
 不自行加载分词/停用资源，不链接额外HTML/XML库，不使用cppjieba停用词/关键词模块。
 已有utfcpp、cppjieba/limonp、Lexbor和tinyxml2的版本、来源、SHA及许可证记录保持；
-具体分词资源与停用集合决定词项兼容性，管线对象身份不能替代未来快照的配置摘要。
+具体分词资源与停用集合决定词项兼容性，管线对象身份不能替代manifest中的配置摘要；
+摘要由正式indexer组装，不由管线推断。
 
 ## SimHash组件评估与复用依赖
 
@@ -162,7 +164,9 @@ README声明MIT并链接作者许可页；该提交文件树未提供独立LICEN
 `siftwing_simhash`公开依赖既有`siftwing_term_frequency`，私有复用固定utfcpp4.0.6校验词键与遍历标量。
 哈希使用明确的FNV-1a64字节递推与fmix64整数变换，常量、模2^64、权重/平票规则作为项目版本1合同固定；
 不使用平台相关`std::hash`、课程源码或新哈希库。首次构建的已有五库下载/许可/哈希/离线失败行为保持。
-升级utfcpp须重验词键编码与Unicode空白边界；改指纹规则须升版本，未来快照兼容信息另行设计。
+升级utfcpp须重验词键编码与Unicode空白边界；改指纹规则须升版本并重新评审快照兼容性。
+正式indexer将指纹策略和去重配置纳入搜索config摘要；Reader校验格式与已保存关系，
+不能从摘要认证去重策略，见[快照格式](SNAPSHOT_FORMAT.md)。
 
 
 ## 去重决策复用依赖

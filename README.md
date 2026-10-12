@@ -2,7 +2,7 @@
 
 Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并以真实工程证据确认进度。
 
-计划先实现确定性的离线索引与查询，再实现 Main-Sub Reactor 网络服务，随后完善可靠性、可观测性、性能，并继续演进分布式能力。每个阶段都须能够构建、测试、调试和解释，再进入下一阶段。
+已实现单机离线索引与本地查询，当前能力、验收入口及限制见 [V1基线](docs/V1.md)。后续计划实现 Main-Sub Reactor 网络服务，再完善可靠性、可观测性、性能和分布式能力；各阶段按独立门禁推进。
 
 ## 项目状态
 
@@ -16,7 +16,7 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 独立字符索引召回、Unicode编辑距离和推荐词频稳定取前k；正式离线建库由`siftwing-indexer`提供，
 本地SEARCH/SUGGEST由[siftwing-cli](docs/CLI.md)从完整快照独立执行。
 
-仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线、基于TF的64位SimHash指纹及独立批量去重决策；Query模型、候选集合、余弦排序、稳定top-k、动态摘要、关键词高亮与候选词推荐已提供，本地完整检索执行由正式CLI提供，网络协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
+仓库提供完整离线建库与查询应用、组件行为/编译合同测试和端到端黄金集成测试；另保留最小 CMake/CTest 构建探针及原创、MIT 许可的 TXT/RSS 黄金输入。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线、基于TF的64位SimHash指纹及独立批量去重决策；Query模型、候选集合、余弦排序、稳定top-k、动态摘要、关键词高亮与候选词推荐已提供，本地完整检索执行由正式CLI提供，网络协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
 
 ## 在 Ubuntu 上构建与测试
 
@@ -47,7 +47,7 @@ build/debug/siftwing_build_probe a banana
 
 [document_reader.h](include/siftwing/document/document_reader.h) 通过目标 `siftwing_document_reader` 使用。`read_documents` 同步借用调用方已装载的输入字节，按相对输入名字典序调用适配器；`ReadSink::emit` 按条接收拥有型结果，返回 `false` 后适配器须立即停止。报告区分完整、警告、无文字、拒绝和失败；部分提取必须说明未覆盖范围，组装默认策略拒绝，显式允许后仍保留警告。外层 `Result` 成功只表示报告合同成立，调用方还须检查各条状态及 `report.stop`。
 
-调用方显式配置四项正数上限：单输入字节、单篇标题加正文的字节、所有状态结果条数及接纳文本总字节。等于上限合法；单输入/单篇超限拒绝，批量条数/总字节不足则明确停止并保留此前报告，无静默截短。接收端验证来源、严格递增来源序号和已接纳文档 ID 的批量唯一性；不生成编号。接纳限额不等于整个进程内存上限，适配器须在解析/增长前实施自身限制，输入装载成本属于调用方。[原创结果夹具](tests/fixtures/reader_contract/README.md)验证共用交付控制；具体TXT字节适配见下文。RSS字节适配见下文；尚无通用生产文件装载入口，当前不实施JSONL解析/导入。
+调用方显式配置四项正数上限：单输入字节、单篇标题加正文的字节、所有状态结果条数及接纳文本总字节。等于上限合法；单输入/单篇超限拒绝，批量条数/总字节不足则明确停止并保留此前报告，无静默截短。接收端验证来源、严格递增来源序号和已接纳文档 ID 的批量唯一性；不生成编号。接纳限额不等于整个进程内存上限，适配器须在解析/增长前实施自身限制，输入装载成本属于调用方。[原创结果夹具](tests/fixtures/reader_contract/README.md)验证共用交付控制；具体TXT字节适配见下文。RSS字节适配见下文。正式[indexer](docs/INDEXER.md)负责受检文件装载并组装该字节接口；Reader组件本身不负责文件遍历或装载。当前不实施JSONL解析/导入。
 
 [txt_reader.h](include/siftwing/document/txt_reader.h)通过目标`siftwing_txt_reader`使用。`TxtDocumentReader`按值拥有输入名到`TxtDocumentMetadata`的映射：调用方显式提供文档ID和可选标题，不自动编号；相同输入与配置可确定地复读。请求名未配置会抛出`std::out_of_range`，属于调用方配置违约，不伪装成文件失败。它沿用`read_documents`的已装载字节接口，不遍历目录或负责文件装载。
 
@@ -157,7 +157,7 @@ UTF-8/NUL校验，最后预计算最终输出大小并分配；失败不含部�
 
 [tokenizer.h](include/siftwing/text/tokenizer.h)提供同步`Tokenizer`抽象与拥有型
 `TokenSequence`（`vector<string>`）；[english_tokenizer.h](include/siftwing/text/english_tokenizer.h)
-中的`EnglishTokenizer`通过目标`siftwing_tokenizer`实现同一接口，供未来建库和查询共用。
+中的`EnglishTokenizer`通过目标`siftwing_tokenizer`实现同一接口，由正式建库和查询通过共享文本管线复用。
 英文规则版本`english_tokenization_policy_version=1`：最大连续`[A-Za-z0-9]+`为token，
 保留顺序、重复和大小写；标点、空白及全部非ASCII字符作为分隔，不产生空token。
 例如`don't`→`don/t`、`a1`保持一个词、`3.14`→`3/14`、`foo中文bar`→`foo/bar`、
@@ -174,7 +174,7 @@ UTF-8/NUL校验，最后预计算最终输出大小并分配；失败不含部�
 
 原创测试验证多态、词边界、预算/失败优先级与拥有性，Python独立ASCII正则覆盖全部合法
 非NUL Unicode标量及混合序列；TXT/RSS抽取与查询形状文字在测试中显式规范化后调用同一
-Tokenizer；统一管线、停用词及词频见后文，内存索引由倒排与权重组件提供；正式搜索服务尚未提供。
+Tokenizer；统一管线、停用词及词频见后文，内存索引由倒排与权重组件提供；正式本地检索由[siftwing-cli](docs/CLI.md)提供，网络服务属于后续计划。
 验收工具`siftwing_english_tokenizer_probe INPUT_BYTES TOKENS TOKEN_BYTES OUTPUT_BYTES < text`
 仅在启用测试时构建，stdout为规则版本及`tokens_hex`数组JSON；成功0、输入/内容失败1、
 参数错误2。它不隐式规范化，也不提供生产装载/持久化合同。本模块无新第三方库，
@@ -246,7 +246,7 @@ SimHash去重。例如再交付`中国`得到推荐中国3、a1 1；搜索DF中�
 空文字、无词或全过滤在文本层成功返回空分析；查询合法性由上述Query层判断。输入正文/标题和
 来源元数据不修改，返回结果不借用输入或管线；不隐式拼接标题、累计推荐词频、生成DF/身份或写索引。
 线程安全依赖所选Tokenizer的实际合同，`const`本身不提供保证；预算不是整个进程硬资源限。
-管线不保存未来快照资源身份，也不提供运行时替换配置。同一入口集成测试覆盖原创TXT/RSS/查询，
+管线不保存快照配置摘要；该身份由[indexer](docs/INDEXER.md)组装并写入manifest。管线不提供运行时替换配置。同一入口集成测试覆盖原创TXT/RSS/查询，
 独立参考校验英文Unicode边界及手算中文黄金；离线建库见[INDEXER.md](docs/INDEXER.md)，本地查询见[CLI.md](docs/CLI.md)。
 
 [simhash.h](include/siftwing/document/simhash.h)通过目标`siftwing_simhash`提供
