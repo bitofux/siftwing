@@ -127,6 +127,10 @@ target_link_libraries(siftwing_text_pipeline PUBLIC siftwing_text_normalization 
 add_library(siftwing_query STATIC src/query/query.cpp)
 target_link_libraries(siftwing_query PUBLIC siftwing_text_pipeline)
 
+# 候选只组合有效Query与原始倒排，不依赖权重或快照IO。
+add_library(siftwing_candidates STATIC src/query/candidates.cpp)
+target_link_libraries(siftwing_candidates PUBLIC siftwing_query siftwing_inverted_index)
+
 # 指纹只消费完整文档TF，不依赖读取器或具体分词资源，不决定去重保留集合。
 add_library(siftwing_simhash STATIC src/document/simhash.cpp)
 target_link_libraries(siftwing_simhash PUBLIC siftwing_term_frequency PRIVATE siftwing_utf8cpp)
@@ -481,6 +485,25 @@ if(BUILD_TESTING)
         "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/query-contract"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/query_compile_contract.cmake")
     set_tests_properties(query.model query.reference query.ingestion query.compile_contract PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_candidates_test tests/unit/candidates_test.cpp)
+    target_link_libraries(siftwing_candidates_test PRIVATE siftwing_candidates siftwing_tokenizer)
+    add_test(NAME query.candidates COMMAND siftwing_candidates_test)
+    add_executable(siftwing_candidates_probe tests/integration/candidates_probe.cpp)
+    target_link_libraries(siftwing_candidates_probe PRIVATE siftwing_candidates siftwing_tokenizer)
+    add_test(NAME query.candidates_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/candidates_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_candidates_probe>")
+    add_executable(siftwing_candidates_snapshot_test tests/integration/candidates_snapshot_test.cpp)
+    target_link_libraries(siftwing_candidates_snapshot_test PRIVATE siftwing_candidates siftwing_tokenizer
+        siftwing_cppjieba_tokenizer siftwing_txt_reader siftwing_rss_reader
+        siftwing_snapshot_writer siftwing_snapshot_reader)
+    add_test(NAME query.candidates_snapshot COMMAND siftwing_candidates_snapshot_test "${CMAKE_CURRENT_BINARY_DIR}")
+    add_test(NAME query.candidates_compile_contract COMMAND "${CMAKE_COMMAND}"
+        "-DCXX=${CMAKE_CXX_COMPILER}" "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/candidates-contract"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/candidates_compile_contract.cmake")
+    set_tests_properties(query.candidates query.candidates_reference query.candidates_snapshot
+        query.candidates_compile_contract PROPERTIES TIMEOUT 60)
     add_executable(siftwing_text_pipeline_test tests/unit/text_pipeline_test.cpp)
     target_link_libraries(siftwing_text_pipeline_test PRIVATE siftwing_text_pipeline)
     add_test(NAME text.pipeline COMMAND siftwing_text_pipeline_test)

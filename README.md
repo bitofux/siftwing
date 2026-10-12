@@ -7,10 +7,10 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 ## 项目状态
 
 查询层已有[Query模型](docs/QUERY.md)：复用建库文本管线，拥有过滤后词项/重复词频，
-校验AND/OR和top_k，并区分空查询错误与未知词。候选集合、排序、摘要、推荐查询与正式CLI
-仍由后续模块提供；Query本身不执行文档检索。
+校验AND/OR和top_k，并区分空查询错误与未知词。[候选集合](docs/CANDIDATES.md)已按AND/OR
+合并倒排，返回拥有的递增唯一文档身份；排序、摘要、推荐查询与正式CLI由后续模块提供。
 
-仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线、基于TF的64位SimHash指纹及独立批量去重决策；Query模型已提供，完整检索执行、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
+仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线、基于TF的64位SimHash指纹及独立批量去重决策；Query模型与候选集合已提供，完整检索执行、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
 
 ## 在 Ubuntu 上构建与测试
 
@@ -299,7 +299,7 @@ ctest --test-dir build/sanitize --output-on-failure --no-tests=error
 提供：显式文档身份与正整数出现次数，受检创建并校验同词列表的严格文档次序/条数预算。
 原始 TF、列表关系数与推荐累计各自保持口径；不自动排序/合并，不含权重或词位。
 调用方仍须保证同词/同快照/搜索保留集合，详见 [POSTING.md](docs/POSTING.md)。
-倒排构建、DF/文档统计和TF-IDF权重由下述索引目标提供；Query模型见上文，候选与排序仍待实现。
+倒排构建、DF/文档统计和TF-IDF权重由下述索引目标提供；Query与候选集合见上文，排序仍待实现。
 
 - 优先保证正确性与明确的所有权，避免过早优化。
 - 公共合同、失败行为和线程边界须可测试。
@@ -313,7 +313,7 @@ NOTICE，见[第三方依赖](docs/DEPENDENCIES.md)；分发含第三方静态�
 
 原始语料级关系由 [倒排索引构建](docs/INVERTED_INDEX.md) 和 `siftwing_inverted_index` 提供。
 调用方显式交付搜索保留文档的完整单文档 TF，构建器拥有固定词表、有序唯一 Posting List、
-DF 和文档/语料统计；该构建器不自行去重、不使用推荐累计，权重交由下述目标，候选与排序仍待实现。
+DF 和文档/语料统计；该构建器不自行去重、不使用推荐累计，权重交由下述目标，候选集合见上文，排序仍待实现。
 
 `siftwing_weights` 提供 [TF-IDF、L2归一化及规范字节导出](docs/WEIGHTS.md)。
 它显式接管原始索引，保留整数TF/DF/N，按平滑自然对数IDF生成文档单位权重，
@@ -331,7 +331,7 @@ DF 和文档/语料统计；该构建器不自行去重、不使用推荐累计�
 `siftwing_snapshot_reader`提供[完整快照加载](docs/SNAPSHOT_READER.md)：显式选择正式版本，
 核八文件集合、manifest/COMPLETE、六文件尺寸/SHA及记录、原TF/DF/权重、推荐字符跨文件关系，
 成功后只读拥有全部数据且不保留fd。数值运行环境须复现保存的规范权重字节；
-Query模型见上文；在线热切换、候选/排序与生产建库CLI尚未实现。
+Query与候选集合见上文；在线热切换、排序与生产建库CLI尚未实现。
 
 [快照往返验收](docs/SNAPSHOT_ROUNDTRIP.md)通过真实Writer/Reader及独立Python参考，验证
 固定元数据下重复构建、输入排列变化和加载后再发布的八文件一致性；另有原创TXT/RSS经

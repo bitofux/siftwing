@@ -234,3 +234,7 @@ M1.26无新第三方库或生产依赖。快照往返测试只组合已有Writer
 M1.27无新第三方库。`siftwing_query`仅PUBLIC依赖`siftwing_text_pipeline`，
 查询词键/重复词频由已有文本阶段提供，不引入索引或快照依赖。英文与原创cppjieba资源、
 TXT/RSS只用于对应真实接线测试；Python正则/Counter独立参考及探针不是生产查询入口。
+
+M1.28无新第三方库。`siftwing_candidates` PUBLIC依赖`siftwing_query`和`siftwing_inverted_index`，
+以标准库堆算法、二分查找和容器组合有效查询/索引。权重、Writer/Reader、TXT/RSS及英文/中文
+资源仅为真实接线测试显式依赖，不进入候选库；Python逐文档集合参考不调用生产合并算法。
