@@ -13,7 +13,7 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 保留完整准入与精确分数。[动态摘要](docs/SUMMARY.md)围绕原文首个查询词截取UTF-8标量窗口，
 保留原文字节与偏移，缺失正文返回空摘要。[关键词高亮](docs/HIGHLIGHT.md)合并原文重叠及相邻命中，
 完整转义正文后生成固定mark标签，并返回原字节区间。[候选词推荐](docs/RECOMMENDATION.md)使用
-独立字符索引召回、Unicode编辑距离和推荐词频稳定取前k；正式CLI由后续模块提供。
+独立字符索引召回、Unicode编辑距离和推荐词频稳定取前k；正式离线建库已由`siftwing-indexer`提供；本地SEARCH/SUGGEST命令留给其模块。
 
 仓库目前已有最小 CMake/CTest 构建探针：静态库、命令行程序、单元测试与 CLI 集成测试；另有原创、MIT 许可的 TXT/RSS 黄金输入及完整性测试。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线、基于TF的64位SimHash指纹及独立批量去重决策；Query模型、候选集合、余弦排序、稳定top-k、动态摘要、关键词高亮与候选词推荐已提供，完整检索执行、协议和Reactor能力仍属于计划。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
 
@@ -149,7 +149,7 @@ UTF-8/NUL校验，最后预计算最终输出大小并分配；失败不含部�
 
 公开单元验证规则/临界/拥有性，Python独立参考覆盖除NUL外全部合法Unicode标量及原创混合
 文本；接入测试用实际TXT/RSS适配器生成记录后显式调用同一helper。该接线测试只验证规范化，
-英文分词与统一文本管线见下文；完整建库/查询程序尚未实现。启用测试时的`siftwing_normalize_probe`支持
+英文分词与统一文本管线见下文；正式离线建库见[INDEXER.md](docs/INDEXER.md)，本地查询程序留给其模块。启用测试时的`siftwing_normalize_probe`支持
 `INPUT_BYTES OUTPUT_BYTES < text`，stdout为版本加hex字符串JSON；退出0表示成功，失败或
 装载超限1、配置错误2，仅为验收工具，不是生产装载/持久化接口。utfcpp来源/版本/许可仍见
 [DEPENDENCIES.md](docs/DEPENDENCIES.md)，本模块没有新增第三方库。
@@ -246,7 +246,7 @@ SimHash去重。例如再交付`中国`得到推荐中国3、a1 1；搜索DF中�
 来源元数据不修改，返回结果不借用输入或管线；不隐式拼接标题、累计推荐词频、生成DF/身份或写索引。
 线程安全依赖所选Tokenizer的实际合同，`const`本身不提供保证；预算不是整个进程硬资源限。
 管线不保存未来快照资源身份，也不提供运行时替换配置。同一入口集成测试覆盖原创TXT/RSS/查询，
-独立参考校验英文Unicode边界及手算中文黄金；尚未提供完整建库、搜索或推荐程序。
+独立参考校验英文Unicode边界及手算中文黄金；离线建库见[INDEXER.md](docs/INDEXER.md)，本地SEARCH/SUGGEST程序留给其模块。
 
 [simhash.h](include/siftwing/document/simhash.h)通过目标`siftwing_simhash`提供
 `make_simhash(DocumentTermFrequencies, SimHashLimits)`和`hamming_distance`。
@@ -287,7 +287,7 @@ CTest包含固定词哈希/手算投票、完整uint64权重/坏输入/预算/�
 配置与完整输入先预检，距离预算在每次计算前检查；等于上限合法，任何普通失败返回
 `duplicate.*`且没有部分决策或统计，分配/未知异常上传。函数无IO、共享可变状态；排序
 O(n log n)，指纹比较最坏O(n²)，预算不是进程硬限，不提前分桶。结果只是近似规则命中，
-未测真实去重准确率或大规模性能；存储和manifest由各自目标提供，生产建库CLI仍待实现。
+未测真实去重准确率或大规模性能；存储和manifest由各自目标提供，正式离线建库已由[siftwing-indexer](docs/INDEXER.md)接通。
 
 CTest使用手算非传递链和多命中、全部65×65阈值/距离组合、六候选720排列、空特征与预算失败，
 并接线原创TXT/RSS/中英文完整管线，使用独立Python逐位字符参考及公共头编译合同。
@@ -337,8 +337,16 @@ DF 和文档/语料统计；该构建器不自行去重、不使用推荐累计�
 `siftwing_snapshot_reader`提供[完整快照加载](docs/SNAPSHOT_READER.md)：显式选择正式版本，
 核八文件集合、manifest/COMPLETE、六文件尺寸/SHA及记录、原TF/DF/权重、推荐字符跨文件关系，
 成功后只读拥有全部数据且不保留fd。数值运行环境须复现保存的规范权重字节；
-Query、候选集合与余弦排序见上文；在线热切换与生产建库CLI尚未实现。
+Query、候选集合与余弦排序见上文；正式离线建库已接通；在线热切换与本地SEARCH/SUGGEST命令留给其模块。
 
 [快照往返验收](docs/SNAPSHOT_ROUNDTRIP.md)通过真实Writer/Reader及独立Python参考，验证
 固定元数据下重复构建、输入排列变化和加载后再发布的八文件一致性；另有原创TXT/RSS经
 英文文本管线、SimHash去重及独立推荐累计到快照加载的完整测试链路。
+
+## 正式离线建库
+
+`siftwing_indexer`构建为`siftwing-indexer`：两支分别显式选择TXT/RSS或空集、分词资源和停用词，
+搜索正文经SimHash去重/TF-IDF，推荐按全部交付累计；最后无覆盖发布完整快照。
+输入/资源只读，已有版本不覆盖，stdout报告独立统计及来源摘要，stderr保留读取诊断。
+命令示例、有限预算、退出码、已发布但持久性未确认的处理及证据边界见[INDEXER.md](docs/INDEXER.md)。
+该程序不依赖Python或测试探针，BUILD_TESTING=OFF也可构建。

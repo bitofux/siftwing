@@ -68,3 +68,6 @@ write/sync/close/read/directory/rename，或沿用 record/store/weights/manifest
 SHA-256检测意外损坏，不是认证或来源真实性证明。当前 Writer从有效部件派生文件，并核回读字节，
 不提供从任意目录解码并验证跨文件语义的 SnapshotReader，也不维护CURRENT指针、在线热切换、
 查询或CLI。所有持久化/路径条件只适用于调用方选定的新输出父目录，不访问原始私有语料。
+
+正式离线应用[siftwing-indexer](INDEXER.md)分别组装搜索保留集和推荐累计，产生本格式的完整快照；
+组件的旧API、预算/所有权、来源声明与发布/加载边界保持。正式本地SEARCH/SUGGEST入口由后续模块提供。

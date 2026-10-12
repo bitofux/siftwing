@@ -49,3 +49,6 @@ Reader不可复制，noexcept移动转交唯一State，源为空，自移动保�
 诊断context为reader.limits/path/open/stat/directory/bytes/read/close/version/syntax/semantic，
 或复用record/store/lexicon/index/weights/dictionary/manifest诊断。生产目标无新第三方库；
 测试包含独立Python struct/zlib/hashlib与数学/Unicode生成器，以及真实Writer接线和GNU ld IO故障包装。
+
+正式离线应用[siftwing-indexer](INDEXER.md)分别组装搜索保留集和推荐累计，产生本格式的完整快照；
+组件的旧API、预算/所有权、来源声明与发布/加载边界保持。正式本地SEARCH/SUGGEST入口由后续模块提供。

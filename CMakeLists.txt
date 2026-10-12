@@ -212,6 +212,13 @@ target_link_libraries(siftwing_bootstrap PUBLIC siftwing_build_options)
 add_executable(siftwing_build_probe apps/build_probe/main.cpp)
 target_link_libraries(siftwing_build_probe PRIVATE siftwing_bootstrap)
 
+# 正式离线入口：两支独立输入/资源，最后复用完整快照发布，不新增持久化格式。
+add_executable(siftwing_indexer apps/indexer/main.cpp)
+set_target_properties(siftwing_indexer PROPERTIES OUTPUT_NAME siftwing-indexer)
+target_link_libraries(siftwing_indexer PRIVATE siftwing_txt_reader siftwing_rss_reader
+    siftwing_text_pipeline siftwing_cppjieba_tokenizer siftwing_duplicate_decision
+    siftwing_snapshot_writer siftwing_tinyxml2)
+
 include(CTest)
 if(BUILD_TESTING)
     find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
@@ -223,6 +230,13 @@ if(BUILD_TESTING)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/build_probe_cli.cmake"
     )
     set_tests_properties(bootstrap.byte_probe bootstrap.cli PROPERTIES TIMEOUT 10)
+    add_test(NAME app.indexer_integration COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/indexer_test.py"
+        --indexer "$<TARGET_FILE:siftwing_indexer>" --reader "$<TARGET_FILE:siftwing_reader_probe>" --suite integration)
+    add_test(NAME app.indexer_failures COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/indexer_test.py"
+        --indexer "$<TARGET_FILE:siftwing_indexer>" --reader "$<TARGET_FILE:siftwing_reader_probe>" --suite failures)
+    set_tests_properties(app.indexer_integration app.indexer_failures PROPERTIES TIMEOUT 120)
     add_test(NAME fixtures.integrity
         COMMAND Python3::Interpreter -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/golden_fixtures_test.py"

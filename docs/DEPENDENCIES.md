@@ -259,3 +259,11 @@ vector::erase缩容，不重复浮点运算或改变旧预算。Writer/Reader、
 utfcpp4.0.6解码查询/候选标量；set并集、单行Levenshtein与三键排序由项目自身及标准库实现。
 不依赖搜索Query、排名、快照IO或新增距离库；Writer/Reader、TXT/RSS、中英文资源仅为接线
 测试依赖，独立Python全矩阵参考不进入生产。既有五库版本/SHA/许可证保持；参见[推荐合同](RECOMMENDATION.md)。
+
+## 正式离线建库应用
+
+`siftwing_indexer`（产物`siftwing-indexer`）仅复用上述固定版本及项目组件，未增第三方依赖。
+通过CMake PRIVATE链接TXT/RSS、文本管线/中文分词、去重、SnapshotWriter和tinyxml2；
+直接tinyxml2仅为准备RSS原item的身份，正式字段/编码/命名空间验证仍由RssDocumentReader完成。
+生产应用不依赖Python或测试探针；Python仅在BUILD_TESTING时运行独立应用验收。
+两支资源路径都由调用方显式提供，程序不隐式读取上游自带词典。详见[INDEXER.md](INDEXER.md)。
