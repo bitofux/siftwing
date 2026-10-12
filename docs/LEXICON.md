@@ -35,8 +35,9 @@ RecommendationDictionaryLimits 包含上述五预算及四正预算：交付次�
 词内重复字符只贡献一条关系，词频也不重复关系；中文和 emoji 以 Unicode 标量拆分，
 不是 UTF-8 字节、字素簇或完整 Unicode 文本等价归一化。例：词表 `a,b,中中,😀a` 对应
 ID `0,1,2,3`，字符 `a`→`[0,3]`、`中`→`[2]`、`😀`→`[3]`。
-这个索引不保存 DocumentId，不是词→文档倒排；候选并集/去重、编辑距离及 top-k 排序留给
-推荐查询模块。词典与字符索引提供确定性内存产物/枚举，持久化规范见[快照格式](SNAPSHOT_FORMAT.md)，由[Writer](SNAPSHOT_WRITER.md)/[Reader](SNAPSHOT_READER.md)发布和加载。
+这个索引不保存 DocumentId，不是词→文档倒排；[推荐查询](RECOMMENDATION.md)消费字符索引，
+完成共享字符候选并集/去重、Unicode编辑距离及 top-k 排序，只比较召回候选。词典与字符索引
+提供确定性内存产物/枚举，持久化规范见[快照格式](SNAPSHOT_FORMAT.md)，由[Writer](SNAPSHOT_WRITER.md)/[Reader](SNAPSHOT_READER.md)发布和加载。
 
 两个对象不可复制、允许 noexcept 移动与赋值；移动源清为空词表（推荐频次/字符索引及
 统计也清空），自移动保持。输入同步借用，成功后对象独立拥有；Result 失败只有诊断。

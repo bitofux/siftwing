@@ -254,3 +254,8 @@ vector::erase缩容，不重复浮点运算或改变旧预算。Writer/Reader、
 关键词高亮目标`siftwing_highlight`公开依赖查询模型，私有复用既有utfcpp4.0.6严格解码原文字；
 匹配区间保留原UTF-8字节，HTML实体与固定mark标签由项目自身生成。无新库、资源文件或
 持久化格式；无网络、HTML解析器或locale依赖。参见[高亮合同](HIGHLIGHT.md)。
+
+候选词推荐目标`siftwing_recommendation` PUBLIC依赖`siftwing_lexicon`、PRIVATE复用已固定
+utfcpp4.0.6解码查询/候选标量；set并集、单行Levenshtein与三键排序由项目自身及标准库实现。
+不依赖搜索Query、排名、快照IO或新增距离库；Writer/Reader、TXT/RSS、中英文资源仅为接线
+测试依赖，独立Python全矩阵参考不进入生产。既有五库版本/SHA/许可证保持；参见[推荐合同](RECOMMENDATION.md)。

@@ -150,6 +150,10 @@ target_link_libraries(siftwing_summary PUBLIC siftwing_query PRIVATE siftwing_ut
 add_library(siftwing_highlight STATIC src/query/highlight.cpp)
 target_link_libraries(siftwing_highlight PUBLIC siftwing_query PRIVATE siftwing_utf8cpp)
 
+# 推荐只消费独立词典，不依赖搜索Query、评分或快照IO。
+add_library(siftwing_recommendation STATIC src/query/recommendation.cpp)
+target_link_libraries(siftwing_recommendation PUBLIC siftwing_lexicon PRIVATE siftwing_utf8cpp)
+
 # 指纹只消费完整文档TF，不依赖读取器或具体分词资源，不决定去重保留集合。
 add_library(siftwing_simhash STATIC src/document/simhash.cpp)
 target_link_libraries(siftwing_simhash PUBLIC siftwing_term_frequency PRIVATE siftwing_utf8cpp)
@@ -560,6 +564,24 @@ if(BUILD_TESTING)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/summary_compile_contract.cmake")
     set_tests_properties(query.summary query.summary_reference query.summary_snapshot
         query.summary_compile_contract PROPERTIES TIMEOUT 60)
+
+    add_executable(siftwing_recommendation_test tests/unit/recommendation_test.cpp)
+    target_link_libraries(siftwing_recommendation_test PRIVATE siftwing_recommendation)
+    add_test(NAME query.recommendation COMMAND siftwing_recommendation_test)
+    add_executable(siftwing_recommendation_probe tests/integration/recommendation_probe.cpp)
+    target_link_libraries(siftwing_recommendation_probe PRIVATE siftwing_recommendation)
+    add_test(NAME query.recommendation_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/recommendation_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_recommendation_probe>")
+    add_executable(siftwing_recommendation_snapshot_test tests/integration/recommendation_snapshot_test.cpp)
+    target_link_libraries(siftwing_recommendation_snapshot_test PRIVATE siftwing_recommendation siftwing_snapshot_reader
+        siftwing_snapshot_writer siftwing_text_pipeline siftwing_cppjieba_tokenizer siftwing_txt_reader siftwing_rss_reader)
+    add_test(NAME query.recommendation_snapshot COMMAND siftwing_recommendation_snapshot_test "${CMAKE_CURRENT_BINARY_DIR}")
+    add_test(NAME query.recommendation_compile_contract COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+        "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}" "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/recommendation-compile-contract"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/recommendation_compile_contract.cmake")
+    set_tests_properties(query.recommendation query.recommendation_reference query.recommendation_snapshot
+        query.recommendation_compile_contract PROPERTIES TIMEOUT 60)
 
     add_executable(siftwing_highlight_test tests/unit/highlight_test.cpp)
     target_link_libraries(siftwing_highlight_test PRIVATE siftwing_highlight)
