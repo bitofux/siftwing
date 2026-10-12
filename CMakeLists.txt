@@ -146,6 +146,10 @@ target_link_libraries(siftwing_top_k PUBLIC siftwing_ranking)
 add_library(siftwing_summary STATIC src/query/summary.cpp)
 target_link_libraries(siftwing_summary PUBLIC siftwing_query PRIVATE siftwing_utf8cpp)
 
+# 高亮匹配原文后才转义；只依赖Query，不改变摘要或快照合同。
+add_library(siftwing_highlight STATIC src/query/highlight.cpp)
+target_link_libraries(siftwing_highlight PUBLIC siftwing_query PRIVATE siftwing_utf8cpp)
+
 # 指纹只消费完整文档TF，不依赖读取器或具体分词资源，不决定去重保留集合。
 add_library(siftwing_simhash STATIC src/document/simhash.cpp)
 target_link_libraries(siftwing_simhash PUBLIC siftwing_term_frequency PRIVATE siftwing_utf8cpp)
@@ -556,6 +560,25 @@ if(BUILD_TESTING)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/summary_compile_contract.cmake")
     set_tests_properties(query.summary query.summary_reference query.summary_snapshot
         query.summary_compile_contract PROPERTIES TIMEOUT 60)
+
+    add_executable(siftwing_highlight_test tests/unit/highlight_test.cpp)
+    target_link_libraries(siftwing_highlight_test PRIVATE siftwing_highlight)
+    add_test(NAME query.highlight COMMAND siftwing_highlight_test)
+    add_executable(siftwing_highlight_probe tests/integration/highlight_probe.cpp)
+    target_link_libraries(siftwing_highlight_probe PRIVATE siftwing_highlight)
+    add_test(NAME query.highlight_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/highlight_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_highlight_probe>")
+    add_executable(siftwing_highlight_snapshot_test tests/integration/highlight_snapshot_test.cpp)
+    target_link_libraries(siftwing_highlight_snapshot_test PRIVATE siftwing_highlight siftwing_summary siftwing_top_k
+        siftwing_snapshot_writer siftwing_snapshot_reader siftwing_txt_reader siftwing_rss_reader
+        siftwing_cppjieba_tokenizer)
+    add_test(NAME query.highlight_snapshot COMMAND siftwing_highlight_snapshot_test "${CMAKE_CURRENT_BINARY_DIR}")
+    add_test(NAME query.highlight_compile_contract COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+        "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}" "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/highlight-compile-contract"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/highlight_compile_contract.cmake")
+    set_tests_properties(query.highlight query.highlight_reference query.highlight_snapshot
+        query.highlight_compile_contract PROPERTIES TIMEOUT 60)
 
     add_executable(siftwing_top_k_test tests/unit/top_k_test.cpp)
     target_link_libraries(siftwing_top_k_test PRIVATE siftwing_top_k siftwing_tokenizer)

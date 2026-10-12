@@ -250,3 +250,7 @@ vector::erase缩容，不重复浮点运算或改变旧预算。Writer/Reader、
 
 动态摘要目标`siftwing_summary`公开依赖查询模型，私有复用既有utfcpp4.0.6严格解码原正文；
 不新增依赖，不把解码后的规范化匹配值用于显示文本或原文字节偏移。
+
+关键词高亮目标`siftwing_highlight`公开依赖查询模型，私有复用既有utfcpp4.0.6严格解码原文字；
+匹配区间保留原UTF-8字节，HTML实体与固定mark标签由项目自身生成。无新库、资源文件或
+持久化格式；无网络、HTML解析器或locale依赖。参见[高亮合同](HIGHLIGHT.md)。
