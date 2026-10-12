@@ -238,3 +238,8 @@ TXT/RSS只用于对应真实接线测试；Python正则/Counter独立参考及�
 M1.28无新第三方库。`siftwing_candidates` PUBLIC依赖`siftwing_query`和`siftwing_inverted_index`，
 以标准库堆算法、二分查找和容器组合有效查询/索引。权重、Writer/Reader、TXT/RSS及英文/中文
 资源仅为真实接线测试显式依赖，不进入候选库；Python逐文档集合参考不调用生产合并算法。
+
+M1.29无新第三方库。`siftwing_ranking` PUBLIC依赖`siftwing_candidates`与`siftwing_weights`，
+只用标准库vector、sort、lower_bound、hypot及cfenv，GNU/Clang目标禁fast-math及浮点收缩。
+Writer/Reader、TXT/RSS与英文/原创中文资源仅用于真实评分接线测试；Python Decimal高精度
+数学参考不进入生产依赖，不读取生产IDF/单位权重来生成期望。既有五库版本/SHA/许可证保持。

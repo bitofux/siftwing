@@ -33,6 +33,7 @@ AND从最短列表逐身份二分探测其余列表，只存最终交集；OR以
 OR时间O(P log(T+1))、工作游标O(T)；AND为最短列表长度乘其余列表二分成本，
 工作列表指针O(T)，两者输出O(C)。索引词表查找另计Query词键二分成本。
 函数无IO、打分、排序或共享可变缓存，输入必须稳定且不能与所有者移动/赋值/析构并发。
+独立[排序模块](RANKING.md)内部组合本函数与同索引权重，候选接口及预算语义保持。
 
 真实CTest为`query.candidates`、`query.candidates_reference`、`query.candidates_snapshot`、
 `query.candidates_compile_contract`。手写集合核未知/重复/端点/预算/拥有生命；Python固定种子

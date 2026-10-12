@@ -131,6 +131,13 @@ target_link_libraries(siftwing_query PUBLIC siftwing_text_pipeline)
 add_library(siftwing_candidates STATIC src/query/candidates.cpp)
 target_link_libraries(siftwing_candidates PUBLIC siftwing_query siftwing_inverted_index)
 
+# 排序只组合候选与已有单位权重；查询数值沿相同的严格浮点策略。
+add_library(siftwing_ranking STATIC src/query/ranking.cpp)
+target_link_libraries(siftwing_ranking PUBLIC siftwing_candidates siftwing_weights)
+if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+    target_compile_options(siftwing_ranking PRIVATE -fno-fast-math -ffp-contract=off)
+endif()
+
 # 指纹只消费完整文档TF，不依赖读取器或具体分词资源，不决定去重保留集合。
 add_library(siftwing_simhash STATIC src/document/simhash.cpp)
 target_link_libraries(siftwing_simhash PUBLIC siftwing_term_frequency PRIVATE siftwing_utf8cpp)
@@ -504,6 +511,25 @@ if(BUILD_TESTING)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/candidates_compile_contract.cmake")
     set_tests_properties(query.candidates query.candidates_reference query.candidates_snapshot
         query.candidates_compile_contract PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_ranking_test tests/unit/ranking_test.cpp)
+    target_link_libraries(siftwing_ranking_test PRIVATE siftwing_ranking siftwing_tokenizer)
+    add_test(NAME query.ranking COMMAND siftwing_ranking_test)
+    add_executable(siftwing_ranking_probe tests/integration/ranking_probe.cpp)
+    target_link_libraries(siftwing_ranking_probe PRIVATE siftwing_ranking siftwing_tokenizer)
+    add_test(NAME query.ranking_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ranking_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_ranking_probe>")
+    add_executable(siftwing_ranking_snapshot_test tests/integration/ranking_snapshot_test.cpp)
+    target_link_libraries(siftwing_ranking_snapshot_test PRIVATE siftwing_ranking siftwing_tokenizer
+        siftwing_cppjieba_tokenizer siftwing_txt_reader siftwing_rss_reader
+        siftwing_snapshot_writer siftwing_snapshot_reader)
+    add_test(NAME query.ranking_snapshot COMMAND siftwing_ranking_snapshot_test "${CMAKE_CURRENT_BINARY_DIR}")
+    add_test(NAME query.ranking_compile_contract COMMAND "${CMAKE_COMMAND}"
+        "-DCXX=${CMAKE_CXX_COMPILER}" "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/ranking-contract"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ranking_compile_contract.cmake")
+    set_tests_properties(query.ranking query.ranking_reference query.ranking_snapshot
+        query.ranking_compile_contract PROPERTIES TIMEOUT 60)
     add_executable(siftwing_text_pipeline_test tests/unit/text_pipeline_test.cpp)
     target_link_libraries(siftwing_text_pipeline_test PRIVATE siftwing_text_pipeline)
     add_test(NAME text.pipeline COMMAND siftwing_text_pipeline_test)
