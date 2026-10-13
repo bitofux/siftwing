@@ -9,7 +9,8 @@ V2 的 [帧头与字节序合同](docs/PROTOCOL.md)定义 24 字节布局、消�
 另有[帧编码、Body准入与统一响应](docs/FRAME_CODEC.md)及[codec黄金/损坏输入验证](docs/CODEC_TESTING.md)、
 [fd RAII与socket基线](docs/SOCKET_BASELINE.md)、[epoll创建与LT注册](docs/EPOLL_REGISTRATION.md)及
 [Listener与有界accept4接入](docs/LISTENER.md)、[Connection有界读取与请求准入](docs/CONNECTION_READ.md)
-及[有界响应输出、部分写与写事件意向](docs/CONNECTION_WRITE.md)。业务字段验证与Reactor网络服务尚未实现。
+及[有界响应输出、部分写与写事件意向](docs/CONNECTION_WRITE.md)。
+已有[单循环协议探针](docs/PROTOCOL_LOOP.md)接通 PING/PONG 与错误响应；业务搜索与 Main-Sub Reactor 网络服务尚未实现。
 
 ## 项目状态
 

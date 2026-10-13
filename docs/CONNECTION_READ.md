@@ -85,4 +85,4 @@ ctest --test-dir build/release --output-on-failure --no-tests=error -R '^net.con
 注入证明政策，不证明真实错误时序/资源耗尽。生产目标没有hook。本层没有生产EventLoop、
 自动写事件注册、业务执行、worker、ConnectionId/generation、超时或全局限额，
 没有任意线程安全或服务性能承诺。有界输出及写意向见[写入链路](CONNECTION_WRITE.md)；
-协议闭环和线程归属按独立模块实现。
+实际单线程上层调度见[协议Loop](PROTOCOL_LOOP.md)；Main-Sub线程归属按独立模块实现。

@@ -4,7 +4,8 @@
 本规范、黄金字节例子、[有界连续 Buffer](BUFFER.md)及[增量帧解码](FRAME_DECODER.md)；
 已有[帧编码、Body准入与统一响应](FRAME_CODEC.md)、[socket基线](SOCKET_BASELINE.md)、
 [监听接入](LISTENER.md)、[Connection读取与请求准入](CONNECTION_READ.md)
-及[有界响应写入](CONNECTION_WRITE.md)，Reactor与网络应用尚未实现。JSON业务
+及[有界响应写入](CONNECTION_WRITE.md)与[单循环协议探针](PROTOCOL_LOOP.md)。
+Main-Sub Reactor与业务网络服务尚未实现。JSON业务
 字段由对应后续模块定义，本文不将 V1 CLI 输出直接指定为网络响应。
 
 ## 传输与帧边界
@@ -94,7 +95,8 @@ ConnectionId、generation、全局唯一身份或幂等承诺。客户端不能�
 ## 检查顺序与失败边界
 
 接收处理按以下合同顺序进行；内存解码已实现第 1—2 步和第 3 步的完整性等待，
-独立codec提供Body准入和响应构造，Connection已接通socket读取、准入和关联响应写入；业务执行尚未实现：
+独立codec提供Body准入和响应构造，Connection已接通socket读取、准入和关联响应写入；
+单循环探针已接通PING/PONG及受信错误，业务执行尚未实现：
 
 1. 不足 24 字节：需要更多数据，不猜字段、不消费半个头、不交付请求。
 2. 满 24 字节：检查 magic → version → header_size → message_type → flags →
@@ -155,5 +157,6 @@ SEARCH_REQUEST 头部，body_length 为 `0xffffffff`，request_id 为 1：
 
 V1 的离线能力与限制仍见 [V1基线](V1.md)。本规范不改变其快照格式、CLI、查询接口或
 资源相容前提。已有最小 Buffer、增量拆帧和独立编码/Body准入/响应构造；进一步
-已有codec边界验证、socket资源/调用基线及Connection有界收发接线；Reactor服务按后续模块推进，
+已有codec边界验证、socket资源/调用基线及Connection有界收发接线、单循环协议探针；
+Main-Sub Reactor和业务服务按后续模块推进，
 此顺序不能由一份协议文档替代。

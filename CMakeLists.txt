@@ -88,6 +88,12 @@ target_link_libraries(siftwing_frame_codec PUBLIC siftwing_frame_decoder
 add_library(siftwing_connection STATIC src/net/connection.cc)
 target_link_libraries(siftwing_connection PUBLIC siftwing_socket siftwing_frame_codec)
 
+add_library(siftwing_protocol_loop STATIC src/net/protocol_loop.cc)
+target_link_libraries(siftwing_protocol_loop PUBLIC siftwing_connection siftwing_listener siftwing_epoll)
+add_executable(siftwing_protocol_probe apps/protocol_probe/main.cc)
+target_link_libraries(siftwing_protocol_probe PRIVATE siftwing_protocol_loop)
+set_target_properties(siftwing_protocol_probe PROPERTIES OUTPUT_NAME siftwing-protocol-probe)
+
 # 共用规范化只依赖基础结果/受检运算及固定版本UTF-8库，不耦合输入适配器。
 add_library(siftwing_text_normalization STATIC src/text/normalize.cc)
 target_link_libraries(siftwing_text_normalization PUBLIC siftwing_base PRIVATE siftwing_utf8cpp)
@@ -264,6 +270,16 @@ if(SIFTWING_BUILD_CODEC_FUZZER AND
     message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
 endif()
 if(BUILD_TESTING)
+    add_executable(siftwing_protocol_loop_test tests/unit/protocol_loop_test.cc)
+    target_link_libraries(siftwing_protocol_loop_test PRIVATE siftwing_protocol_loop)
+    add_test(NAME net.protocol_loop COMMAND siftwing_protocol_loop_test)
+    add_executable(siftwing_protocol_loop_failure_test tests/unit/protocol_loop_failure_test.cc)
+    target_link_libraries(siftwing_protocol_loop_failure_test PRIVATE siftwing_protocol_loop)
+    target_link_options(siftwing_protocol_loop_failure_test PRIVATE
+        -Wl,--wrap=socket -Wl,--wrap=epoll_create1 -Wl,--wrap=epoll_ctl -Wl,--wrap=epoll_wait
+        -Wl,--wrap=accept4 -Wl,--wrap=recv -Wl,--wrap=send -Wl,--wrap=close)
+    add_test(NAME net.protocol_loop_failures COMMAND siftwing_protocol_loop_failure_test)
+    set_tests_properties(net.protocol_loop net.protocol_loop_failures PROPERTIES TIMEOUT 30)
     add_executable(siftwing_connection_write_test tests/unit/connection_write_test.cc)
     target_link_libraries(siftwing_connection_write_test PRIVATE siftwing_connection siftwing_listener)
     add_test(NAME net.connection_write COMMAND siftwing_connection_write_test)
@@ -348,6 +364,9 @@ if(BUILD_TESTING)
     add_test(NAME net.buffer COMMAND siftwing_buffer_test)
     set_tests_properties(net.buffer PROPERTIES TIMEOUT 30)
     find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME net.protocol_probe_process COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/protocol_probe_test.py" $<TARGET_FILE:siftwing_protocol_probe>)
+    set_tests_properties(net.protocol_probe_process PROPERTIES TIMEOUT 30)
     add_test(NAME net.codec_reference COMMAND Python3::Interpreter -B
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/frame_codec_reference_test.py"
         --probe "$<TARGET_FILE:siftwing_codec_reference_probe>")

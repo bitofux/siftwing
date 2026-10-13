@@ -44,7 +44,8 @@ send/close；read_request 也可查询同一终止 I/O 首因，关闭错误不�
 显式 close 或读取终止同样清空输出及写意向。
 
 `needs_write()` 表示 fd 有效且输出非空，只是 EPOLLOUT 意向。所属上层必须用
-epoll MOD 实际更新掩码，失败时关闭；本类不注册 epoll，也没有生产 EventLoop。
+epoll MOD 实际更新掩码，失败时关闭；本类不注册 epoll。
+单线程调用者见[协议Loop](PROTOCOL_LOOP.md)，实际订阅由它管理。
 入队后可立即 flush，EAGAIN 或预算后保留 EPOLLOUT，排空后移除，避免 LT 可写空转。
 输出排空仅表示已交给内核，不证明对端接收、解析或业务完成。
 
@@ -65,6 +66,6 @@ ctest --test-dir build/release --output-on-failure --no-tests=error -R '^net.con
 send/close，以真实前缀发送配合有限 errno/零进展注入验证偏移、双预算、首因和单次关闭；
 逐实际分配点 bad_alloc 验证入队强保证，检查 flush 无分配。Release 检查不依赖 assert。
 
-注入验证错误政策，不能证明真实 OOM 或任意错误时序。未实现生产 Loop、worker、业务
+注入验证错误政策，不能证明真实 OOM 或任意错误时序。Connection自身不提供 Loop、worker、业务
 字段、跨线程完成、连接 generation、高低水位、全局限额或超时，不承诺任意线程安全、
 服务容量或性能；这些需相应后续模块明确启动。
