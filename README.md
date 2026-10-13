@@ -6,7 +6,8 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 
 V2 的 [帧头与字节序合同](docs/PROTOCOL.md)定义 24 字节布局、消息编号、长度和错误边界，
 并提供黄金字节例子；已有[有界连续 Buffer](docs/BUFFER.md)和[增量帧解码](docs/FRAME_DECODER.md)，
-另有[帧编码、Body准入与统一响应](docs/FRAME_CODEC.md)及[codec黄金/损坏输入验证](docs/CODEC_TESTING.md)。另有[fd RAII与socket基线](docs/SOCKET_BASELINE.md)。业务字段验证与网络服务尚未实现。
+另有[帧编码、Body准入与统一响应](docs/FRAME_CODEC.md)及[codec黄金/损坏输入验证](docs/CODEC_TESTING.md)、
+[fd RAII与socket基线](docs/SOCKET_BASELINE.md)和[epoll创建与LT注册](docs/EPOLL_REGISTRATION.md)。业务字段验证与网络服务尚未实现。
 
 ## 项目状态
 

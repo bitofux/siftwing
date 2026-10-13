@@ -34,6 +34,9 @@ target_link_libraries(siftwing_base INTERFACE siftwing_build_options)
 add_library(siftwing_socket STATIC src/net/unique_fd.cc src/net/socket_ops.cc)
 target_link_libraries(siftwing_socket PUBLIC siftwing_base)
 
+add_library(siftwing_epoll STATIC src/net/epoll_ops.cc)
+target_link_libraries(siftwing_epoll PUBLIC siftwing_socket)
+
 add_library(siftwing_buffer STATIC src/net/buffer.cc)
 target_link_libraries(siftwing_buffer PUBLIC siftwing_base)
 
@@ -255,6 +258,16 @@ if(SIFTWING_BUILD_CODEC_FUZZER AND
     message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
 endif()
 if(BUILD_TESTING)
+    add_executable(siftwing_epoll_ops_test tests/unit/epoll_ops_test.cc)
+    target_link_libraries(siftwing_epoll_ops_test PRIVATE siftwing_epoll)
+    add_test(NAME net.epoll_ops COMMAND siftwing_epoll_ops_test)
+    set_tests_properties(net.epoll_ops PROPERTIES TIMEOUT 30)
+    add_executable(siftwing_epoll_failure_test tests/unit/epoll_failure_test.cc)
+    target_link_libraries(siftwing_epoll_failure_test PRIVATE siftwing_epoll)
+    target_link_options(siftwing_epoll_failure_test PRIVATE
+        -Wl,--wrap=epoll_create1 -Wl,--wrap=epoll_ctl)
+    add_test(NAME net.epoll_failures COMMAND siftwing_epoll_failure_test)
+    set_tests_properties(net.epoll_failures PROPERTIES TIMEOUT 30)
     add_executable(siftwing_socket_ops_test tests/unit/socket_ops_test.cc)
     target_link_libraries(siftwing_socket_ops_test PRIVATE siftwing_socket)
     add_test(NAME net.socket_ops COMMAND siftwing_socket_ops_test)
