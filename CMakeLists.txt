@@ -11,6 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(SIFTWING_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+option(SIFTWING_BUILD_CODEC_FUZZER "Build the bounded Clang libFuzzer codec target" OFF)
 
 add_library(siftwing_build_options INTERFACE)
 target_compile_options(siftwing_build_options INTERFACE
@@ -245,7 +246,30 @@ target_link_libraries(siftwing_cli PRIVATE siftwing_snapshot_reader siftwing_top
     siftwing_summary siftwing_highlight siftwing_recommendation siftwing_cppjieba_tokenizer siftwing_utf8cpp)
 
 include(CTest)
+if(SIFTWING_BUILD_CODEC_FUZZER AND
+   (NOT BUILD_TESTING OR NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR
+    NOT SIFTWING_ENABLE_SANITIZERS))
+    message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
+endif()
 if(BUILD_TESTING)
+    add_library(siftwing_codec_properties STATIC tests/fuzz/frame_codec_properties.cc)
+    target_link_libraries(siftwing_codec_properties PUBLIC siftwing_frame_codec)
+    add_executable(siftwing_codec_mutation_test tests/fuzz/frame_codec_mutation_test.cc)
+    target_link_libraries(siftwing_codec_mutation_test PRIVATE siftwing_codec_properties)
+    add_test(NAME net.codec_mutations COMMAND siftwing_codec_mutation_test)
+    set_tests_properties(net.codec_mutations PROPERTIES TIMEOUT 120)
+    add_executable(siftwing_codec_reference_probe tests/integration/frame_codec_probe.cc)
+    target_link_libraries(siftwing_codec_reference_probe PRIVATE siftwing_frame_codec)
+    if(SIFTWING_BUILD_CODEC_FUZZER)
+        # 在专用目标直接重编译全部codec源码，使覆盖反馈进入实现，不只覆盖入口。
+        add_executable(siftwing_frame_codec_fuzzer tests/fuzz/frame_codec_fuzzer.cc
+            tests/fuzz/frame_codec_properties.cc src/net/buffer.cc
+            src/net/frame_decoder.cc src/net/frame_codec.cc)
+        target_link_libraries(siftwing_frame_codec_fuzzer PRIVATE siftwing_base
+            siftwing_utf8cpp siftwing_json)
+        target_compile_options(siftwing_frame_codec_fuzzer PRIVATE -fsanitize=fuzzer-no-link)
+        target_link_options(siftwing_frame_codec_fuzzer PRIVATE -fsanitize=fuzzer)
+    endif()
     add_executable(siftwing_frame_codec_test tests/unit/frame_codec_test.cc)
     target_link_libraries(siftwing_frame_codec_test PRIVATE siftwing_frame_codec)
     add_test(NAME net.frame_codec COMMAND siftwing_frame_codec_test)
@@ -259,6 +283,10 @@ if(BUILD_TESTING)
     add_test(NAME net.buffer COMMAND siftwing_buffer_test)
     set_tests_properties(net.buffer PROPERTIES TIMEOUT 30)
     find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME net.codec_reference COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/frame_codec_reference_test.py"
+        --probe "$<TARGET_FILE:siftwing_codec_reference_probe>")
+    set_tests_properties(net.codec_reference PROPERTIES TIMEOUT 120)
     add_executable(siftwing_byte_probe_test tests/unit/byte_probe_test.cc)
     target_link_libraries(siftwing_byte_probe_test PRIVATE siftwing_bootstrap)
     add_test(NAME bootstrap.byte_probe COMMAND siftwing_byte_probe_test)
