@@ -1,7 +1,8 @@
 # fd RAII 与 socket 基线
 
 已有[codec](FRAME_CODEC.md)处理内存帧。本层提供Linux资源拥有和原始socket调用，供后续
-事件循环、Listener与Connection使用；它没有epoll、连接调度、协议处理或业务服务。
+事件循环使用，并已供[Listener](LISTENER.md)与[Connection读取](CONNECTION_READ.md)复用；
+socket基线自身没有epoll、连接调度、协议处理或业务服务。
 
 ## fd 所有权
 
@@ -59,7 +60,8 @@ ctest --test-dir build/release --output-on-failure --no-tests=error -R '^net.soc
 - `net.socket_compile_contract`：真实编译合法移动/转交与禁止复制/临时get，使用当前构建编译器及C++17。
 
 测试使用显式检查，Release NDEBUG不会取消；loopback中的bind/listen/connect/accept4/poll仅为夹具，
-没有生产Listener/epoll/Connection。TCP夹具累计实际短IO，不把一次recv视为一个完整消息。
+本页测试只验证socket基线；后续已有[epoll注册](EPOLL_REGISTRATION.md)、Listener与Connection读取。
+TCP夹具累计实际短IO，不把一次recv视为一个完整消息。
 故障注入证明分支策略，不冒称真实信号时序或系统资源耗尽；fd计数只证明本次观察。
 未验证任意并发、真实EMFILE/OOM、RST时序、网络故障/吞吐/跨平台、codec接线或业务请求。
 EOF是读取方向状态，send成功只表示内核接受字节；以上测试不证明完整网络服务已实现。

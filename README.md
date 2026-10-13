@@ -8,7 +8,7 @@ V2 的 [帧头与字节序合同](docs/PROTOCOL.md)定义 24 字节布局、消�
 并提供黄金字节例子；已有[有界连续 Buffer](docs/BUFFER.md)和[增量帧解码](docs/FRAME_DECODER.md)，
 另有[帧编码、Body准入与统一响应](docs/FRAME_CODEC.md)及[codec黄金/损坏输入验证](docs/CODEC_TESTING.md)、
 [fd RAII与socket基线](docs/SOCKET_BASELINE.md)、[epoll创建与LT注册](docs/EPOLL_REGISTRATION.md)及
-[Listener与有界accept4接入](docs/LISTENER.md)。业务字段验证与Reactor网络服务尚未实现。
+[Listener与有界accept4接入](docs/LISTENER.md)及[Connection有界读取与请求准入](docs/CONNECTION_READ.md)。业务字段验证与Reactor网络服务尚未实现。
 
 ## 项目状态
 

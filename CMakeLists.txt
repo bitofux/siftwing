@@ -85,6 +85,9 @@ add_library(siftwing_frame_codec STATIC src/net/frame_codec.cc)
 target_link_libraries(siftwing_frame_codec PUBLIC siftwing_frame_decoder
     PRIVATE siftwing_utf8cpp siftwing_json)
 
+add_library(siftwing_connection STATIC src/net/connection.cc)
+target_link_libraries(siftwing_connection PUBLIC siftwing_socket siftwing_frame_codec)
+
 # 共用规范化只依赖基础结果/受检运算及固定版本UTF-8库，不耦合输入适配器。
 add_library(siftwing_text_normalization STATIC src/text/normalize.cc)
 target_link_libraries(siftwing_text_normalization PUBLIC siftwing_base PRIVATE siftwing_utf8cpp)
@@ -261,6 +264,15 @@ if(SIFTWING_BUILD_CODEC_FUZZER AND
     message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
 endif()
 if(BUILD_TESTING)
+    add_executable(siftwing_connection_read_test tests/unit/connection_read_test.cc)
+    target_link_libraries(siftwing_connection_read_test PRIVATE siftwing_connection siftwing_listener)
+    add_test(NAME net.connection_read COMMAND siftwing_connection_read_test)
+    set_tests_properties(net.connection_read PROPERTIES TIMEOUT 30)
+    add_executable(siftwing_connection_failure_test tests/unit/connection_failure_test.cc)
+    target_link_libraries(siftwing_connection_failure_test PRIVATE siftwing_connection)
+    target_link_options(siftwing_connection_failure_test PRIVATE -Wl,--wrap=recv -Wl,--wrap=close)
+    add_test(NAME net.connection_failures COMMAND siftwing_connection_failure_test)
+    set_tests_properties(net.connection_failures PROPERTIES TIMEOUT 30)
     add_executable(siftwing_listener_test tests/unit/listener_test.cc)
     target_link_libraries(siftwing_listener_test PRIVATE siftwing_listener siftwing_epoll)
     add_test(NAME net.listener COMMAND siftwing_listener_test)
