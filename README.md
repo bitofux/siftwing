@@ -6,7 +6,7 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 
 V2 的 [帧头与字节序合同](docs/PROTOCOL.md)定义 24 字节布局、消息编号、长度和错误边界，
 并提供黄金字节例子；已有[有界连续 Buffer](docs/BUFFER.md)和[增量帧解码](docs/FRAME_DECODER.md)，
-编码、JSON/业务验证与网络服务尚未实现。
+另有[帧编码、Body准入与统一响应](docs/FRAME_CODEC.md)。业务字段验证与网络服务尚未实现。
 
 ## 项目状态
 
@@ -20,7 +20,7 @@ V2 的 [帧头与字节序合同](docs/PROTOCOL.md)定义 24 字节布局、消�
 独立字符索引召回、Unicode编辑距离和推荐词频稳定取前k；正式离线建库由`siftwing-indexer`提供，
 本地SEARCH/SUGGEST由[siftwing-cli](docs/CLI.md)从完整快照独立执行。
 
-仓库提供完整离线建库与查询应用、组件行为/编译合同测试和端到端黄金集成测试；另保留最小 CMake/CTest 构建探针及原创、MIT 许可的 TXT/RSS 黄金输入。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线、基于TF的64位SimHash指纹及独立批量去重决策；Query模型、候选集合、余弦排序、稳定top-k、动态摘要、关键词高亮与候选词推荐已提供，本地完整检索执行由正式CLI提供，增量拆帧已提供，编码、JSON/业务验证和Reactor实现仍属于计划，线格式合同见[协议规范](docs/PROTOCOL.md)。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
+仓库提供完整离线建库与查询应用、组件行为/编译合同测试和端到端黄金集成测试；另保留最小 CMake/CTest 构建探针及原创、MIT 许可的 TXT/RSS 黄金输入。基础层提供 `Result<T>` / `Result<void>`、拥有诊断文本的 `Error`、受检整数运算，以及文档、词项和快照的强类型身份。文档层提供拥有标题、正文与来源元数据的 `DocumentRecord`，以及同步 `DocumentReader` 接口、读取报告与有界结果收集；各层均有运行行为及编译合同测试。TXT层提供严格UTF-8校验、一文件一篇、BOM/换行处理与明确失败报告；RSS层已提供RSS2字节适配、字段选择、HTML正文抽取与拥有型报告；文本层提供严格UTF-8的共用规范化helper，以及共享Tokenizer接口、有界ASCII英文/数字分词、cppjieba中文/混合分词、停用词过滤/词频统计和统一文本管线、基于TF的64位SimHash指纹及独立批量去重决策；Query模型、候选集合、余弦排序、稳定top-k、动态摘要、关键词高亮与候选词推荐已提供，本地完整检索执行由正式CLI提供，增量拆帧、帧编码、JSON对象准入和统一响应已提供，业务字段验证和Reactor实现仍属于计划，线格式合同见[协议规范](docs/PROTOCOL.md)。当前输入计划聚焦TXT与RSS XML；JSONL解析/导入已取消，独立HTML、PDF、DOCX、Excel和Markdown暂留后续扩展。
 
 ## C++ 代码格式化
 

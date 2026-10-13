@@ -279,3 +279,24 @@ cppjieba适配与既有utfcpp目标。固定schema的有界JSON字符串/整数/
 C++17标准库实现，不新增JSON库或第三方依赖；严格UTF-8验证复用utfcpp。应用不依赖Python
 或Writer探针；它们仅在BUILD_TESTING时构造原创快照、运行真实进程与独立参考。
 所有五库版本/SHA/许可证保持，资源仍由调用方显式提供，详见[CLI.md](CLI.md)。
+
+
+## 内存帧 Body 准入：nlohmann/json
+
+[帧 codec](FRAME_CODEC.md)使用 [nlohmann/json](https://github.com/nlohmann/json) **3.11.3**
+的 SAX 接口验证 JSON 语法、转义及根对象，不构建 DOM，不向公共头暴露第三方类型；
+严格 UTF-8 检查复用既有 utfcpp。解析深度最多64层，超出库数值表示范围拒绝；
+业务字段、重复键语义和网络收发不由这个库或本模块实现。
+
+```text
+https://codeload.github.com/nlohmann/json/tar.gz/refs/tags/v3.11.3
+SHA-256: 0d8ef5af7f9794e3263480193c491549b2ba6cc74bb018906202ada498a79406
+```
+
+归档以 FetchContent 固定哈希，不运行上游安装/测试；`siftwing_json` 用 SYSTEM INTERFACE
+声明头路径，codec PRIVATE 依赖此目标。上游 MIT 许可原文保留在
+[nlohmann-json-LICENSE.txt](../third_party/licenses/nlohmann-json-LICENSE.txt)，原文件亦包含
+所用数值转换代码的归属许可，不改写为项目原创。
+首次配置需要网络；离线可用 `-DFETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON=/ABS/VERIFIED/json-3.11.3`，
+该覆盖绕过下载哈希校验，必须独立确认来源/版本/完整性。升级须重验语法、数值、转义、
+深度与异常合同，不能只检查编译。

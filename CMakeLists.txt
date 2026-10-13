@@ -62,6 +62,19 @@ FetchContent_MakeAvailable(utf8cpp)
 add_library(siftwing_utf8cpp INTERFACE)
 target_include_directories(siftwing_utf8cpp SYSTEM INTERFACE "${utf8cpp_SOURCE_DIR}/source")
 
+# 固定 JSON 头文件归档；不运行上游安装/测试，公共 codec 接口不暴露第三方类型。
+FetchContent_Declare(nlohmann_json
+    URL https://codeload.github.com/nlohmann/json/tar.gz/refs/tags/v3.11.3
+    URL_HASH SHA256=0d8ef5af7f9794e3263480193c491549b2ba6cc74bb018906202ada498a79406
+    SOURCE_SUBDIR siftwing-header-only
+)
+FetchContent_MakeAvailable(nlohmann_json)
+add_library(siftwing_json INTERFACE)
+target_include_directories(siftwing_json SYSTEM INTERFACE "${nlohmann_json_SOURCE_DIR}/include")
+add_library(siftwing_frame_codec STATIC src/net/frame_codec.cc)
+target_link_libraries(siftwing_frame_codec PUBLIC siftwing_frame_decoder
+    PRIVATE siftwing_utf8cpp siftwing_json)
+
 # 共用规范化只依赖基础结果/受检运算及固定版本UTF-8库，不耦合输入适配器。
 add_library(siftwing_text_normalization STATIC src/text/normalize.cc)
 target_link_libraries(siftwing_text_normalization PUBLIC siftwing_base PRIVATE siftwing_utf8cpp)
@@ -233,6 +246,10 @@ target_link_libraries(siftwing_cli PRIVATE siftwing_snapshot_reader siftwing_top
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(siftwing_frame_codec_test tests/unit/frame_codec_test.cc)
+    target_link_libraries(siftwing_frame_codec_test PRIVATE siftwing_frame_codec)
+    add_test(NAME net.frame_codec COMMAND siftwing_frame_codec_test)
+    set_tests_properties(net.frame_codec PROPERTIES TIMEOUT 30)
     add_executable(siftwing_frame_decoder_test tests/unit/frame_decoder_test.cc)
     target_link_libraries(siftwing_frame_decoder_test PRIVATE siftwing_frame_decoder)
     add_test(NAME net.frame_decoder COMMAND siftwing_frame_decoder_test)
