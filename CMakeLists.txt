@@ -34,6 +34,9 @@ target_link_libraries(siftwing_base INTERFACE siftwing_build_options)
 add_library(siftwing_socket STATIC src/net/unique_fd.cc src/net/socket_ops.cc)
 target_link_libraries(siftwing_socket PUBLIC siftwing_base)
 
+add_library(siftwing_listener STATIC src/net/listener.cc)
+target_link_libraries(siftwing_listener PUBLIC siftwing_socket)
+
 add_library(siftwing_epoll STATIC src/net/epoll_ops.cc)
 target_link_libraries(siftwing_epoll PUBLIC siftwing_socket)
 
@@ -258,6 +261,17 @@ if(SIFTWING_BUILD_CODEC_FUZZER AND
     message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
 endif()
 if(BUILD_TESTING)
+    add_executable(siftwing_listener_test tests/unit/listener_test.cc)
+    target_link_libraries(siftwing_listener_test PRIVATE siftwing_listener siftwing_epoll)
+    add_test(NAME net.listener COMMAND siftwing_listener_test)
+    set_tests_properties(net.listener PROPERTIES TIMEOUT 30)
+    add_executable(siftwing_listener_failure_test tests/unit/listener_failure_test.cc)
+    target_link_libraries(siftwing_listener_failure_test PRIVATE siftwing_listener)
+    target_link_options(siftwing_listener_failure_test PRIVATE
+        -Wl,--wrap=socket -Wl,--wrap=setsockopt -Wl,--wrap=bind -Wl,--wrap=listen
+        -Wl,--wrap=getsockname -Wl,--wrap=accept4 -Wl,--wrap=close)
+    add_test(NAME net.listener_failures COMMAND siftwing_listener_failure_test)
+    set_tests_properties(net.listener_failures PROPERTIES TIMEOUT 30)
     add_executable(siftwing_epoll_ops_test tests/unit/epoll_ops_test.cc)
     target_link_libraries(siftwing_epoll_ops_test PRIVATE siftwing_epoll)
     add_test(NAME net.epoll_ops COMMAND siftwing_epoll_ops_test)
