@@ -1,0 +1,26 @@
+cmake_minimum_required(VERSION 3.20)
+# 拷贝与临时借用必须在编译期拒绝；成功例验证C++17下的显式转交和noexcept移动。
+file(MAKE_DIRECTORY "${BINARY_DIR}/socket_compile_contract")
+set(contract_dir "${BINARY_DIR}/socket_compile_contract")
+set(prefix "#include <siftwing/net/socket_ops.hpp>\n#include <type_traits>\n#include <utility>\nusing namespace siftwing::net;\n")
+set(valid "static_assert(std::is_nothrow_move_constructible_v<UniqueFd>);\nstatic_assert(std::is_nothrow_move_assignable_v<UniqueFd>);\nstatic_assert(!std::is_copy_constructible_v<SocketResult>);\nint main(){ UniqueFd a; UniqueFd b(std::move(a)); a=std::move(b); int fd=a.release(); UniqueFd c(fd); return c.get(); }\n")
+set(copy_construct "int main(){UniqueFd a; UniqueFd b(a);}\n")
+set(copy_assign "int main(){UniqueFd a,b; a=b;}\n")
+set(temporary_get "int main(){return UniqueFd().get();}\n")
+set(variant_temporary_get "int main(){return std::get<UniqueFd>(open_tcp_socket()).get();}\n")
+foreach(case_name valid copy_construct copy_assign temporary_get variant_temporary_get)
+    set(source "${contract_dir}/${case_name}.cc")
+    file(WRITE "${source}" "${prefix}${${case_name}}")
+    execute_process(COMMAND "${CXX_COMPILER}" -std=c++17 -Wall -Wextra -Wpedantic
+        -Wconversion -Wshadow "-I${SOURCE_DIR}/include" -c "${source}"
+        -o "${contract_dir}/${case_name}.o"
+        RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+    if(case_name STREQUAL "valid")
+        if(NOT result EQUAL 0 OR NOT error STREQUAL "")
+            message(FATAL_ERROR "合法拥有/移动合同编译失败或产生告警: ${output}${error}")
+        endif()
+    elseif(result EQUAL 0 OR NOT error MATCHES "deleted")
+        message(FATAL_ERROR "${case_name}未按删除成员合同拒绝: ${output}${error}")
+    endif()
+endforeach()
+message(STATUS "socket_compile_cases=5 failures=0")

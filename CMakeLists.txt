@@ -31,6 +31,9 @@ add_library(siftwing_base INTERFACE)
 target_include_directories(siftwing_base INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(siftwing_base INTERFACE siftwing_build_options)
 
+add_library(siftwing_socket STATIC src/net/unique_fd.cc src/net/socket_ops.cc)
+target_link_libraries(siftwing_socket PUBLIC siftwing_base)
+
 add_library(siftwing_buffer STATIC src/net/buffer.cc)
 target_link_libraries(siftwing_buffer PUBLIC siftwing_base)
 
@@ -252,6 +255,21 @@ if(SIFTWING_BUILD_CODEC_FUZZER AND
     message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
 endif()
 if(BUILD_TESTING)
+    add_executable(siftwing_socket_ops_test tests/unit/socket_ops_test.cc)
+    target_link_libraries(siftwing_socket_ops_test PRIVATE siftwing_socket)
+    add_test(NAME net.socket_ops COMMAND siftwing_socket_ops_test)
+    set_tests_properties(net.socket_ops PROPERTIES TIMEOUT 30)
+    add_executable(siftwing_socket_failure_test tests/unit/socket_failure_test.cc)
+    target_link_libraries(siftwing_socket_failure_test PRIVATE siftwing_socket)
+    target_link_options(siftwing_socket_failure_test PRIVATE
+        -Wl,--wrap=socket -Wl,--wrap=close -Wl,--wrap=recv -Wl,--wrap=send)
+    add_test(NAME net.socket_failures COMMAND siftwing_socket_failure_test)
+    set_tests_properties(net.socket_failures PROPERTIES TIMEOUT 30)
+    add_test(NAME net.socket_compile_contract COMMAND "${CMAKE_COMMAND}"
+        "-DCXX_COMPILER=${CMAKE_CXX_COMPILER}" "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/socket_compile_contract.cmake")
+    set_tests_properties(net.socket_compile_contract PROPERTIES TIMEOUT 30)
     add_library(siftwing_codec_properties STATIC tests/fuzz/frame_codec_properties.cc)
     target_link_libraries(siftwing_codec_properties PUBLIC siftwing_frame_codec)
     add_executable(siftwing_codec_mutation_test tests/fuzz/frame_codec_mutation_test.cc)
