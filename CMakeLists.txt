@@ -33,6 +33,9 @@ target_link_libraries(siftwing_base INTERFACE siftwing_build_options)
 add_library(siftwing_buffer STATIC src/net/buffer.cc)
 target_link_libraries(siftwing_buffer PUBLIC siftwing_base)
 
+add_library(siftwing_frame_decoder STATIC src/net/frame_decoder.cc)
+target_link_libraries(siftwing_frame_decoder PUBLIC siftwing_buffer)
+
 add_library(siftwing_document INTERFACE)
 target_link_libraries(siftwing_document INTERFACE siftwing_base)
 
@@ -230,6 +233,10 @@ target_link_libraries(siftwing_cli PRIVATE siftwing_snapshot_reader siftwing_top
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(siftwing_frame_decoder_test tests/unit/frame_decoder_test.cc)
+    target_link_libraries(siftwing_frame_decoder_test PRIVATE siftwing_frame_decoder)
+    add_test(NAME net.frame_decoder COMMAND siftwing_frame_decoder_test)
+    set_tests_properties(net.frame_decoder PROPERTIES TIMEOUT 30)
     add_executable(siftwing_buffer_test tests/unit/buffer_test.cc)
     target_link_libraries(siftwing_buffer_test PRIVATE siftwing_buffer)
     add_test(NAME net.buffer COMMAND siftwing_buffer_test)
