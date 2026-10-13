@@ -37,7 +37,7 @@ Body 上限为 `[2,1048576]`，默认 1 MiB；输入 Buffer 上限固定为 `24+
 | peer_eof | 空输入时读到0，关闭fd |
 | truncated | EOF残留半帧，关闭fd，不发布部分请求 |
 | header_error | 保留DecodeError首因，关闭fd，不猜ID、不扫描magic重同步 |
-| io_error | 其他recv错误，关闭fd，保留原errno |
+| io_error | recv或响应send终止错误，关闭fd，保留原errno |
 | local_failure | 本地异常曾原样抛出，连接已关闭，后续查询此状态 |
 | closed | 显式关闭，后续无I/O |
 
@@ -45,18 +45,20 @@ Body 上限为 `[2,1048576]`，默认 1 MiB；输入 Buffer 上限固定为 `24+
 缓存帧交付可二者均为0。字节/尝试预算限制I/O工作，不是JSON解析CPU硬预算。
 
 合法请求和 Body 拒绝都设置 `request_pending()` 门禁。V2.0 每连接一个在途请求；上层在
-响应实际写完后调用 `finish_request()`，不可仅在提交任务时解除。解除不自动读数据。
+响应实际写完后调用 `finish_request()`，不可仅在提交任务时解除。
+使用[响应输出链路](CONNECTION_WRITE.md)时，输出非空会拒绝解除；排空后仍须显式调用。
+原未使用输出API的读取调用方式保持，解除不自动读数据。
 如果已经预读下一帧，内核可能没有新数据，调用方必须主动再调用读取，不能只等新 epoll
 事件。尚未消费的顺序余量仍有界保存，门禁期间不继续从内核取数据。
 
 Body 错误的 request 仍含受信头/原Body/ID，可调用既有 `make_error_response`；它不是
 可执行的业务请求。`json_depth` 属本地资源拒绝，可选择 RESOURCE_LIMIT；其他 Body
 错误可选择 INVALID_REQUEST。错误响应本身必须容纳输出预算；上层也可以关闭连接。
-本模块不构造或发送响应，不保证它到达对端。
+读取API不自动构造或发送响应；上层可使用[输出API](CONNECTION_WRITE.md)，不保证它到达对端。
 
 ## 终止和异常
 
-头非法、截断、系统读取错误及干净 EOF 自动关闭一次并清空输入。重复读取保存终止原因、
+头非法、截断、系统读取错误及干净 EOF 自动关闭一次并清空输入和输出。重复读取保存终止原因、
 头诊断或原errno，计数为0，不重复关闭；关闭错误不会覆盖读取首因。`close()` 幂等，
 返回显式关闭的诊断，不重试 Linux close EINTR。
 
@@ -81,5 +83,6 @@ ctest --test-dir build/release --output-on-failure --no-tests=error -R '^net.con
 抛bad_alloc，核构造源保持、读取异常关闭以及已交付Frame独立。检查不依赖assert，Release有效。
 
 注入证明政策，不证明真实错误时序/资源耗尽。生产目标没有hook。本层没有生产EventLoop、
-写队列、写事件管理、业务执行、worker、ConnectionId/generation、超时或全局限额，
-没有任意线程安全或服务性能承诺。后续写入、协议闭环和线程归属按独立模块实现。
+自动写事件注册、业务执行、worker、ConnectionId/generation、超时或全局限额，
+没有任意线程安全或服务性能承诺。有界输出及写意向见[写入链路](CONNECTION_WRITE.md)；
+协议闭环和线程归属按独立模块实现。
