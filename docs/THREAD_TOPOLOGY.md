@@ -3,7 +3,7 @@
 本文冻结职责、资源转交和生命周期边界。当前可执行网络命令仍是
 [单循环协议探针](PROTOCOL_LOOP.md)；已有独立线程的[Sub生命周期](SUB_REACTOR.md)，
 已有独立[fd移交队列](FD_HANDOFF_QUEUE.md)、[eventfd唤醒组件](EVENTFD_WAKEUP.md)和[Main轮询接入组件](MAIN_REACTOR.md)；
-[多Sub协议集成](MULTI_REACTOR.md)以独立ProtocolSubReactor组合Main，验证固定归属与停止屏障；旧空Sub保持，独立[WorkerPool](WORKER_POOL.md)已实现，worker接入协议链和正式搜索服务命令仍待后续。
+[多Sub协议集成](MULTI_REACTOR.md)以独立ProtocolSubReactor组合Main，验证固定归属与停止屏障；旧空Sub保持，独立[WorkerPool](WORKER_POOL.md)及[SearchTask/Completion载荷](SEARCH_TASK.md)已实现，worker接入协议链和正式搜索服务命令仍待后续。
 本拓扑合同不规定具体 C++ API，也不改变[协议](PROTOCOL.md)；已实现接口见对应组件文档。
 
 ## 线程与职责
@@ -37,7 +37,7 @@ flowchart LR
 ```
 
 数据由队列持有，eventfd 只提示队列可能有工作；通知次数、任务数和连接数不相等。
-Main/Sub的队列与通知协议链已有集成验证；图中worker与Sub的业务接入、Completion和搜索业务路径仍是计划，独立WorkerPool已有组件验证。
+Main/Sub的队列与通知协议链已有集成验证；图中worker与Sub的业务接入、Completion回投和搜索业务路径仍是计划；独立WorkerPool及请求/响应拥有载荷已有组件验证。
 
 ## fd 转交：每个时点只有一个拥有者
 

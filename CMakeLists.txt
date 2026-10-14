@@ -102,6 +102,8 @@ add_library(siftwing_frame_codec STATIC src/net/frame_codec.cc)
 target_link_libraries(siftwing_frame_codec PUBLIC siftwing_frame_decoder
     PRIVATE siftwing_utf8cpp siftwing_json)
 
+add_library(siftwing_search_task STATIC src/concurrency/search_task.cc)
+target_link_libraries(siftwing_search_task PUBLIC siftwing_frame_codec)
 add_library(siftwing_connection STATIC src/net/connection.cc)
 target_link_libraries(siftwing_connection PUBLIC siftwing_socket siftwing_frame_codec)
 
@@ -290,6 +292,17 @@ if(SIFTWING_BUILD_CODEC_FUZZER AND
     message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
 endif()
 if(BUILD_TESTING)
+    add_executable(siftwing_search_task_test tests/unit/search_task_test.cc)
+    target_link_libraries(siftwing_search_task_test PRIVATE siftwing_search_task)
+    add_test(NAME concurrency.search_task COMMAND siftwing_search_task_test)
+    add_executable(siftwing_search_task_concurrency_test tests/unit/search_task_concurrency_test.cc)
+    target_link_libraries(siftwing_search_task_concurrency_test PRIVATE siftwing_search_task siftwing_worker_pool)
+    add_test(NAME concurrency.search_task_concurrency COMMAND siftwing_search_task_concurrency_test)
+    add_executable(siftwing_search_task_failure_test tests/unit/search_task_failure_test.cc)
+    target_link_libraries(siftwing_search_task_failure_test PRIVATE siftwing_search_task)
+    add_test(NAME concurrency.search_task_failures COMMAND siftwing_search_task_failure_test)
+    set_tests_properties(concurrency.search_task concurrency.search_task_concurrency
+        concurrency.search_task_failures PROPERTIES TIMEOUT 30)
     add_executable(siftwing_worker_pool_test tests/unit/worker_pool_test.cc)
     target_link_libraries(siftwing_worker_pool_test PRIVATE siftwing_worker_pool)
     add_test(NAME concurrency.worker_pool COMMAND siftwing_worker_pool_test)

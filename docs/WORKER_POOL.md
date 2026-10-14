@@ -2,7 +2,7 @@
 
 `concurrency::WorkerPool` 复用[有界TaskQueue](TASK_QUEUE.md)，提供固定线程的启动、独占任务执行、异常隔离与关闭排空。CMake 目标 `siftwing_worker_pool` 声明线程与队列依赖，公共合同以 [worker_pool.hpp](../include/siftwing/concurrency/worker_pool.hpp) 为准。
 
-`WorkerTask` 是具有虚析构与 `execute()` 的基础类型。生产者先构造拥有输入与依赖生命周期的任务，以 `unique_ptr<WorkerTask>` 左值提交；任务不得借用 Connection 或以 fd 数字代表连接。具体 SearchTask、Completion 数据、业务错误响应和网络接入属于后续模块；当前组件没有正式业务调用方。
+`WorkerTask` 是具有虚析构与 `execute()` 的基础类型。生产者先构造拥有输入与依赖生命周期的任务，以 `unique_ptr<WorkerTask>` 左值提交；任务不得借用 Connection 或以 fd 数字代表连接。独立[SearchTask/Completion](SEARCH_TASK.md)已有拥有型数据与响应构造，可由执行任务组合；业务执行和网络接入属于后续模块，当前组件没有正式业务调用方。
 
 ## 启动与拥有
 
