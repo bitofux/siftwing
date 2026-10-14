@@ -2,7 +2,7 @@
 
 本文冻结后续实现的职责、资源转交和生命周期边界。当前可运行网络入口仍是
 [单循环协议探针](PROTOCOL_LOOP.md)；已有独立线程的[Sub生命周期](SUB_REACTOR.md)，
-已有独立[fd移交队列](FD_HANDOFF_QUEUE.md)，独立[eventfd唤醒组件](EVENTFD_WAKEUP.md)与提交后通知已实现；Main、Sub连接/队列/通知接入和worker仍待集成。
+已有独立[fd移交队列](FD_HANDOFF_QUEUE.md)，独立[eventfd唤醒组件](EVENTFD_WAKEUP.md)与提交后通知已实现；独立[Main轮询接入组件](MAIN_REACTOR.md)已实现；旧Sub连接/队列/通知接入、完整多Sub服务与worker仍待集成。
 本拓扑合同不规定具体 C++ API，也不改变[协议](PROTOCOL.md)；已实现接口见对应组件文档。
 
 ## 线程与职责
@@ -59,10 +59,10 @@ flowchart LR
 提交与关闭入口必须有一个确定的先后点：先提交成功则 Sub 负责清理，先关闭则拒绝且
 Main 保持拥有。不能出现“返回失败但源已被消费”，也不能用通知写入成功来定义队列提交。
 fd队列已用FdHandoffResult区分accepted与closed/invalid_fd/full，公共合同见
-[队列说明](FD_HANDOFF_QUEUE.md)；通知结果由后续模块确定，必须区分提交与通知两个阶段。
+[队列说明](FD_HANDOFF_QUEUE.md)；通知结果已有[eventfd组合接口](EVENTFD_WAKEUP.md)，区分提交与通知两个阶段。
 
 轮询只选择就绪且接入入口开放的固定 Sub，游标按每次选定目标的移交尝试前进，
-满队列不在同一尝试中重新分配；具体实现和容量策略在分配模块验证。该合同不保证
+满队列不在同一尝试中重新分配；独立[Main轮询组件](MAIN_REACTOR.md)已验证此分配策略；服务完整接入仍计划。该合同不保证
 相等连接数、相等负载或均衡 CPU。运行时 Sub 退出按服务失败协调停止，不静默缩容。
 
 ## 连接、队列与索引的生命周期

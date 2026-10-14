@@ -15,6 +15,7 @@ V2 的 [帧头与字节序合同](docs/PROTOCOL.md)定义 24 字节布局、消�
 已有[Sub Reactor生命周期](docs/SUB_REACTOR.md)：独立线程、线程内epoll资源、就绪报告、有限等待停止和外部join；尚未接入连接、队列或eventfd。
 已有独立[fd有界移交队列](docs/FD_HANDOFF_QUEUE.md)：预分配FIFO、成功消费源、拒绝保持源、同步关闭入口与关闭后drain；Sub集成仍待后续实现。
 已有独立[eventfd新连接唤醒](docs/EVENTFD_WAKEUP.md)：入队后通知、合并计数与真实队列分离、有限drain；通知失败不撤销已提交fd。
+已有独立[Main Reactor轮询分配](docs/MAIN_REACTOR.md)：有限接入、固定目标移交、满队列不改投、跨线程停止通知与有限等待后备；完整多Sub服务接入仍待集成。
 
 ## 项目状态
 

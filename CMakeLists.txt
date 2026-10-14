@@ -50,6 +50,9 @@ target_link_libraries(siftwing_fd_handoff_queue PUBLIC siftwing_socket Threads::
 add_library(siftwing_eventfd_wakeup STATIC src/net/eventfd_wakeup.cc)
 target_link_libraries(siftwing_eventfd_wakeup PUBLIC siftwing_fd_handoff_queue)
 
+add_library(siftwing_main_reactor STATIC src/net/main_reactor.cc)
+target_link_libraries(siftwing_main_reactor PUBLIC siftwing_listener siftwing_epoll siftwing_eventfd_wakeup)
+
 add_library(siftwing_buffer STATIC src/net/buffer.cc)
 target_link_libraries(siftwing_buffer PUBLIC siftwing_base)
 
@@ -280,6 +283,22 @@ if(SIFTWING_BUILD_CODEC_FUZZER AND
     message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
 endif()
 if(BUILD_TESTING)
+    add_executable(siftwing_main_reactor_test tests/unit/main_reactor_test.cc)
+    target_link_libraries(siftwing_main_reactor_test PRIVATE siftwing_main_reactor)
+    add_test(NAME net.main_reactor COMMAND siftwing_main_reactor_test)
+    add_executable(siftwing_main_reactor_concurrency_test tests/unit/main_reactor_concurrency_test.cc)
+    target_link_libraries(siftwing_main_reactor_concurrency_test PRIVATE siftwing_main_reactor)
+    target_link_options(siftwing_main_reactor_concurrency_test PRIVATE -Wl,--wrap=write -Wl,--wrap=epoll_wait)
+    add_test(NAME net.main_reactor_concurrency COMMAND siftwing_main_reactor_concurrency_test)
+    add_executable(siftwing_main_reactor_failure_test tests/unit/main_reactor_failure_test.cc)
+    target_link_libraries(siftwing_main_reactor_failure_test PRIVATE siftwing_main_reactor)
+    target_link_options(siftwing_main_reactor_failure_test PRIVATE
+        -Wl,--wrap=socket -Wl,--wrap=epoll_create1 -Wl,--wrap=epoll_ctl -Wl,--wrap=eventfd
+        -Wl,--wrap=epoll_wait -Wl,--wrap=accept4 -Wl,--wrap=setsockopt -Wl,--wrap=write
+        -Wl,--wrap=close -Wl,--wrap=pthread_mutex_lock -Wl,--wrap=_Znwm)
+    add_test(NAME net.main_reactor_failures COMMAND siftwing_main_reactor_failure_test)
+    set_tests_properties(net.main_reactor net.main_reactor_concurrency
+        net.main_reactor_failures PROPERTIES TIMEOUT 30)
     add_executable(siftwing_eventfd_wakeup_test tests/unit/eventfd_wakeup_test.cc)
     target_link_libraries(siftwing_eventfd_wakeup_test PRIVATE siftwing_eventfd_wakeup siftwing_epoll)
     add_test(NAME net.eventfd_wakeup COMMAND siftwing_eventfd_wakeup_test)
