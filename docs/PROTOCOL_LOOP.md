@@ -85,3 +85,6 @@ stdout 的 `PORT <实际端口>` 可供独立客户端连接；结束输出 acce
 
 没有 Main-Sub Reactor、worker、eventfd、在线搜索、跨线程完成、高低水位、deadline、
 优雅退出、正式网络客户端或性能结论。后续能力按各自模块明确启动。
+
+后续拆分 Main/Sub 时遵循[线程拓扑与所有权合同](THREAD_TOPOLOGY.md)。本 Loop 保持单线程
+基线，不直接共享到多个线程；Sub 的连接 I/O 与 Main 的监听接入分别组合既有组件。

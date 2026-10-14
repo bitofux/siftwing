@@ -11,6 +11,7 @@ V2 的 [帧头与字节序合同](docs/PROTOCOL.md)定义 24 字节布局、消�
 [Listener与有界accept4接入](docs/LISTENER.md)、[Connection有界读取与请求准入](docs/CONNECTION_READ.md)
 及[有界响应输出、部分写与写事件意向](docs/CONNECTION_WRITE.md)。
 已有[单循环协议探针](docs/PROTOCOL_LOOP.md)接通 PING/PONG 与错误响应；业务搜索与 Main-Sub Reactor 网络服务尚未实现。
+后续实现遵循[线程拓扑与所有权合同](docs/THREAD_TOPOLOGY.md)，明确 Main/Sub 职责、fd 转交和停止清理边界；该合同尚无多线程运行实现。
 
 ## 项目状态
 
