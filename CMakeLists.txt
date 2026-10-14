@@ -40,6 +40,10 @@ target_link_libraries(siftwing_listener PUBLIC siftwing_socket)
 add_library(siftwing_epoll STATIC src/net/epoll_ops.cc)
 target_link_libraries(siftwing_epoll PUBLIC siftwing_socket)
 
+find_package(Threads REQUIRED)
+add_library(siftwing_sub_reactor STATIC src/net/sub_reactor.cc)
+target_link_libraries(siftwing_sub_reactor PUBLIC siftwing_epoll Threads::Threads)
+
 add_library(siftwing_buffer STATIC src/net/buffer.cc)
 target_link_libraries(siftwing_buffer PUBLIC siftwing_base)
 
@@ -270,6 +274,15 @@ if(SIFTWING_BUILD_CODEC_FUZZER AND
     message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
 endif()
 if(BUILD_TESTING)
+    add_executable(siftwing_sub_reactor_test tests/unit/sub_reactor_test.cc)
+    target_link_libraries(siftwing_sub_reactor_test PRIVATE siftwing_sub_reactor)
+    add_test(NAME net.sub_reactor COMMAND siftwing_sub_reactor_test)
+    add_executable(siftwing_sub_reactor_failure_test tests/unit/sub_reactor_failure_test.cc)
+    target_link_libraries(siftwing_sub_reactor_failure_test PRIVATE siftwing_sub_reactor)
+    target_link_options(siftwing_sub_reactor_failure_test PRIVATE
+        -Wl,--wrap=epoll_create1 -Wl,--wrap=epoll_wait -Wl,--wrap=close -Wl,--wrap=_Znwm)
+    add_test(NAME net.sub_reactor_failures COMMAND siftwing_sub_reactor_failure_test)
+    set_tests_properties(net.sub_reactor net.sub_reactor_failures PROPERTIES TIMEOUT 30)
     add_executable(siftwing_protocol_loop_test tests/unit/protocol_loop_test.cc)
     target_link_libraries(siftwing_protocol_loop_test PRIVATE siftwing_protocol_loop)
     add_test(NAME net.protocol_loop COMMAND siftwing_protocol_loop_test)
