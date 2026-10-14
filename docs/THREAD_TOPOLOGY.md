@@ -2,7 +2,7 @@
 
 本文冻结后续实现的职责、资源转交和生命周期边界。当前可运行网络入口仍是
 [单循环协议探针](PROTOCOL_LOOP.md)；已有独立线程的[Sub生命周期](SUB_REACTOR.md)，
-Main、Sub连接接入、跨线程队列、eventfd 和 worker 尚未实现。
+已有独立[fd移交队列](FD_HANDOFF_QUEUE.md)，Main、Sub连接/队列接入、eventfd 和 worker 尚未实现。
 本拓扑合同不规定具体 C++ API，也不改变[协议](PROTOCOL.md)；已实现接口见对应组件文档。
 
 ## 线程与职责
@@ -58,7 +58,8 @@ flowchart LR
 这里“队列属于 Sub”表示目标归属与生命周期，生产者只能使用同步后的发布入口。
 提交与关闭入口必须有一个确定的先后点：先提交成功则 Sub 负责清理，先关闭则拒绝且
 Main 保持拥有。不能出现“返回失败但源已被消费”，也不能用通知写入成功来定义队列提交。
-队列 API 和通知结果的具体类型分别由后续模块确定，必须能区分这两个阶段。
+fd队列已用FdHandoffResult区分accepted与closed/invalid_fd/full，公共合同见
+[队列说明](FD_HANDOFF_QUEUE.md)；通知结果由后续模块确定，必须区分提交与通知两个阶段。
 
 轮询只选择就绪且接入入口开放的固定 Sub，游标按每次选定目标的移交尝试前进，
 满队列不在同一尝试中重新分配；具体实现和容量策略在分配模块验证。该合同不保证
@@ -122,6 +123,7 @@ codec、socket 与 epoll 组件，Main 组合 Listener；共享算法需要提�
 | worker 与异步身份 | 无裸 Connection 指针/fd、独立数据拥有、generation 校验、过期 Completion 拒绝 |
 | 优雅退出 | worker 回投端点生命期、完成/取消/排空顺序、截止时间与无线程/fd 泄漏 |
 
-M2.12 的验证仅为合同审读与文档检查；后续 Sub 生命周期验证见[组件说明](SUB_REACTOR.md)。
+M2.12 的验证仅为合同审读与文档检查；Sub生命周期验证见[组件说明](SUB_REACTOR.md)，
+独立fd队列的验证入口见[队列说明](FD_HANDOFF_QUEUE.md)。
 尚无 Main/Sub 连接集成、吞吐、延迟或公平性实测；将来的实现与测试必须完成上述义务，
 不能以本文件存在或空 Sub 生命周期测试通过替代。
