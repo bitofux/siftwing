@@ -41,6 +41,8 @@ add_library(siftwing_epoll STATIC src/net/epoll_ops.cc)
 target_link_libraries(siftwing_epoll PUBLIC siftwing_socket)
 
 find_package(Threads REQUIRED)
+add_library(siftwing_task_queue INTERFACE)
+target_link_libraries(siftwing_task_queue INTERFACE siftwing_base Threads::Threads)
 add_library(siftwing_sub_reactor STATIC src/net/sub_reactor.cc)
 target_link_libraries(siftwing_sub_reactor PUBLIC siftwing_epoll Threads::Threads)
 
@@ -286,6 +288,19 @@ if(SIFTWING_BUILD_CODEC_FUZZER AND
     message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
 endif()
 if(BUILD_TESTING)
+    add_executable(siftwing_task_queue_test tests/unit/task_queue_test.cc)
+    target_link_libraries(siftwing_task_queue_test PRIVATE siftwing_task_queue)
+    add_test(NAME concurrency.task_queue COMMAND siftwing_task_queue_test)
+    add_executable(siftwing_task_queue_concurrency_test tests/unit/task_queue_concurrency_test.cc)
+    target_link_libraries(siftwing_task_queue_concurrency_test PRIVATE siftwing_task_queue)
+    add_test(NAME concurrency.task_queue_concurrency COMMAND siftwing_task_queue_concurrency_test)
+    add_executable(siftwing_task_queue_failure_test tests/unit/task_queue_failure_test.cc)
+    target_link_libraries(siftwing_task_queue_failure_test PRIVATE siftwing_task_queue)
+    target_link_options(siftwing_task_queue_failure_test PRIVATE
+        -Wl,--wrap=_Znwm -Wl,--wrap=pthread_mutex_lock)
+    add_test(NAME concurrency.task_queue_failures COMMAND siftwing_task_queue_failure_test)
+    set_tests_properties(concurrency.task_queue concurrency.task_queue_concurrency
+        concurrency.task_queue_failures PROPERTIES TIMEOUT 30)
     add_executable(siftwing_multi_reactor_test tests/integration/multi_reactor_test.cc)
     target_link_libraries(siftwing_multi_reactor_test PRIVATE siftwing_protocol_sub_reactor)
     target_link_options(siftwing_multi_reactor_test PRIVATE

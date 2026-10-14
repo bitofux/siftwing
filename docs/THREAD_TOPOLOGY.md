@@ -121,6 +121,7 @@ codec、socket 与 epoll 组件，Main 组合 Listener；共享算法需要提�
 | fd 有界队列 | 成功消费源；满/关闭/失败保留源；关闭竞态有提交点；遗留条目关闭一次 |
 | 新连接 eventfd | 队列与通知分离、合并/drain、EINTR/EAGAIN、成功提交后通知失败、发布者静止、停止可达 |
 | Main 轮询与多 Sub 集成 | Main 不读写客户端；固定归属；满队列拒绝；失败协调停止；旧单 Loop 保持 |
+| 有界 TaskQueue | [独立组件](TASK_QUEUE.md)已提供拥有任务移交、容量拒绝、消费者唤醒与关闭排空；线程池与业务接入仍待后续 |
 | worker 与异步身份 | 无裸 Connection 指针/fd、独立数据拥有、generation 校验、过期 Completion 拒绝 |
 | 优雅退出 | worker 回投端点生命期、完成/取消/排空顺序、截止时间与无线程/fd 泄漏 |
 
