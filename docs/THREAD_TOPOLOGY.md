@@ -3,7 +3,7 @@
 本文冻结职责、资源转交和生命周期边界。当前可执行网络命令仍是
 [单循环协议探针](PROTOCOL_LOOP.md)；已有独立线程的[Sub生命周期](SUB_REACTOR.md)，
 已有独立[fd移交队列](FD_HANDOFF_QUEUE.md)、[eventfd唤醒组件](EVENTFD_WAKEUP.md)和[Main轮询接入组件](MAIN_REACTOR.md)；
-[多Sub协议集成](MULTI_REACTOR.md)以独立ProtocolSubReactor组合Main，验证固定归属与停止屏障；旧空Sub保持，独立[WorkerPool](WORKER_POOL.md)及[SearchTask/Completion载荷](SEARCH_TASK.md)已实现，worker接入协议链和正式搜索服务命令仍待后续。
+[多Sub协议集成](MULTI_REACTOR.md)以独立ProtocolSubReactor组合Main，验证固定归属与停止屏障；旧空Sub保持，独立[WorkerPool](WORKER_POOL.md)及[SearchTask/Completion载荷](SEARCH_TASK.md)已实现，独立[CompletionQueue](COMPLETION_QUEUE.md)已提供结果邮箱；worker接入协议链和正式搜索服务命令仍待后续。
 本拓扑合同不规定具体 C++ API，也不改变[协议](PROTOCOL.md)；已实现接口见对应组件文档。
 
 ## 线程与职责

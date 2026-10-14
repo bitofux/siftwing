@@ -20,7 +20,7 @@ V2 的 [帧头与字节序合同](docs/PROTOCOL.md)定义 24 字节布局、消�
 
 已有独立[有界TaskQueue](docs/TASK_QUEUE.md)：独占任务提交、满/关闭时保留源、消费者谓词等待与关闭排空；已被独立WorkerPool复用，正式业务任务尚待后续。
 
-固定线程WorkerPool的就绪、任务异常隔离与关闭排空合同见[组件说明](docs/WORKER_POOL.md)。独立[SearchTask/Completion载荷](docs/SEARCH_TASK.md)已定义拥有请求与响应，独立[ConnectionId/generation与路由包装](docs/CONNECTION_IDENTITY.md)已实现，并迁移Sub注册元数据；正式业务执行与Completion回投仍待后续模块。
+固定线程WorkerPool的就绪、任务异常隔离与关闭排空合同见[组件说明](docs/WORKER_POOL.md)。独立[SearchTask/Completion载荷](docs/SEARCH_TASK.md)已定义拥有请求与响应，独立[ConnectionId/generation与路由包装](docs/CONNECTION_IDENTITY.md)已实现，并迁移Sub注册元数据；独立[CompletionQueue](docs/COMPLETION_QUEUE.md)已有有界结果归属/发布/关闭排空合同；正式业务执行与Completion回投仍待后续模块。
 
 ## 项目状态
 
