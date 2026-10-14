@@ -16,7 +16,7 @@ retire 仅精确匹配当前 reactor、slot、非零 generation 才撤销绑定�
 
 `ProtocolSubReactor` 内 Sessions 的固定 slot 仍独占 Connection；现在用身份表建立注册元数据，成功 ADD 后保存 ConnectionRegistration，ADD 失败 retire；drop 先撤销身份，再 DEL/close。事件仍携带原有单调 uint64 token，查表得到身份后核当前 slot 绑定才派发，不用复用 fd 数字猜目的地。
 
-PING/PONG、受信错误响应、读写预算、缓存继续、停止与发布者静止屏障保持。可选请求提交与结果应用见[回投说明](COMPLETION_WAKEUP.md)，真实查询业务仍未接入；没有公开 Connection 借用。独立 ProtocolLoop 保留原有单调 token 的单循环基线；该路径未接跨线程结果，不扩大为身份框架。
+PING/PONG、受信错误响应、读写预算、缓存继续、停止与发布者静止屏障保持。可选请求提交与结果应用见[回投说明](COMPLETION_WAKEUP.md)，真实查询业务已由[在线服务](ONLINE_SEARCH.md)接入；没有公开 Connection 借用。独立 ProtocolLoop 保留原有单调 token 的单循环基线；该路径未接跨线程结果，不扩大为身份框架。
 
 ## 跨线程包装
 

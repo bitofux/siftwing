@@ -1,6 +1,6 @@
 # eventfd结果回投
 
-公共接口见[completion_wakeup.hpp](../include/siftwing/net/completion_wakeup.hpp)和[ProtocolSubReactor](../include/siftwing/net/protocol_sub_reactor.hpp)，目标`siftwing_completion_wakeup`。它复用[CompletionQueue](COMPLETION_QUEUE.md)、[拥有路由载荷](CONNECTION_IDENTITY.md)和[有限eventfd通知](EVENTFD_WAKEUP.md)。已提供可选请求提交及所属Sub结果应用机制；真实SearchService与正式服务命令仍待业务接入。
+公共接口见[completion_wakeup.hpp](../include/siftwing/net/completion_wakeup.hpp)和[ProtocolSubReactor](../include/siftwing/net/protocol_sub_reactor.hpp)，目标`siftwing_completion_wakeup`。它复用[CompletionQueue](COMPLETION_QUEUE.md)、[拥有路由载荷](CONNECTION_IDENTITY.md)和[有限eventfd通知](EVENTFD_WAKEUP.md)。已提供可选请求提交及所属Sub结果应用机制；真实SEARCH/SUGGEST与生产服务命令见[在线搜索闭环](ONLINE_SEARCH.md)。
 
 ## 发布、通知与预算
 

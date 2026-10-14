@@ -295,6 +295,17 @@ set_target_properties(siftwing_cli PROPERTIES OUTPUT_NAME siftwing-cli)
 target_link_libraries(siftwing_cli PRIVATE siftwing_snapshot_reader siftwing_top_k
     siftwing_summary siftwing_highlight siftwing_recommendation siftwing_cppjieba_tokenizer siftwing_utf8cpp)
 
+# 在线服务只组合已封板核心；不迁移V1 CLI或旧ProtocolLoop合同。
+add_library(siftwing_search_service STATIC src/query/search_service.cc)
+target_link_libraries(siftwing_search_service PUBLIC siftwing_search_task
+    PRIVATE siftwing_snapshot_reader siftwing_top_k siftwing_recommendation siftwing_summary
+    siftwing_highlight siftwing_cppjieba_tokenizer siftwing_utf8cpp siftwing_json)
+add_library(siftwing_online_server STATIC src/net/online_server.cc)
+target_link_libraries(siftwing_online_server PUBLIC siftwing_protocol_sub_reactor siftwing_worker_pool siftwing_search_service)
+add_executable(siftwing_server apps/server/main.cc)
+set_target_properties(siftwing_server PROPERTIES OUTPUT_NAME siftwing-server)
+target_link_libraries(siftwing_server PRIVATE siftwing_online_server)
+
 include(CTest)
 if(SIFTWING_BUILD_CODEC_FUZZER AND
    (NOT BUILD_TESTING OR NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR
@@ -535,6 +546,17 @@ if(BUILD_TESTING)
     add_test(NAME net.buffer COMMAND siftwing_buffer_test)
     set_tests_properties(net.buffer PROPERTIES TIMEOUT 30)
     find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
+    add_executable(siftwing_online_server_failure_test tests/integration/online_server_failure_test.cc)
+    target_link_libraries(siftwing_online_server_failure_test PRIVATE siftwing_online_server)
+    target_link_options(siftwing_online_server_failure_test PRIVATE -Wl,--wrap=write -Wl,--wrap=_Znwm -Wl,--wrap=epoll_ctl -Wl,--wrap=epoll_wait -Wl,--wrap=send -Wl,--wrap=recv)
+    foreach(suite IN ITEMS integration concurrency failures native)
+        add_test(NAME net.online_search_${suite} COMMAND Python3::Interpreter -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/online_search_test.py"
+            --server "$<TARGET_FILE:siftwing_server>" --indexer "$<TARGET_FILE:siftwing_indexer>"
+            --writer "$<TARGET_FILE:siftwing_writer_probe>" --native "$<TARGET_FILE:siftwing_online_server_failure_test>"
+            --suite ${suite})
+        set_tests_properties(net.online_search_${suite} PROPERTIES TIMEOUT 120)
+    endforeach()
     add_test(NAME net.protocol_probe_process COMMAND Python3::Interpreter -B
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/protocol_probe_test.py" $<TARGET_FILE:siftwing_protocol_probe>)
     set_tests_properties(net.protocol_probe_process PROPERTIES TIMEOUT 30)

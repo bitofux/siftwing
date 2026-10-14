@@ -1,0 +1,88 @@
+/*
+ * PROJECT : SIFTWING
+ * FILE    : online_server.hpp
+ * AUTHOR  : bitofux
+ * DATE    : 2026-10-15
+ * BRIEF   : 固定Main/Sub/worker与只读服务的生产闭环控制者
+ */
+#pragma once
+#include "siftwing/net/protocol_sub_reactor.hpp"
+#include "siftwing/query/search_service.hpp"
+#include "siftwing/concurrency/worker_pool.hpp"
+
+namespace siftwing::net {
+/** @brief 完整启动前固定的配置；默认loopback，条目预算不表示全局内存硬限。 */
+struct OnlineServerConfig {
+    ListenConfig listen; ///< 沿Listener数值地址合同，默认127.0.0.1/端口0。
+    std::size_t sub_count = 2; ///< [1,64]，各Sub身份为0..count-1，不动态扩缩容。
+    std::size_t workers = 4; ///< [1,64]固定worker，服务在所有线程退出后才销毁。
+    std::size_t task_capacity = 128; ///< [1,1024]等待任务条目；full返回既有OVERLOADED。
+    ProtocolSubConfig sub; ///< 复用Sub固定预算；reactor_id须0、submitter须空，由控制者设置。
+    MainReactorConfig main; ///< 复用Main有限接入预算。
+};
+/** @brief 控制线程取得的报告；运行时是快照，停止后worker/Sub全部静止。 */
+struct OnlineServerReport {
+    std::size_t accepted = 0, handed_off = 0, rejected = 0; ///< Main累计接入/移交/拒绝。
+    concurrency::WorkerPoolReport workers; ///< 只证明execute返回，不证明网络送达。
+    std::vector<ProtocolSubStatus> subs; ///< 各Sub自己的同步快照。
+    std::error_code first_error; ///< Main/Sub/结果发布首因；局部业务错误不在此计入。
+    bool stopped = false; ///< stop已完成静止屏障和资源清理。
+};
+/**
+ * @brief 创建线程拥有Main、固定Sub/worker与SearchService；worker只处理拥有数据
+ * @note 所有公共API和析构由创建线程串行调用，无跨线程控制借用；不可copy/move/重启。
+ *     Main在调用线程接入，Sub独占Connection，worker共享稳定只读服务。
+ *     停止立即丢弃网络输出，worker关闭排空；无期限、取消或优雅退出承诺。
+ */
+class OnlineServer final {
+public:
+    /**
+     * @brief 全部Sub/结果目标就绪后开放监听；失败按同一发布者静止顺序回滚
+     * @param[in] service
+     *     按值接管非空完整服务；成功/失败均不返还已移动所有者。
+     * @param[in] config
+     *     按值取得固定配置，预检非法配置不启动线程或I/O。
+     *
+     * @return
+     *     完整拥有server或generic errno；配置EINVAL、分配ENOMEM、其他异常EIO/原system_error。
+     * @throws
+     *     不可恢复同步/join设施损坏沿底层合同，回滚不能伪造静止保证。
+     */
+    [[nodiscard]] static std::variant<std::unique_ptr<OnlineServer>, std::error_code> create(
+        std::unique_ptr<query::SearchService> service, OnlineServerConfig config = {});
+    /** @brief 创建线程在无外部调用时stop兜底；同步设施不可恢复则terminate。 */
+    ~OnlineServer() noexcept;
+    OnlineServer(const OnlineServer &) = delete;
+    OnlineServer &operator=(const OnlineServer &) = delete;
+    OnlineServer(OnlineServer &&) = delete;
+    OnlineServer &operator=(OnlineServer &&) = delete;
+    /** @brief 创建线程取得实际监听端口；停止后0，无fd借用。 */
+    [[nodiscard]] std::uint16_t port() const noexcept;
+    /**
+     * @brief 有限接入一轮，同时检查Sub/结果发布首因，失败立即执行stop
+     * @param[in] timeout_ms
+     *     [0,100]；非法EINVAL且状态保持，已经停止优先返回首因。
+     *
+     * @return
+     *     空为仍可运行；业务INVALID_REQUEST/RESOURCE_LIMIT只是响应，不终止服务。
+     * @throws
+     *     控制线程同步/join异常可传播；析构仍须撤销全部调用入口。
+     */
+    [[nodiscard]] std::error_code run_once(int timeout_ms);
+    /**
+     * @brief Main关闭返回→Sub静止提交→worker完整join→撤目标/release→Sub join，幂等
+     * @return
+     *     首因或首清理诊断；结果full/通知异常不回滚已accepted条目、不重投。
+     * @note 等待已接收任务完成，无硬时间上限；返回才允许销毁服务/submitter/目标。
+     * @throws
+     *     控制同步/join异常沿底层合同，不把closed/empty当作静止证明。
+     */
+    [[nodiscard]] std::error_code stop();
+    /** @brief 创建线程汇总同步快照；mutex/复制分配异常传播，不延长任何借用。 */
+    [[nodiscard]] OnlineServerReport report() const;
+private:
+    struct Impl;
+    explicit OnlineServer(std::unique_ptr<Impl> state) noexcept;
+    std::unique_ptr<Impl> state_; ///< 独占控制状态；析构前依次完成发布者屏障。
+};
+} // namespace siftwing::net

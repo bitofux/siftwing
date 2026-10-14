@@ -8,7 +8,7 @@ Main 不读取业务，Connection 从构造到释放始终归属同一个 Sub。
 
 原 [SubReactor](SUB_REACTOR.md)空生命周期和 [ProtocolLoop](PROTOCOL_LOOP.md)单线程基线保持。
 新类型提供独立接口；测试专用[组合控制者](../tests/support/multi_reactor_fixture.hpp)展示启动、
-运行错误汇总和停止顺序。尚未推出正式服务命令、真实查询业务或响应优雅排空。
+运行错误汇总和停止顺序。已通过[在线搜索闭环](ONLINE_SEARCH.md)提供生产查询命令；响应优雅排空仍待后续。
 默认只响应 PING/PONG 和受信 ERROR，其他合法业务请求返回 INVALID_REQUEST；可选请求提交器及worker结果应用见[回投说明](COMPLETION_WAKEUP.md)。
 
 ## 固定容量与职责
@@ -82,4 +82,4 @@ CTest 注册 net.multi_reactor、net.multi_reactor_concurrency、net.multi_react
 链接包装和 Linux 观测是测试机制，不是 ISO C++ API。未证明任意调度、公平性、吞吐、
 真实 OOM、完整搜索服务或 worker 的生命周期。
 
-身份注册元数据已迁移到[ConnectionIdentityTable](CONNECTION_IDENTITY.md)，保持单调epoll token及原协议行为；跨线程拥有路由包装已提供，独立[CompletionQueue](COMPLETION_QUEUE.md)已有结果邮箱；[结果队列/eventfd回投](COMPLETION_WAKEUP.md)已接入可选请求提交器，默认协议行为保持；真实worker查询业务仍待接入。
+身份注册元数据已迁移到[ConnectionIdentityTable](CONNECTION_IDENTITY.md)，保持单调epoll token及原协议行为；跨线程拥有路由包装已提供，独立[CompletionQueue](COMPLETION_QUEUE.md)已有结果邮箱；[结果队列/eventfd回投](COMPLETION_WAKEUP.md)已接入可选请求提交器，默认协议行为保持；真实worker查询业务已由[在线服务](ONLINE_SEARCH.md)接入。

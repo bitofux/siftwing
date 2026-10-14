@@ -1,6 +1,6 @@
 # 有界 CompletionQueue
 
-`concurrency::CompletionQueue` 是一个固定Reactor目的地的拥有结果邮箱，目标 `siftwing_completion_queue`。公共合同见[completion_queue.hpp](../include/siftwing/concurrency/completion_queue.hpp)，载荷沿用[RoutedCompletion](CONNECTION_IDENTITY.md)。它已通过[eventfd结果回投](COMPLETION_WAKEUP.md)接入ProtocolSubReactor的可选提交器；真实查询业务仍待接入。
+`concurrency::CompletionQueue` 是一个固定Reactor目的地的拥有结果邮箱，目标 `siftwing_completion_queue`。公共合同见[completion_queue.hpp](../include/siftwing/concurrency/completion_queue.hpp)，载荷沿用[RoutedCompletion](CONNECTION_IDENTITY.md)。它已通过[eventfd结果回投](COMPLETION_WAKEUP.md)接入ProtocolSubReactor的可选提交器；真实查询业务已由[在线服务](ONLINE_SEARCH.md)接入。
 
 ## 发布与容量
 
@@ -26,4 +26,4 @@ close同锁幂等关闭入口，保留已有条目继续取出，不创建或执
 
 三个真实CTest覆盖容量/环绕FIFO、拒绝保持及错误顺序、跨owner隔离和陈旧结果锁外门禁；真实WorkerPool多生产者向一个结果消费者交接，独立逐id/route/Body核恰一次；发布与close竞争按每次实际回执核所有结果。GNU静态new/mutex包装验证预分配失败、初次锁错误和操作零分配；不覆盖真实OOM、DSO内部new或任意同步设施损坏。
 
-Debug/Release全量及独立ASan/UBSan、TSan结果以验证日志为准。[eventfd通知及Sub应用](COMPLETION_WAKEUP.md)已实现；查询执行、期限取消和优雅退出仍属于后续模块。本队列的独立测试不证明在线搜索已接通。
+Debug/Release全量及独立ASan/UBSan、TSan结果以验证日志为准。[eventfd通知及Sub应用](COMPLETION_WAKEUP.md)已实现；真实查询执行见[在线服务](ONLINE_SEARCH.md)，期限取消和优雅退出仍属于后续模块。本队列的独立测试不证明在线搜索已接通。

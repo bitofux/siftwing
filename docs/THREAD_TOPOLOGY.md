@@ -1,15 +1,15 @@
 # Main-Sub Reactor 线程拓扑与所有权合同
 
-本文冻结职责、资源转交和生命周期边界。当前可执行网络命令仍是
-[单循环协议探针](PROTOCOL_LOOP.md)；已有独立线程的[Sub生命周期](SUB_REACTOR.md)，
+本文冻结职责、资源转交和生命周期边界。已有可执行网络命令包括
+[单循环协议探针](PROTOCOL_LOOP.md)与[在线搜索服务](ONLINE_SEARCH.md)；已有独立线程的[Sub生命周期](SUB_REACTOR.md)，
 已有独立[fd移交队列](FD_HANDOFF_QUEUE.md)、[eventfd唤醒组件](EVENTFD_WAKEUP.md)和[Main轮询接入组件](MAIN_REACTOR.md)；
-[多Sub协议集成](MULTI_REACTOR.md)以独立ProtocolSubReactor组合Main，验证固定归属与停止屏障；旧空Sub保持，独立[WorkerPool](WORKER_POOL.md)及[SearchTask/Completion载荷](SEARCH_TASK.md)已实现，独立[CompletionQueue](COMPLETION_QUEUE.md)已提供结果邮箱；[eventfd结果回投](COMPLETION_WAKEUP.md)已提供可选请求提交/所属Sub应用路径；真实查询与正式搜索服务命令仍待后续。
+[多Sub协议集成](MULTI_REACTOR.md)以独立ProtocolSubReactor组合Main，验证固定归属与停止屏障；旧空Sub保持，独立[WorkerPool](WORKER_POOL.md)及[SearchTask/Completion载荷](SEARCH_TASK.md)已实现，独立[CompletionQueue](COMPLETION_QUEUE.md)已提供结果邮箱；[eventfd结果回投](COMPLETION_WAKEUP.md)已提供可选请求提交/所属Sub应用路径；真实查询与生产服务命令见[在线搜索闭环](ONLINE_SEARCH.md)。
 本拓扑合同不规定具体 C++ API，也不改变[协议](PROTOCOL.md)；已实现接口见对应组件文档。
 
 ## 线程与职责
 
 目标拓扑包含1个Main I/O线程、启动时配置的N个Sub I/O线程（N为正，默认2）和独立worker池。
-[有界业务线程池](WORKER_POOL.md)已提供固定1—64线程；正式业务接入仍待后续，
+[有界业务线程池](WORKER_POOL.md)已提供固定1—64线程；真实业务已由[在线服务](ONLINE_SEARCH.md)接入，
 不把硬件并发数当作必然可用线程数。每个 Reactor 使用自己的 LT epoll 和 wakeup eventfd；
 ET、动态扩缩容、连接迁移和无锁队列留给有证据的后续扩展。
 
@@ -63,7 +63,7 @@ fd队列已用FdHandoffResult区分accepted与closed/invalid_fd/full，公共合
 [队列说明](FD_HANDOFF_QUEUE.md)；通知结果已有[eventfd组合接口](EVENTFD_WAKEUP.md)，区分提交与通知两个阶段。
 
 轮询只选择就绪且接入入口开放的固定 Sub，游标按每次选定目标的移交尝试前进，
-满队列不在同一尝试中重新分配；[Main组件](MAIN_REACTOR.md)与[多Sub协议组合](MULTI_REACTOR.md)已覆盖此分配边界；正式搜索服务仍待后续。该合同不保证
+满队列不在同一尝试中重新分配；[Main组件](MAIN_REACTOR.md)与[多Sub协议组合](MULTI_REACTOR.md)已覆盖此分配边界；生产搜索服务见[在线闭环](ONLINE_SEARCH.md)。该合同不保证
 相等连接数、相等负载或均衡 CPU。运行时 Sub 退出按服务失败协调停止，不静默缩容。
 
 ## 连接、队列与索引的生命周期
@@ -97,7 +97,7 @@ eventfd。运行失败同样先撤销入口并协调生产者静止，再清理�
 5. 停止请求幂等，先关闭全局接入，再让 Main 停止 accept，关闭 fd 发布入口，阻止新请求
    和新业务任务；与提交并发的 fd 按上述提交点决定清理方。Main 确认已进入的 fd 发布与
    通知调用全部返回，控制者完成停止通知后也撤销该借用；Sub 清理前须取得生产者静止确认。
-6. 业务引入前，允许立即丢弃模式：Sub 关闭待接入 fd 和连接，在所属线程移除并关闭
+6. 当前在线闭环沿用立即丢弃模式；完整发布者屏障见[在线服务](ONLINE_SEARCH.md)。Sub已停止提交且worker join后，Sub关闭待接入 fd 和连接，在所属线程移除并关闭
    wakeup/epoll，再退出；控制者 join 后才能销毁队列、通知端点和线程借用的配置。
 7. 业务引入后，须先完成/取消在途任务并停止、join worker，再让 Sub 收口 Completion
    和输出，最后清理并 join Reactor。worker 可能回投时，接收队列及通知端点保持有效。
@@ -121,13 +121,13 @@ codec、socket 与 epoll 组件，Main 组合 Listener；共享算法需要提�
 | fd 有界队列 | 成功消费源；满/关闭/失败保留源；关闭竞态有提交点；遗留条目关闭一次 |
 | 新连接 eventfd | 队列与通知分离、合并/drain、EINTR/EAGAIN、成功提交后通知失败、发布者静止、停止可达 |
 | Main 轮询与多 Sub 集成 | Main 不读写客户端；固定归属；满队列拒绝；失败协调停止；旧单 Loop 保持 |
-| 有界 TaskQueue | [独立组件](TASK_QUEUE.md)已提供拥有任务移交、容量拒绝、消费者唤醒与关闭排空；[WorkerPool](WORKER_POOL.md)已提供固定线程执行与关闭排空；业务接入仍待后续 |
+| 有界 TaskQueue | [独立组件](TASK_QUEUE.md)已提供拥有任务移交、容量拒绝、消费者唤醒与关闭排空；[WorkerPool](WORKER_POOL.md)已提供固定线程执行与关闭排空；真实业务接入见[在线服务](ONLINE_SEARCH.md) |
 | worker 与异步身份 | 无裸 Connection 指针/fd、独立数据拥有、generation 校验、过期 Completion 拒绝 |
 | 优雅退出 | worker 回投端点生命期、完成/取消/排空顺序、截止时间与无线程/fd 泄漏 |
 
 M2.12 的验证仅为合同审读与文档检查；Sub生命周期验证见[组件说明](SUB_REACTOR.md)，
 独立fd队列的验证入口见[队列说明](FD_HANDOFF_QUEUE.md)。
 Main/Sub 连接与协议组合验证见[多Sub集成](MULTI_REACTOR.md)；吞吐、延迟、公平性和
-独立worker生命周期见[WorkerPool](WORKER_POOL.md)，业务接入/优雅退出仍待后续验证，不能以本文件存在或空 Sub 生命周期测试通过替代。
+独立worker生命周期见[WorkerPool](WORKER_POOL.md)，业务接入见[在线服务](ONLINE_SEARCH.md)，优雅退出仍待后续验证，不能以本文件存在或空 Sub 生命周期测试通过替代。
 
 独立eventfd唤醒协议的真实epoll验证与稳定借用停止门禁见[eventfd说明](EVENTFD_WAKEUP.md)。

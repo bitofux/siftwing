@@ -10,17 +10,17 @@ V2 的 [帧头与字节序合同](docs/PROTOCOL.md)定义 24 字节布局、消�
 [fd RAII与socket基线](docs/SOCKET_BASELINE.md)、[epoll创建与LT注册](docs/EPOLL_REGISTRATION.md)及
 [Listener与有界accept4接入](docs/LISTENER.md)、[Connection有界读取与请求准入](docs/CONNECTION_READ.md)
 及[有界响应输出、部分写与写事件意向](docs/CONNECTION_WRITE.md)。
-已有[单循环协议探针](docs/PROTOCOL_LOOP.md)接通 PING/PONG 与错误响应；业务搜索网络服务尚未实现；Main-Sub协议组合见后文。
+已有[单循环协议探针](docs/PROTOCOL_LOOP.md)接通 PING/PONG 与错误响应；生产业务搜索网络服务见[在线搜索闭环](docs/ONLINE_SEARCH.md)，Main-Sub协议组合见后文。
 后续实现遵循[线程拓扑与所有权合同](docs/THREAD_TOPOLOGY.md)，明确 Main/Sub 职责、fd 转交和停止清理边界。
 已有[Sub Reactor生命周期](docs/SUB_REACTOR.md)：独立线程、线程内epoll资源、就绪报告、有限等待停止和外部join；尚未接入连接、队列或eventfd。
 已有独立[fd有界移交队列](docs/FD_HANDOFF_QUEUE.md)：预分配FIFO、成功消费源、拒绝保持源、同步关闭入口与关闭后drain；专用Sub接入见多Sub协议集成。
 已有独立[eventfd新连接唤醒](docs/EVENTFD_WAKEUP.md)：入队后通知、合并计数与真实队列分离、有限drain；通知失败不撤销已提交fd。
 已有独立[Main Reactor轮询分配](docs/MAIN_REACTOR.md)：有限接入、固定目标移交、满队列不改投、跨线程停止通知与有限等待后备。
-已有[多Sub协议集成](docs/MULTI_REACTOR.md)：ProtocolSubReactor与Main组合，真实TCP验证固定Connection归属、协议响应、发布者静止屏障和失败回滚；worker与正式搜索服务命令仍待后续接入。
+已有[多Sub协议集成](docs/MULTI_REACTOR.md)：ProtocolSubReactor与Main组合，真实TCP验证固定Connection归属、协议响应、发布者静止屏障和失败回滚；worker与生产搜索服务命令已通过[在线闭环](docs/ONLINE_SEARCH.md)接入。
 
-已有独立[有界TaskQueue](docs/TASK_QUEUE.md)：独占任务提交、满/关闭时保留源、消费者谓词等待与关闭排空；已被独立WorkerPool复用，正式业务任务尚待后续。
+已有独立[有界TaskQueue](docs/TASK_QUEUE.md)：独占任务提交、满/关闭时保留源、消费者谓词等待与关闭排空；已被WorkerPool与[真实查询任务](docs/ONLINE_SEARCH.md)复用。
 
-固定线程WorkerPool的就绪、任务异常隔离与关闭排空合同见[组件说明](docs/WORKER_POOL.md)。独立[SearchTask/Completion载荷](docs/SEARCH_TASK.md)已定义拥有请求与响应，独立[ConnectionId/generation与路由包装](docs/CONNECTION_IDENTITY.md)已实现，并迁移Sub注册元数据；独立[CompletionQueue](docs/COMPLETION_QUEUE.md)已有有界结果归属/发布/关闭排空合同；[eventfd结果回投](docs/COMPLETION_WAKEUP.md)已接入ProtocolSubReactor的可选请求提交器，worker不访问连接；真实SearchService与正式业务命令仍待接入。
+固定线程WorkerPool的就绪、任务异常隔离与关闭排空合同见[组件说明](docs/WORKER_POOL.md)。独立[SearchTask/Completion载荷](docs/SEARCH_TASK.md)已定义拥有请求与响应，独立[ConnectionId/generation与路由包装](docs/CONNECTION_IDENTITY.md)已实现，并迁移Sub注册元数据；独立[CompletionQueue](docs/COMPLETION_QUEUE.md)已有有界结果归属/发布/关闭排空合同；[eventfd结果回投](docs/COMPLETION_WAKEUP.md)已接入ProtocolSubReactor的可选请求提交器，worker不访问连接；真实SEARCH/SUGGEST与生产服务命令已通过[在线搜索闭环](docs/ONLINE_SEARCH.md)接入。
 
 ## 项目状态
 
