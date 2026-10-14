@@ -18,7 +18,9 @@ V2 的 [帧头与字节序合同](docs/PROTOCOL.md)定义 24 字节布局、消�
 已有独立[Main Reactor轮询分配](docs/MAIN_REACTOR.md)：有限接入、固定目标移交、满队列不改投、跨线程停止通知与有限等待后备。
 已有[多Sub协议集成](docs/MULTI_REACTOR.md)：ProtocolSubReactor与Main组合，真实TCP验证固定Connection归属、协议响应、发布者静止屏障和失败回滚；worker与正式搜索服务命令仍待后续接入。
 
-已有独立[有界TaskQueue](docs/TASK_QUEUE.md)：独占任务提交、满/关闭时保留源、消费者谓词等待与关闭排空；尚未接入WorkerPool或正式业务任务。
+已有独立[有界TaskQueue](docs/TASK_QUEUE.md)：独占任务提交、满/关闭时保留源、消费者谓词等待与关闭排空；已被独立WorkerPool复用，正式业务任务尚待后续。
+
+固定线程WorkerPool的就绪、任务异常隔离与关闭排空合同见[组件说明](docs/WORKER_POOL.md)。当前仅独立组件，正式搜索任务与Completion回投仍待后续模块。
 
 ## 项目状态
 

@@ -3,7 +3,7 @@
 [TaskQueue<T>](../include/siftwing/concurrency/task_queue.hpp)是独立的多生产者/多消费者
 拥有型 FIFO，CMake 目标 `siftwing_task_queue` 声明 C++17、项目编译选项及 `Threads::Threads`。
 它只交接 `std::unique_ptr<T>`，不创建线程、不执行任务、不访问 Connection 或 fd。
-worker、业务 SearchTask/Completion 和正式网络接入仍待后续。
+固定worker执行已由独立[WorkerPool](WORKER_POOL.md)复用本队列；业务 SearchTask/Completion 和正式网络接入仍待后续。
 
 ## 容量、提交与拥有关系
 
