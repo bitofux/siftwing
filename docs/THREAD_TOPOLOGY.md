@@ -1,8 +1,9 @@
 # Main-Sub Reactor 线程拓扑与所有权合同
 
-本文冻结后续实现的职责、资源转交和生命周期边界。当前可运行网络入口仍是
+本文冻结职责、资源转交和生命周期边界。当前可执行网络命令仍是
 [单循环协议探针](PROTOCOL_LOOP.md)；已有独立线程的[Sub生命周期](SUB_REACTOR.md)，
-已有独立[fd移交队列](FD_HANDOFF_QUEUE.md)，独立[eventfd唤醒组件](EVENTFD_WAKEUP.md)与提交后通知已实现；独立[Main轮询接入组件](MAIN_REACTOR.md)已实现；旧Sub连接/队列/通知接入、完整多Sub服务与worker仍待集成。
+已有独立[fd移交队列](FD_HANDOFF_QUEUE.md)、[eventfd唤醒组件](EVENTFD_WAKEUP.md)和[Main轮询接入组件](MAIN_REACTOR.md)；
+[多Sub协议集成](MULTI_REACTOR.md)以独立ProtocolSubReactor组合Main，验证固定归属与停止屏障；旧空Sub保持，worker与正式搜索服务命令仍待后续。
 本拓扑合同不规定具体 C++ API，也不改变[协议](PROTOCOL.md)；已实现接口见对应组件文档。
 
 ## 线程与职责
@@ -36,7 +37,7 @@ flowchart LR
 ```
 
 数据由队列持有，eventfd 只提示队列可能有工作；通知次数、任务数和连接数不相等。
-最终线程、队列、唤醒与业务路径须在各自模块实现并验证，图不是当前运行事实。
+Main/Sub的队列与通知协议链已有集成验证；图中worker、Completion和搜索业务路径仍是计划。
 
 ## fd 转交：每个时点只有一个拥有者
 
@@ -62,7 +63,7 @@ fd队列已用FdHandoffResult区分accepted与closed/invalid_fd/full，公共合
 [队列说明](FD_HANDOFF_QUEUE.md)；通知结果已有[eventfd组合接口](EVENTFD_WAKEUP.md)，区分提交与通知两个阶段。
 
 轮询只选择就绪且接入入口开放的固定 Sub，游标按每次选定目标的移交尝试前进，
-满队列不在同一尝试中重新分配；独立[Main轮询组件](MAIN_REACTOR.md)已验证此分配策略；服务完整接入仍计划。该合同不保证
+满队列不在同一尝试中重新分配；[Main组件](MAIN_REACTOR.md)与[多Sub协议组合](MULTI_REACTOR.md)已覆盖此分配边界；正式搜索服务仍待后续。该合同不保证
 相等连接数、相等负载或均衡 CPU。运行时 Sub 退出按服务失败协调停止，不静默缩容。
 
 ## 连接、队列与索引的生命周期
@@ -110,7 +111,7 @@ eventfd。运行失败同样先撤销入口并协调生产者静止，再清理�
 ## 对当前实现的影响与后续验收
 
 现有 ProtocolLoop 独占 Listener、epoll 和连接，保留为单循环协议基线；不能把它直接放到
-多个线程并共享调用，也不能让每个 Sub 通过它重新监听端口。后续 Sub 组合已有 Connection、
+多个线程并共享调用，也不能让每个 Sub 通过它重新监听端口。ProtocolSubReactor已组合已有 Connection、
 codec、socket 与 epoll 组件，Main 组合 Listener；共享算法需要提取时先保持旧行为并验证。
 本合同不改变旧 API、所有权、线格式、快照格式或 CLI，也不引入通用回调框架。
 
@@ -125,7 +126,7 @@ codec、socket 与 epoll 组件，Main 组合 Listener；共享算法需要提�
 
 M2.12 的验证仅为合同审读与文档检查；Sub生命周期验证见[组件说明](SUB_REACTOR.md)，
 独立fd队列的验证入口见[队列说明](FD_HANDOFF_QUEUE.md)。
-尚无 Main/Sub 连接集成、吞吐、延迟或公平性实测；将来的实现与测试必须完成上述义务，
-不能以本文件存在或空 Sub 生命周期测试通过替代。
+Main/Sub 连接与协议组合验证见[多Sub集成](MULTI_REACTOR.md)；吞吐、延迟、公平性和
+worker/优雅退出仍待后续验证，不能以本文件存在或空 Sub 生命周期测试通过替代。
 
 独立eventfd唤醒协议的真实epoll验证与稳定借用停止门禁见[eventfd说明](EVENTFD_WAKEUP.md)。

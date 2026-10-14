@@ -3,8 +3,8 @@
 `siftwing_sub_reactor` 提供独立 Sub 线程的启动、停止与回收；公共合同以
 [sub_reactor.hpp](../include/siftwing/net/sub_reactor.hpp) 为准，依赖已有 epoll/UniqueFd
 及 CMake `Threads::Threads`。当前线程只拥有一个空 LT epoll，不接收客户端 fd，
-不监听端口。连接队列、eventfd、Main、worker 与业务排空仍按
-[线程拓扑合同](THREAD_TOPOLOGY.md)在后续模块实现。
+不监听端口。本文类型保持空生命周期基线；专用连接队列、eventfd与Main协议接入由独立
+[ProtocolSubReactor](MULTI_REACTOR.md)提供。worker与业务排空仍按[线程拓扑合同](THREAD_TOPOLOGY.md)后续实现。
 
 ## 调用与拥有关系
 
@@ -56,7 +56,7 @@ noexcept 析构/线程收口无法完成时会 terminate，不以 detach 隐藏�
 
 控制者须逐个汇总固定拓扑的 Sub 启动结果，全部就绪后才开放接入；部分启动失败则
 请求停止已启动者并逐个 join。这里提供单个 Sub 原语，实际 Main 接入门禁和服务运行中
-错误协调由后续组合模块承担；一个 Sub 的 start 成功不证明整个服务 ready。
+错误协调由[多Sub协议组合控制者](MULTI_REACTOR.md)展示；一个 Sub 的 start 成功不证明整个服务 ready。
 
 ## 验证与边界
 

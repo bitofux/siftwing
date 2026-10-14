@@ -1,0 +1,383 @@
+/*
+ * PROJECT : SIFTWING
+ * FILE    : protocol_sub_reactor.cc
+ * AUTHOR  : bitofux
+ * DATE    : 2026-10-14
+ * BRIEF   : 固定Connection归属、缓存主动继续与发布者静止后的线程内清理
+ */
+#include "siftwing/net/protocol_sub_reactor.hpp"
+#include "siftwing/net/epoll_ops.hpp"
+#include <algorithm>
+#include <array>
+#include <cerrno>
+#include <limits>
+#include <new>
+#include <stdexcept>
+#include <utility>
+#include <vector>
+
+namespace siftwing::net {
+namespace {
+std::error_code code(int value) noexcept {
+    return {value, std::generic_category()};
+}
+void first(std::error_code &destination, std::error_code error) noexcept {
+    if (!destination && error)
+        destination = error;
+}
+std::error_code exception_code() noexcept {
+    try {
+        throw;
+    } catch (const std::system_error &error) {
+        return error.code();
+    } catch (const std::bad_alloc &) {
+        return code(ENOMEM);
+    } catch (...) {
+        return code(EIO);
+    }
+}
+ProtocolSubConfig checked(ProtocolSubConfig config) {
+    const auto limit = frame_header_bytes + frame_max_body_bytes;
+    if (config.handoff_capacity == 0 || config.handoff_capacity > 1024
+        || config.max_connections == 0 || config.max_connections > 1024 || config.max_body_bytes < 2
+        || config.max_body_bytes > frame_max_body_bytes || config.handoff_budget == 0
+        || config.handoff_budget > 1024 || config.read_byte_budget == 0
+        || config.read_byte_budget > limit || config.write_byte_budget == 0
+        || config.write_byte_budget > limit || config.io_attempt_budget == 0
+        || config.io_attempt_budget > 1024)
+        throw std::invalid_argument("invalid ProtocolSubConfig");
+    return config;
+}
+// 仅Sub栈内使用；复用Connection协议合同，监听和线程生命周期由外层分别承担。
+class Sessions final {
+    struct Slot {
+        std::unique_ptr<Connection> connection;
+        std::uint64_t token = 0;
+        std::uint32_t mask = 0;
+        bool runnable = false, serviced = false;
+    };
+    std::vector<Slot> slots_;
+    int epoll_;
+    const ProtocolSubConfig &config_;
+    ProtocolSubStatus &report_;
+    std::uint64_t next_token_ = 1; // 0保留给wakeup；耗尽时终止，绝不复用旧注册身份。
+    void drop(Slot &slot, std::error_code error = {}, bool cleanup = false) noexcept {
+        first(report_.first_connection_error, error);
+        auto &diagnostic = cleanup ? report_.cleanup_error : report_.first_connection_error;
+        if (slot.connection->get() >= 0) {
+            first(diagnostic, epoll_remove(epoll_, slot.connection->get()));
+            first(diagnostic, slot.connection->close());
+        }
+        // Connection可自行终止；此时不DEL已失效且可能复用的旧数字。
+        slot.connection.reset();
+        slot.token = 0;
+        slot.mask = 0;
+        slot.runnable = false;
+        --report_.active;
+        ++report_.dropped;
+    }
+    void service(Slot &slot) noexcept {
+        slot.serviced = true;
+        slot.runnable = false;
+        auto &connection = *slot.connection;
+        try {
+            if (!connection.request_pending()) {
+                const auto read =
+                    connection.read_request(config_.read_byte_budget, config_.io_attempt_budget);
+                if (read.stop == ReadStop::request) {
+                    ++report_.requests;
+                    auto response =
+                        !read.body_error && read.request->message_type == MessageType::ping
+                            ? make_response(*read.request, "{}", config_.max_body_bytes)
+                            : make_error_response(*read.request,
+                                  read.body_error == ProtocolError::json_depth
+                                      ? ErrorStatus::resource_limit
+                                      : ErrorStatus::invalid_request,
+                                  config_.max_body_bytes);
+                    const auto *frame = std::get_if<Frame>(&response);
+                    if (!frame || connection.queue_response(*frame).stop != QueueStop::queued) {
+                        drop(slot, code(EPROTO));
+                        return;
+                    }
+                } else if (read.stop == ReadStop::budget_exhausted)
+                    slot.runnable = true;
+                else if (read.stop != ReadStop::would_block) {
+                    drop(slot, read.error);
+                    return;
+                }
+            }
+            if (connection.needs_write()) {
+                const auto write =
+                    connection.flush_output(config_.write_byte_budget, config_.io_attempt_budget);
+                if (write.stop == WriteStop::drained) {
+                    if (!connection.finish_request()) {
+                        drop(slot, code(EIO));
+                        return;
+                    }
+                    ++report_.responses;
+                    slot.runnable = connection.buffered_bytes() != 0;
+                } else if (write.stop != WriteStop::would_block
+                           && write.stop != WriteStop::budget_exhausted) {
+                    drop(slot, write.error);
+                    return;
+                }
+            }
+            // 输出未空时只订阅OUT，避免半关闭RDHUP造成持续空转；排空后主动服务缓存。
+            const std::uint32_t mask = connection.needs_write() ? EPOLLOUT : (EPOLLIN | EPOLLRDHUP);
+            if (mask != slot.mask) {
+                if (const auto error = epoll_modify(epoll_, connection.get(), mask, slot.token)) {
+                    drop(slot, error);
+                    return;
+                }
+                slot.mask = mask;
+            }
+        } catch (...) {
+            drop(slot, exception_code());
+        }
+    }
+
+public:
+    Sessions(int epoll, const ProtocolSubConfig &config, ProtocolSubStatus &report)
+        : slots_(config.max_connections), epoll_(epoll), config_(config), report_(report) {}
+    void admit(UniqueFd &source) {
+        auto slot = std::find_if(slots_.begin(), slots_.end(), [](const Slot &value) {
+            return !value.connection;
+        });
+        if (slot == slots_.end()) {
+            ++report_.rejected;
+            first(report_.cleanup_error, source.close());
+            return;
+        }
+        if (next_token_ == 0)
+            throw std::system_error(code(EOVERFLOW));
+        auto connection = std::make_unique<Connection>(std::move(source), config_.max_body_bytes);
+        const auto token = next_token_;
+        next_token_ = token == std::numeric_limits<std::uint64_t>::max() ? 0 : token + 1;
+        const std::uint32_t mask = EPOLLIN | EPOLLRDHUP;
+        if (const auto error = epoll_add(epoll_, connection->get(), mask, token)) {
+            first(report_.cleanup_error, connection->close());
+            throw std::system_error(error);
+        }
+        slot->connection = std::move(connection);
+        slot->token = token;
+        slot->mask = mask;
+        slot->runnable = false;
+        slot->serviced = false;
+        ++report_.admitted;
+        ++report_.active;
+    }
+    void tick(int timeout) {
+        bool scheduled = false;
+        for (auto &slot : slots_)
+            slot.serviced = false;
+        for (auto &slot : slots_)
+            if (slot.connection && slot.runnable) {
+                service(slot);
+                scheduled = true;
+            }
+        std::array<epoll_event, 64> events{};
+        const int count = ::epoll_wait(
+            epoll_, events.data(), static_cast<int>(events.size()), scheduled ? 0 : timeout);
+        if (count < 0) {
+            if (errno != EINTR)
+                throw std::system_error(code(errno));
+            return;
+        }
+        if (count > static_cast<int>(events.size()))
+            throw std::system_error(code(EIO));
+        for (int i = 0; i < count; ++i) {
+            const auto token = events[static_cast<std::size_t>(i)].data.u64;
+            if (token == 0) {
+                if (events[static_cast<std::size_t>(i)].events & (EPOLLERR | EPOLLHUP))
+                    throw std::system_error(code(EIO));
+                continue; // 下轮先清通知、再按真实queue状态取有限批次。
+            }
+            auto slot = std::find_if(slots_.begin(), slots_.end(), [token](const Slot &value) {
+                return value.connection && value.token == token;
+            });
+            if (slot != slots_.end() && !slot->serviced)
+                service(*slot);
+        }
+    }
+    void close() noexcept {
+        for (auto &slot : slots_)
+            if (slot.connection)
+                drop(slot, {}, true);
+    }
+};
+} // namespace
+
+ProtocolSubReactor::ProtocolSubReactor(const ProtocolSubConfig &config)
+    : config_(checked(config)), queue_(config_.handoff_capacity) {}
+ProtocolSubReactor::~ProtocolSubReactor() noexcept {
+    (void)request_stop();
+    release_publishers();
+    (void)join();
+}
+std::error_code ProtocolSubReactor::start() {
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        if (report_.state != ProtocolSubState::idle)
+            return code(EALREADY);
+        if (stop_.load()) {
+            report_.state = ProtocolSubState::joined;
+            report_.first_error = code(ECANCELED);
+            return report_.first_error;
+        }
+        report_.state = ProtocolSubState::starting;
+    }
+    try {
+        thread_ = std::thread(&ProtocolSubReactor::run, this);
+    } catch (...) {
+        const auto error = exception_code();
+        const std::lock_guard<std::mutex> lock(mutex_);
+        report_.first_error = error;
+        report_.state = ProtocolSubState::joined;
+        return error;
+    }
+    std::unique_lock<std::mutex> lock(mutex_);
+    cv_.wait(lock, [this] {
+        return ready_done_;
+    });
+    const auto error = ready_error_;
+    lock.unlock();
+    if (error)
+        (void)join();
+    return error;
+}
+std::variant<MainReactorTarget, std::error_code> ProtocolSubReactor::target() {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    if (report_.state != ProtocolSubState::running || publishers_released_ || borrowed_wakeup_ < 0)
+        return code(ECANCELED);
+    // 目标仅授予同步发布能力；queue的消费与所有Connection仍只在Sub线程。
+    return MainReactorTarget{&queue_, borrowed_wakeup_};
+}
+std::error_code ProtocolSubReactor::request_stop() {
+    stop_.store(true);
+    const std::lock_guard<std::mutex> lock(mutex_);
+    return borrowed_wakeup_ >= 0 ? notify_eventfd(borrowed_wakeup_) : std::error_code{};
+}
+void ProtocolSubReactor::release_publishers() {
+    stop_.store(true);
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        publishers_released_ = true;
+    }
+    cv_.notify_one();
+}
+std::error_code ProtocolSubReactor::join() {
+    if (thread_.joinable()) {
+        if (thread_.get_id() == std::this_thread::get_id())
+            return code(EDEADLK);
+        thread_.join();
+        const std::lock_guard<std::mutex> lock(mutex_);
+        report_.state = ProtocolSubState::joined;
+    }
+    const auto value = status();
+    return value.first_error ? value.first_error : value.cleanup_error;
+}
+ProtocolSubStatus ProtocolSubReactor::status() const {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    auto result = report_;
+    result.stop_requested = stop_.load();
+    return result;
+}
+void ProtocolSubReactor::run() noexcept {
+    UniqueFd epoll, wakeup;
+    std::unique_ptr<Sessions> sessions;
+    ProtocolSubStatus local;
+    bool ready = false, wakeup_registered = false;
+    try {
+        if (stop_.load())
+            throw std::system_error(code(ECANCELED));
+        auto poller = create_epoll();
+        if (auto *error = std::get_if<std::error_code>(&poller))
+            throw std::system_error(*error);
+        epoll = std::move(std::get<UniqueFd>(poller));
+        auto notification = create_eventfd_wakeup();
+        if (auto *error = std::get_if<std::error_code>(&notification))
+            throw std::system_error(*error);
+        wakeup = std::move(std::get<UniqueFd>(notification));
+        sessions = std::make_unique<Sessions>(epoll.get(), config_, local);
+        if (const auto error = epoll_add(epoll.get(), wakeup.get(), EPOLLIN, 0))
+            throw std::system_error(error);
+        wakeup_registered = true;
+        if (stop_.load())
+            throw std::system_error(code(ECANCELED));
+        {
+            const std::lock_guard<std::mutex> lock(mutex_);
+            local.state = ProtocolSubState::running;
+            report_ = local;
+            borrowed_wakeup_ = wakeup.get();
+            ready_done_ = true;
+            ready = true;
+        }
+        cv_.notify_one();
+        while (!stop_.load() && !queue_.status().closed) {
+            const auto notification_result = drain_eventfd(wakeup.get());
+            if (notification_result.state == EventFdDrainState::failed)
+                throw std::system_error(notification_result.error);
+            for (std::size_t n = 0; n < config_.handoff_budget && !stop_.load(); ++n) {
+                auto source = queue_.try_pop();
+                if (!source)
+                    break;
+                ++local.received;
+                try {
+                    sessions->admit(*source);
+                } catch (...) {
+                    ++local.rejected;
+                    first(local.cleanup_error, source->close());
+                    throw;
+                }
+            }
+            if (stop_.load())
+                break;
+            sessions->tick(queue_.status().size ? 0 : stop_poll_interval_ms);
+            const std::lock_guard<std::mutex> lock(mutex_);
+            report_ = local;
+        }
+    } catch (...) {
+        first(local.first_error, exception_code());
+    }
+    // 运行首因先发布，通知端保持到外部生产者全部静止；closed/empty绝不是此屏障。
+    stop_.store(true);
+    {
+        // 先发布运行首因再关队列，避免Main先观察closed而只保留ECANCELED。
+        const std::lock_guard<std::mutex> lock(mutex_);
+        local.state = ProtocolSubState::quiescing;
+        report_ = local;
+    }
+    queue_.close();
+    if (ready) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        cv_.wait(lock, [this] {
+            return publishers_released_;
+        });
+    }
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        borrowed_wakeup_ = -1;
+    }
+    if (sessions)
+        sessions->close();
+    // 最终同步设施无法工作时不能悄悄把残留fd留到控制者析构；noexcept收口明确terminate。
+    while (auto source = queue_.try_pop()) {
+        ++local.discarded;
+        first(local.cleanup_error, source->close());
+    }
+    if (wakeup_registered)
+        first(local.cleanup_error, epoll_remove(epoll.get(), wakeup.get()));
+    first(local.cleanup_error, wakeup.close());
+    first(local.cleanup_error, epoll.close());
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        local.state = ProtocolSubState::stopped;
+        report_ = local;
+        if (!ready) {
+            ready_error_ = local.first_error;
+            ready_done_ = true;
+        }
+    }
+    cv_.notify_one();
+}
+} // namespace siftwing::net

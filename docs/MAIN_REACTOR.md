@@ -3,7 +3,8 @@
 独立[MainReactor接口](../include/siftwing/net/main_reactor.hpp)在所属I/O线程拥有Listener、LT epoll与自己的停止eventfd。
 调用方在该线程create、重复run_once、close和析构；组件不创建线程，不读取或发送客户端业务数据，不构造Connection。
 它组合[监听接入](LISTENER.md)、[fd队列](FD_HANDOFF_QUEUE.md)和[eventfd通知](EVENTFD_WAKEUP.md)。
-旧Sub生命周期和单Loop保持，完整多Sub生产服务接入仍待集成；当前真实TCP测试中的目标消费者仅验证交接协议。
+旧Sub生命周期和单Loop保持；[多Sub协议集成](MULTI_REACTOR.md)使用独立ProtocolSubReactor组合Main，验证Connection固定归属。
+本文的三个Main单元测试仍仅验证交接协议；worker与正式搜索服务命令尚未接入。
 
 调用方提供1—64个固定目标，每个包含稳定的queue指针与普通非阻塞eventfd数字。
 全部目标必须在创建前完整就绪且开放，彼此queue与fd数字不能重复，默认不会按负载重选或动态缩容。
@@ -49,4 +50,4 @@ CTest注册`net.main_reactor`、`net.main_reactor_concurrency`、`net.main_react
 真实TCP字节由目标独立读取，按独立modulo参考核轮询、满队列不改投/游标前进、LT预算续调度和原子flags。
 多目标消费者自行拥有epoll/eventfd并完成恰好一次消费；线程控制者确认Main和最后通知返回后才关闭目标端。
 test-only链接包装覆盖启动各阶段、分配/锁失败、资源错误、通知错误、关闭竞态、一次close诊断及停止通知失败的真实有限wait。
-Release测试不依赖assert。当前未证明生产Main/旧Sub连接服务、性能、公平性、硬实时或任意调度。
+Release测试不依赖assert。本组件三测试不单独证明多Sub协议链，相应组合证据见[MULTI_REACTOR](MULTI_REACTOR.md)；尚未验证性能、公平性、硬实时或任意调度。

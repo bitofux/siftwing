@@ -101,6 +101,9 @@ target_link_libraries(siftwing_frame_codec PUBLIC siftwing_frame_decoder
 add_library(siftwing_connection STATIC src/net/connection.cc)
 target_link_libraries(siftwing_connection PUBLIC siftwing_socket siftwing_frame_codec)
 
+add_library(siftwing_protocol_sub_reactor STATIC src/net/protocol_sub_reactor.cc)
+target_link_libraries(siftwing_protocol_sub_reactor PUBLIC siftwing_connection siftwing_main_reactor)
+
 add_library(siftwing_protocol_loop STATIC src/net/protocol_loop.cc)
 target_link_libraries(siftwing_protocol_loop PUBLIC siftwing_connection siftwing_listener siftwing_epoll)
 add_executable(siftwing_protocol_probe apps/protocol_probe/main.cc)
@@ -283,6 +286,21 @@ if(SIFTWING_BUILD_CODEC_FUZZER AND
     message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
 endif()
 if(BUILD_TESTING)
+    add_executable(siftwing_multi_reactor_test tests/integration/multi_reactor_test.cc)
+    target_link_libraries(siftwing_multi_reactor_test PRIVATE siftwing_protocol_sub_reactor)
+    target_link_options(siftwing_multi_reactor_test PRIVATE
+        -Wl,--wrap=accept4 -Wl,--wrap=epoll_ctl -Wl,--wrap=recv -Wl,--wrap=send -Wl,--wrap=close)
+    add_test(NAME net.multi_reactor COMMAND siftwing_multi_reactor_test)
+    add_executable(siftwing_multi_reactor_concurrency_test tests/integration/multi_reactor_concurrency_test.cc)
+    target_link_libraries(siftwing_multi_reactor_concurrency_test PRIVATE siftwing_protocol_sub_reactor)
+    add_test(NAME net.multi_reactor_concurrency COMMAND siftwing_multi_reactor_concurrency_test)
+    add_executable(siftwing_multi_reactor_failure_test tests/integration/multi_reactor_failure_test.cc)
+    target_link_libraries(siftwing_multi_reactor_failure_test PRIVATE siftwing_protocol_sub_reactor)
+    target_link_options(siftwing_multi_reactor_failure_test PRIVATE
+        -Wl,--wrap=epoll_create1 -Wl,--wrap=eventfd -Wl,--wrap=socket -Wl,--wrap=accept4
+        -Wl,--wrap=epoll_ctl -Wl,--wrap=epoll_wait -Wl,--wrap=write -Wl,--wrap=recv -Wl,--wrap=close -Wl,--wrap=_Znwm)
+    add_test(NAME net.multi_reactor_failures COMMAND siftwing_multi_reactor_failure_test)
+    set_tests_properties(net.multi_reactor net.multi_reactor_concurrency net.multi_reactor_failures PROPERTIES TIMEOUT 45)
     add_executable(siftwing_main_reactor_test tests/unit/main_reactor_test.cc)
     target_link_libraries(siftwing_main_reactor_test PRIVATE siftwing_main_reactor)
     add_test(NAME net.main_reactor COMMAND siftwing_main_reactor_test)
