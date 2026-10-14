@@ -20,7 +20,7 @@
 
 ## 接入边界与验证
 
-SearchTask 是数据载荷，不继承 [WorkerTask](WORKER_POOL.md)。真实执行任务可组合它，并明确依赖生命周期；当前没有正式业务调用方。两个类型均无 Connection 指针、fd、回调或索引借用。request_id 只用于关联，允许重复，不能作为连接身份回投。后续身份/generation envelope、正式 CompletionQueue、eventfd 回投及业务服务接入分别负责路由、容量/过期策略、通知与执行；当前载荷不得直接用于网络回投。
+SearchTask 是数据载荷，不继承 [WorkerTask](WORKER_POOL.md)。真实执行任务可组合它，并明确依赖生命周期；当前没有正式业务调用方。两个类型均无 Connection 指针、fd、回调或索引借用。request_id 只用于关联，允许重复，不能作为连接身份回投。[身份/generation与路由包装](CONNECTION_IDENTITY.md)已有独立组件；正式 CompletionQueue、eventfd 回投及业务服务接入仍分别负责容量/过期策略、通知与执行。纯载荷不得直接用于网络回投。
 
 三个真实 CTest 覆盖请求/响应类型、精确字节拥有、关联号边界、移动/移空与右值借用限制、预算两端和错误顺序；多生产者通过测试专属 WorkerTask 和 TaskQueue<Completion> 转交结果，所有源及任务销毁后再逐 id 检查恰一次结果；逐实际 new 分配失败验证输入保持与移动无分配。测试结果队列仅是交接工具，不定义正式结果队列的容量、过期或通知政策。
 

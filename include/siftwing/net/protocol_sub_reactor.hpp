@@ -23,6 +23,8 @@ struct ProtocolSubConfig {
     std::size_t read_byte_budget = 65536; ///< [1,24+frame_max_body_bytes]，每连接每轮recv字节。
     std::size_t write_byte_budget = 65536; ///< 同上，send字节。
     std::size_t io_attempt_budget = 16;    ///< [1,1024]，read/flush各自的尝试预算。
+    std::uint32_t reactor_id =
+        0; ///< 本地身份命名空间；0保留旧默认行为，控制者保证并存目标唯一且旧结果存活时不重用。
 };
 /** @brief quiescing已停止业务但保留资源等发布者；stopped已清理，joined已回收线程。 */
 enum class ProtocolSubState {

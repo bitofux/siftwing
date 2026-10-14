@@ -80,3 +80,5 @@ CTest 注册 net.multi_reactor、net.multi_reactor_concurrency、net.multi_react
 线程启动路径的分配注入覆盖状态构造失败；不声称拦截 libstdc++ 内部 pthread_create 或真实线程资源耗尽。
 链接包装和 Linux 观测是测试机制，不是 ISO C++ API。未证明任意调度、公平性、吞吐、
 真实 OOM、完整搜索服务或 worker 的生命周期。
+
+身份注册元数据已迁移到[ConnectionIdentityTable](CONNECTION_IDENTITY.md)，保持单调epoll token及原协议行为；跨线程拥有路由包装已提供，正式worker业务/结果队列/回投仍待后续。

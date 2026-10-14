@@ -7,6 +7,7 @@
  */
 #include "siftwing/net/protocol_sub_reactor.hpp"
 #include "siftwing/net/epoll_ops.hpp"
+#include "siftwing/net/connection_identity.hpp"
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -52,7 +53,7 @@ ProtocolSubConfig checked(ProtocolSubConfig config) {
 class Sessions final {
     struct Slot {
         std::unique_ptr<Connection> connection;
-        std::uint64_t token = 0;
+        ConnectionRegistration registration{}; // 身份与epoll key只由所属Sub发布/撤销。
         std::uint32_t mask = 0;
         bool runnable = false, serviced = false;
     };
@@ -60,8 +61,9 @@ class Sessions final {
     int epoll_;
     const ProtocolSubConfig &config_;
     ProtocolSubStatus &report_;
-    std::uint64_t next_token_ = 1; // 0保留给wakeup；耗尽时终止，绝不复用旧注册身份。
+    ConnectionIdentityTable identities_; // 代次跨slot复用保留，token仍全表单调且0保留wakeup。
     void drop(Slot &slot, std::error_code error = {}, bool cleanup = false) noexcept {
+        (void)identities_.retire(slot.registration.identity); // 先撤销身份，再关闭可能复用的fd。
         first(report_.first_connection_error, error);
         auto &diagnostic = cleanup ? report_.cleanup_error : report_.first_connection_error;
         if (slot.connection->get() >= 0) {
@@ -70,7 +72,7 @@ class Sessions final {
         }
         // Connection可自行终止；此时不DEL已失效且可能复用的旧数字。
         slot.connection.reset();
-        slot.token = 0;
+        slot.registration = {};
         slot.mask = 0;
         slot.runnable = false;
         --report_.active;
@@ -125,7 +127,8 @@ class Sessions final {
             // 输出未空时只订阅OUT，避免半关闭RDHUP造成持续空转；排空后主动服务缓存。
             const std::uint32_t mask = connection.needs_write() ? EPOLLOUT : (EPOLLIN | EPOLLRDHUP);
             if (mask != slot.mask) {
-                if (const auto error = epoll_modify(epoll_, connection.get(), mask, slot.token)) {
+                if (const auto error = epoll_modify(
+                        epoll_, connection.get(), mask, slot.registration.poll_token)) {
                     drop(slot, error);
                     return;
                 }
@@ -138,7 +141,8 @@ class Sessions final {
 
 public:
     Sessions(int epoll, const ProtocolSubConfig &config, ProtocolSubStatus &report)
-        : slots_(config.max_connections), epoll_(epoll), config_(config), report_(report) {}
+        : slots_(config.max_connections), epoll_(epoll), config_(config), report_(report),
+          identities_(config.reactor_id, config.max_connections) {}
     void admit(UniqueFd &source) {
         auto slot = std::find_if(slots_.begin(), slots_.end(), [](const Slot &value) {
             return !value.connection;
@@ -148,18 +152,25 @@ public:
             first(report_.cleanup_error, source.close());
             return;
         }
-        if (next_token_ == 0)
-            throw std::system_error(code(EOVERFLOW));
         auto connection = std::make_unique<Connection>(std::move(source), config_.max_body_bytes);
-        const auto token = next_token_;
-        next_token_ = token == std::numeric_limits<std::uint64_t>::max() ? 0 : token + 1;
+        const auto issued = identities_.activate(static_cast<std::size_t>(slot - slots_.begin()));
+        const auto *registration = std::get_if<ConnectionRegistration>(&issued);
+        if (!registration)
+            throw std::system_error(
+                code(std::get<IdentityError>(issued) == IdentityError::generation_exhausted
+                             || std::get<IdentityError>(issued) == IdentityError::token_exhausted
+                         ? EOVERFLOW
+                         : EIO));
         const std::uint32_t mask = EPOLLIN | EPOLLRDHUP;
-        if (const auto error = epoll_add(epoll_, connection->get(), mask, token)) {
+        if (const auto error =
+                epoll_add(epoll_, connection->get(), mask, registration->poll_token)) {
+            (void)identities_.retire(
+                registration->identity); // ADD失败不留半注册，不回收已消费代次/token。
             first(report_.cleanup_error, connection->close());
             throw std::system_error(error);
         }
         slot->connection = std::move(connection);
-        slot->token = token;
+        slot->registration = *registration;
         slot->mask = mask;
         slot->runnable = false;
         slot->serviced = false;
@@ -192,11 +203,12 @@ public:
                     throw std::system_error(code(EIO));
                 continue; // 下轮先清通知、再按真实queue状态取有限批次。
             }
-            auto slot = std::find_if(slots_.begin(), slots_.end(), [token](const Slot &value) {
-                return value.connection && value.token == token;
-            });
-            if (slot != slots_.end() && !slot->serviced)
-                service(*slot);
+            const auto identity = identities_.lookup(token);
+            if (!identity)
+                continue; // 已取epoll批次不会随DEL清空，陈旧key不能猜当前fd。
+            auto &slot = slots_[identity->slot_index];
+            if (slot.connection && slot.registration.identity == *identity && !slot.serviced)
+                service(slot);
         }
     }
     void close() noexcept {

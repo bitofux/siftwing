@@ -70,8 +70,8 @@ fd队列已用FdHandoffResult区分accepted与closed/invalid_fd/full，公共合
 
 Connection 从注册到终止固定归属一个 Sub，保持已有“不复制、不移动、所属线程串行”
 合同；必要时用 unique_ptr 保持地址稳定。Main 不保留 Connection 引用，worker 只带拥有
-的输入和结果。当前 Loop 的单调 token 只是注册身份；跨线程结果的 ConnectionId、
-generation、request_id 和过期拒绝将在后续异步身份模块冻结，不用 fd 数字代替。
+的输入和结果。当前 Loop 的单调 token 只是注册身份；跨线程结果的[ConnectionId/generation与路由包装](CONNECTION_IDENTITY.md)已提供独立组件并迁移Sub注册元数据；
+request_id/deadline校验及过期结果应用仍由后续回投模块完成，不用fd数字代替。
 
 队列状态、停止标志与错误报告是跨线程同步对象；Connection/Buffer/epoll 状态是所属
 线程对象。const、volatile、unique_ptr 或“只写一次”都不自动提供同步。队列锁内只做

@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -118,8 +119,13 @@ public:
     explicit MultiReactorFixture(std::size_t count = 2, ProtocolSubConfig config = {}) {
         if (count == 0 || count > 64)
             throw std::invalid_argument("invalid fixed Sub count");
-        for (std::size_t i = 0; i < count; ++i)
-            subs_.push_back(std::make_unique<ProtocolSubReactor>(config));
+        if (config.reactor_id > std::numeric_limits<std::uint32_t>::max() - (count - 1))
+            throw std::invalid_argument("reactor identity range overflow");
+        for (std::size_t i = 0; i < count; ++i) {
+            auto selected = config;
+            selected.reactor_id += static_cast<std::uint32_t>(i);
+            subs_.push_back(std::make_unique<ProtocolSubReactor>(selected));
+        }
     }
     ~MultiReactorFixture() noexcept {
         (void)stop();
