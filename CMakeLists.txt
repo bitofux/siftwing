@@ -47,6 +47,9 @@ target_link_libraries(siftwing_sub_reactor PUBLIC siftwing_epoll Threads::Thread
 add_library(siftwing_fd_handoff_queue STATIC src/net/fd_handoff_queue.cc)
 target_link_libraries(siftwing_fd_handoff_queue PUBLIC siftwing_socket Threads::Threads)
 
+add_library(siftwing_eventfd_wakeup STATIC src/net/eventfd_wakeup.cc)
+target_link_libraries(siftwing_eventfd_wakeup PUBLIC siftwing_fd_handoff_queue)
+
 add_library(siftwing_buffer STATIC src/net/buffer.cc)
 target_link_libraries(siftwing_buffer PUBLIC siftwing_base)
 
@@ -277,6 +280,19 @@ if(SIFTWING_BUILD_CODEC_FUZZER AND
     message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
 endif()
 if(BUILD_TESTING)
+    add_executable(siftwing_eventfd_wakeup_test tests/unit/eventfd_wakeup_test.cc)
+    target_link_libraries(siftwing_eventfd_wakeup_test PRIVATE siftwing_eventfd_wakeup siftwing_epoll)
+    add_test(NAME net.eventfd_wakeup COMMAND siftwing_eventfd_wakeup_test)
+    add_executable(siftwing_eventfd_wakeup_concurrency_test tests/unit/eventfd_wakeup_concurrency_test.cc)
+    target_link_libraries(siftwing_eventfd_wakeup_concurrency_test PRIVATE siftwing_eventfd_wakeup siftwing_epoll)
+    add_test(NAME net.eventfd_wakeup_concurrency COMMAND siftwing_eventfd_wakeup_concurrency_test)
+    add_executable(siftwing_eventfd_wakeup_failure_test tests/unit/eventfd_wakeup_failure_test.cc)
+    target_link_libraries(siftwing_eventfd_wakeup_failure_test PRIVATE siftwing_eventfd_wakeup)
+    target_link_options(siftwing_eventfd_wakeup_failure_test PRIVATE
+        -Wl,--wrap=eventfd -Wl,--wrap=read -Wl,--wrap=write -Wl,--wrap=close -Wl,--wrap=pthread_mutex_lock)
+    add_test(NAME net.eventfd_wakeup_failures COMMAND siftwing_eventfd_wakeup_failure_test)
+    set_tests_properties(net.eventfd_wakeup net.eventfd_wakeup_concurrency
+        net.eventfd_wakeup_failures PROPERTIES TIMEOUT 30)
     add_executable(siftwing_fd_handoff_queue_test tests/unit/fd_handoff_queue_test.cc)
     target_link_libraries(siftwing_fd_handoff_queue_test PRIVATE siftwing_fd_handoff_queue)
     add_test(NAME net.fd_handoff_queue COMMAND siftwing_fd_handoff_queue_test)

@@ -13,7 +13,8 @@ V2 的 [帧头与字节序合同](docs/PROTOCOL.md)定义 24 字节布局、消�
 已有[单循环协议探针](docs/PROTOCOL_LOOP.md)接通 PING/PONG 与错误响应；业务搜索与 Main-Sub Reactor 网络服务尚未实现。
 后续实现遵循[线程拓扑与所有权合同](docs/THREAD_TOPOLOGY.md)，明确 Main/Sub 职责、fd 转交和停止清理边界。
 已有[Sub Reactor生命周期](docs/SUB_REACTOR.md)：独立线程、线程内epoll资源、就绪报告、有限等待停止和外部join；尚未接入连接、队列或eventfd。
-已有独立[fd有界移交队列](docs/FD_HANDOFF_QUEUE.md)：预分配FIFO、成功消费源、拒绝保持源、同步关闭入口与关闭后drain；Sub集成和eventfd仍待后续实现。
+已有独立[fd有界移交队列](docs/FD_HANDOFF_QUEUE.md)：预分配FIFO、成功消费源、拒绝保持源、同步关闭入口与关闭后drain；Sub集成仍待后续实现。
+已有独立[eventfd新连接唤醒](docs/EVENTFD_WAKEUP.md)：入队后通知、合并计数与真实队列分离、有限drain；通知失败不撤销已提交fd。
 
 ## 项目状态
 

@@ -2,7 +2,7 @@
 
 本文冻结后续实现的职责、资源转交和生命周期边界。当前可运行网络入口仍是
 [单循环协议探针](PROTOCOL_LOOP.md)；已有独立线程的[Sub生命周期](SUB_REACTOR.md)，
-已有独立[fd移交队列](FD_HANDOFF_QUEUE.md)，Main、Sub连接/队列接入、eventfd 和 worker 尚未实现。
+已有独立[fd移交队列](FD_HANDOFF_QUEUE.md)，独立[eventfd唤醒组件](EVENTFD_WAKEUP.md)与提交后通知已实现；Main、Sub连接/队列/通知接入和worker仍待集成。
 本拓扑合同不规定具体 C++ API，也不改变[协议](PROTOCOL.md)；已实现接口见对应组件文档。
 
 ## 线程与职责
@@ -127,3 +127,5 @@ M2.12 的验证仅为合同审读与文档检查；Sub生命周期验证见[组�
 独立fd队列的验证入口见[队列说明](FD_HANDOFF_QUEUE.md)。
 尚无 Main/Sub 连接集成、吞吐、延迟或公平性实测；将来的实现与测试必须完成上述义务，
 不能以本文件存在或空 Sub 生命周期测试通过替代。
+
+独立eventfd唤醒协议的真实epoll验证与稳定借用停止门禁见[eventfd说明](EVENTFD_WAKEUP.md)。
