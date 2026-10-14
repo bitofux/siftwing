@@ -8,13 +8,14 @@ Main 不读取业务，Connection 从构造到释放始终归属同一个 Sub。
 
 原 [SubReactor](SUB_REACTOR.md)空生命周期和 [ProtocolLoop](PROTOCOL_LOOP.md)单线程基线保持。
 新类型提供独立接口；测试专用[组合控制者](../tests/support/multi_reactor_fixture.hpp)展示启动、
-运行错误汇总和停止顺序。尚未推出正式服务命令、worker、搜索业务或响应优雅排空。
-当前只响应 PING/PONG 和受信 ERROR，其他合法业务请求返回 INVALID_REQUEST。
+运行错误汇总和停止顺序。尚未推出正式服务命令、真实查询业务或响应优雅排空。
+默认只响应 PING/PONG 和受信 ERROR，其他合法业务请求返回 INVALID_REQUEST；可选请求提交器及worker结果应用见[回投说明](COMPLETION_WAKEUP.md)。
 
 ## 固定容量与职责
 
 每个 Sub 对象预分配自己的 queue，Sub 线程内建立定长 Connection slot、epoll 和普通非阻塞 eventfd。
 handoff_capacity、max_connections、handoff_budget、io_attempt_budget 都为 1—1024；
+completion_capacity、completion_budget同为1—1024，可选request_submitter由控制者管理到join后；
 max_body_bytes 为 2—frame_max_body_bytes，读写字节预算为 1—24+frame_max_body_bytes。
 配置在预分配前完整验证，非法值抛 invalid_argument，无线程或 I/O 创建；分配异常传播。
 
@@ -43,9 +44,9 @@ raw target 借用没有自动引用计数。控制者不能凭 queue closed/empt
 Sub 已报告错误，就让 Sub 关闭通知端。停止的真实顺序是：
 
 1. 请求 Main 停止接入，等待其所属线程全部发布、通知、清理和析构返回。
-2. 完成最后目标控制通知，撤销其他 raw target 借用并等待已进入调用返回。
+2. 请求Sub停止，确认quiescing且不再调用可选submitter；等worker及所有完整结果发布/通知返回，再完成最后目标控制通知、撤销其他raw目标借用。未启用worker时沿用原屏障。
 3. 对每个 Sub 调用 release_publishers，明确允许最终清理。
-4. Sub 在线程内 DEL / close Connection，drain / close queue 残留，撤销内部通知镜像，再锁外关闭 eventfd 和 epoll。
+4. Sub先撤内部通知镜像，在线程内DEL / close Connection，丢弃两queue残留，再注销并锁外关闭eventfd和epoll。
 5. 外部逐个 join，撤销并等待并发 status / request_stop 调用，再销毁对象。
 
 release 不是自动检查借用者的动作；过早调用违反合同，遗漏调用会让 join 等待。
@@ -81,4 +82,4 @@ CTest 注册 net.multi_reactor、net.multi_reactor_concurrency、net.multi_react
 链接包装和 Linux 观测是测试机制，不是 ISO C++ API。未证明任意调度、公平性、吞吐、
 真实 OOM、完整搜索服务或 worker 的生命周期。
 
-身份注册元数据已迁移到[ConnectionIdentityTable](CONNECTION_IDENTITY.md)，保持单调epoll token及原协议行为；跨线程拥有路由包装已提供，独立[CompletionQueue](COMPLETION_QUEUE.md)已有结果邮箱；正式worker业务/结果队列接入/回投仍待后续。
+身份注册元数据已迁移到[ConnectionIdentityTable](CONNECTION_IDENTITY.md)，保持单调epoll token及原协议行为；跨线程拥有路由包装已提供，独立[CompletionQueue](COMPLETION_QUEUE.md)已有结果邮箱；[结果队列/eventfd回投](COMPLETION_WAKEUP.md)已接入可选请求提交器，默认协议行为保持；真实worker查询业务仍待接入。

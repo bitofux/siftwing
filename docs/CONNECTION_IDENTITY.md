@@ -16,7 +16,7 @@ retire 仅精确匹配当前 reactor、slot、非零 generation 才撤销绑定�
 
 `ProtocolSubReactor` 内 Sessions 的固定 slot 仍独占 Connection；现在用身份表建立注册元数据，成功 ADD 后保存 ConnectionRegistration，ADD 失败 retire；drop 先撤销身份，再 DEL/close。事件仍携带原有单调 uint64 token，查表得到身份后核当前 slot 绑定才派发，不用复用 fd 数字猜目的地。
 
-PING/PONG、受信错误响应、读写预算、缓存继续、停止与发布者静止屏障保持。没有 worker 或业务接入，也没有公开 Connection 借用。独立 ProtocolLoop 保留原有单调 token 的单循环基线；该路径未接跨线程结果，不扩大为身份框架。
+PING/PONG、受信错误响应、读写预算、缓存继续、停止与发布者静止屏障保持。可选请求提交与结果应用见[回投说明](COMPLETION_WAKEUP.md)，真实查询业务仍未接入；没有公开 Connection 借用。独立 ProtocolLoop 保留原有单调 token 的单循环基线；该路径未接跨线程结果，不扩大为身份框架。
 
 ## 跨线程包装
 
@@ -26,10 +26,10 @@ PING/PONG、受信错误响应、读写预算、缓存继续、停止与发布�
 
 包装不可复制、移动不抛，自移动保持；移空身份全零且载荷为空。route() 返回身份值；左值 payload() 仅借用到移动、赋值或析构，右值 getter 删除。移动不建立线程间同步，拥有载荷须经同步队列交接。响应在任务销毁后仍有效，但路由可能已经失效。
 
-独立[CompletionQueue](COMPLETION_QUEUE.md)已提供结果归属、容量和关闭排空；eventfd 通知、结果应用、查询执行、request_id/deadline 门禁及优雅退出属于后续模块。当前测试 apply 只示范身份门禁与既有 Connection 的组合，不能当作生产回投实现。
+独立[CompletionQueue](COMPLETION_QUEUE.md)已提供结果归属、容量和关闭排空；[eventfd通知与所属Sub结果应用](COMPLETION_WAKEUP.md)已有接入，校验身份、等待状态及既有Connection关联门禁；真实查询、deadline及优雅退出仍属于后续模块。当前测试 apply 只示范身份门禁与既有 Connection 的组合，不能当作生产回投实现。
 
 ## 验证边界
 
 三项真实 CTest 覆盖完整字段/slot 复用/注册回滚/旧 token/旧身份拒绝、预分配故障与激活零分配、拥有包装与局部错误；多生产者验证身份及 Body 经 worker 交接后完整独立。Linux 64 轮复用确知已释放的同一数字 fd、同 slot、同 request_id，旧 Completion 在输出缓冲之前被拒绝且无 peer 字节，新身份结果正常发送。既有多 Sub 测试继续验证实际迁移后的迟到事件、fd 复用、协议及关闭行为。
 
-Debug/Release 全量及 ASan/UBSan、独立 TSan 的范围和结果读取验证日志。未进行 2^64 次耗尽、真实 OOM、所有调度或生产性能实验；溢出拒绝分支经作者源码审读，不冒称运行验证。测试不证明正式业务或结果回投已接入。
+Debug/Release 全量及 ASan/UBSan、独立 TSan 的范围和结果读取验证日志。未进行 2^64 次耗尽、真实 OOM、所有调度或生产性能实验；溢出拒绝分支经作者源码审读，不冒称运行验证。本节身份专项测试不证明正式业务；结果回投的独立接入与证据边界见[回投说明](COMPLETION_WAKEUP.md)。

@@ -45,7 +45,9 @@ ProtocolSubConfig checked(ProtocolSubConfig config) {
         || config.handoff_budget > 1024 || config.read_byte_budget == 0
         || config.read_byte_budget > limit || config.write_byte_budget == 0
         || config.write_byte_budget > limit || config.io_attempt_budget == 0
-        || config.io_attempt_budget > 1024)
+        || config.io_attempt_budget > 1024 || config.completion_capacity == 0
+        || config.completion_capacity > 1024 || config.completion_budget == 0
+        || config.completion_budget > 1024)
         throw std::invalid_argument("invalid ProtocolSubConfig");
     return config;
 }
@@ -56,6 +58,7 @@ class Sessions final {
         ConnectionRegistration registration{}; // 身份与epoll key只由所属Sub发布/撤销。
         std::uint32_t mask = 0;
         bool runnable = false, serviced = false;
+        bool awaiting_completion = false; // 仅所属线程读写；发布者不接触slot。
     };
     std::vector<Slot> slots_;
     int epoll_;
@@ -75,6 +78,7 @@ class Sessions final {
         slot.registration = {};
         slot.mask = 0;
         slot.runnable = false;
+        slot.awaiting_completion = false;
         --report_.active;
         ++report_.dropped;
     }
@@ -84,22 +88,63 @@ class Sessions final {
         auto &connection = *slot.connection;
         try {
             if (!connection.request_pending()) {
-                const auto read =
+                auto read =
                     connection.read_request(config_.read_byte_budget, config_.io_attempt_budget);
                 if (read.stop == ReadStop::request) {
                     ++report_.requests;
-                    auto response =
-                        !read.body_error && read.request->message_type == MessageType::ping
-                            ? make_response(*read.request, "{}", config_.max_body_bytes)
-                            : make_error_response(*read.request,
-                                  read.body_error == ProtocolError::json_depth
-                                      ? ErrorStatus::resource_limit
-                                      : ErrorStatus::invalid_request,
-                                  config_.max_body_bytes);
-                    const auto *frame = std::get_if<Frame>(&response);
-                    if (!frame || connection.queue_response(*frame).stop != QueueStop::queued) {
-                        drop(slot, code(EPROTO));
-                        return;
+                    if (!read.body_error && config_.request_submitter
+                        && (read.request->message_type == MessageType::search_request
+                            || read.request->message_type == MessageType::suggest_request)) {
+                        using namespace concurrency;
+                        // 保留受信关联字段供提交拒绝响应使用；源Body交给任务后不再借用。
+                        const Frame metadata{
+                            read.request->message_type, 0, read.request->request_id, "{}"};
+                        auto created = SearchTask::create(*read.request, config_.max_body_bytes);
+                        auto *payload = std::get_if<SearchTask>(&created);
+                        if (!payload) {
+                            drop(slot, code(EPROTO));
+                            return;
+                        }
+                        auto routed =
+                            RoutedSearchTask::create(slot.registration.identity, *payload);
+                        auto source = std::make_unique<RoutedSearchTask>(
+                            std::get<RoutedSearchTask>(std::move(routed)));
+                        const auto submitted = config_.request_submitter->try_submit(source);
+                        if ((submitted == TaskSubmitResult::accepted) != !source) {
+                            drop(
+                                slot, code(EPROTO)); // 适配器违反拥有交接合同，不能假定任务未提交。
+                            return;
+                        }
+                        if (submitted == TaskSubmitResult::accepted) {
+                            slot.awaiting_completion = true;
+                        } else {
+                            const auto response = make_error_response(metadata,
+                                submitted == TaskSubmitResult::full ? ErrorStatus::overloaded
+                                : submitted == TaskSubmitResult::closed
+                                    ? ErrorStatus::stopping
+                                    : ErrorStatus::internal_error,
+                                config_.max_body_bytes);
+                            const auto *frame = std::get_if<Frame>(&response);
+                            if (!frame
+                                || connection.queue_response(*frame).stop != QueueStop::queued) {
+                                drop(slot, code(EPROTO));
+                                return;
+                            }
+                        }
+                    } else {
+                        auto response =
+                            !read.body_error && read.request->message_type == MessageType::ping
+                                ? make_response(*read.request, "{}", config_.max_body_bytes)
+                                : make_error_response(*read.request,
+                                      read.body_error == ProtocolError::json_depth
+                                          ? ErrorStatus::resource_limit
+                                          : ErrorStatus::invalid_request,
+                                      config_.max_body_bytes);
+                        const auto *frame = std::get_if<Frame>(&response);
+                        if (!frame || connection.queue_response(*frame).stop != QueueStop::queued) {
+                            drop(slot, code(EPROTO));
+                            return;
+                        }
                     }
                 } else if (read.stop == ReadStop::budget_exhausted)
                     slot.runnable = true;
@@ -125,7 +170,11 @@ class Sessions final {
                 }
             }
             // 输出未空时只订阅OUT，避免半关闭RDHUP造成持续空转；排空后主动服务缓存。
-            const std::uint32_t mask = connection.needs_write() ? EPOLLOUT : (EPOLLIN | EPOLLRDHUP);
+            // 等worker期间移除IN/RDHUP，避免缓存后续请求或半关闭导致LT空转。
+            // 全关闭的ERR/HUP仍由内核无条件报告；结果到达后恢复正常读写意向。
+            const std::uint32_t mask = connection.needs_write()   ? EPOLLOUT
+                                       : slot.awaiting_completion ? 0U
+                                                                  : (EPOLLIN | EPOLLRDHUP);
             if (mask != slot.mask) {
                 if (const auto error = epoll_modify(
                         epoll_, connection.get(), mask, slot.registration.poll_token)) {
@@ -207,8 +256,40 @@ public:
             if (!identity)
                 continue; // 已取epoll批次不会随DEL清空，陈旧key不能猜当前fd。
             auto &slot = slots_[identity->slot_index];
-            if (slot.connection && slot.registration.identity == *identity && !slot.serviced)
-                service(slot);
+            if (slot.connection && slot.registration.identity == *identity && !slot.serviced) {
+                if (slot.awaiting_completion
+                    && (events[static_cast<std::size_t>(i)].events & (EPOLLHUP | EPOLLERR)))
+                    drop(slot, code(ECONNRESET));
+                else
+                    service(slot);
+            }
+        }
+    }
+    void complete(const concurrency::RoutedCompletion &result) noexcept {
+        ++report_.completion_received;
+        const auto identity = result.route();
+        if (!identities_.matches(identity)) {
+            ++report_.completion_stale;
+            return; // 先查完整身份，不能按旧slot/fd猜当前Connection。
+        }
+        auto &slot = slots_[identity.slot_index];
+        if (!slot.connection || slot.registration.identity != identity || !slot.awaiting_completion
+            || !slot.connection->request_pending()) {
+            ++report_.completion_rejected;
+            return;
+        }
+        try {
+            if (slot.connection->queue_response(*result.payload()->frame()).stop
+                != QueueStop::queued) {
+                ++report_.completion_rejected;
+                return; // 错ID/类型或重复结果不解除正确请求门禁。
+            }
+            slot.awaiting_completion = false;
+            ++report_.completion_applied;
+            service(slot); // 输出复制成功后只在所属线程预算发送；排空才finish。
+        } catch (...) {
+            ++report_.completion_rejected;
+            drop(slot, exception_code());
         }
     }
     void close() noexcept {
@@ -220,7 +301,8 @@ public:
 } // namespace
 
 ProtocolSubReactor::ProtocolSubReactor(const ProtocolSubConfig &config)
-    : config_(checked(config)), queue_(config_.handoff_capacity) {}
+    : config_(checked(config)), queue_(config_.handoff_capacity),
+      completions_(config_.reactor_id, config_.completion_capacity) {}
 ProtocolSubReactor::~ProtocolSubReactor() noexcept {
     (void)request_stop();
     release_publishers();
@@ -268,6 +350,12 @@ std::error_code ProtocolSubReactor::request_stop() {
     stop_.store(true);
     const std::lock_guard<std::mutex> lock(mutex_);
     return borrowed_wakeup_ >= 0 ? notify_eventfd(borrowed_wakeup_) : std::error_code{};
+}
+std::variant<CompletionTarget, std::error_code> ProtocolSubReactor::completion_target() {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    if (report_.state != ProtocolSubState::running || publishers_released_ || borrowed_wakeup_ < 0)
+        return code(ECANCELED);
+    return CompletionTarget{&completions_, borrowed_wakeup_};
 }
 void ProtocolSubReactor::release_publishers() {
     stop_.store(true);
@@ -325,7 +413,7 @@ void ProtocolSubReactor::run() noexcept {
             ready = true;
         }
         cv_.notify_one();
-        while (!stop_.load() && !queue_.status().closed) {
+        while (!stop_.load() && !queue_.status().closed && !completions_.status().closed) {
             const auto notification_result = drain_eventfd(wakeup.get());
             if (notification_result.state == EventFdDrainState::failed)
                 throw std::system_error(notification_result.error);
@@ -344,7 +432,18 @@ void ProtocolSubReactor::run() noexcept {
             }
             if (stop_.load())
                 break;
-            sessions->tick(queue_.status().size ? 0 : stop_poll_interval_ms);
+            for (std::size_t n = 0; n < config_.completion_budget && !stop_.load(); ++n) {
+                auto result = completions_.try_pop();
+                if (!result)
+                    break;
+                sessions->complete(*result); // pop已释放queue锁，应用及销毁结果均在锁外。
+            }
+            if (stop_.load())
+                break;
+            const bool continue_work =
+                queue_.status().size || completions_.status().size
+                || notification_result.state == EventFdDrainState::budget_exhausted;
+            sessions->tick(continue_work ? 0 : stop_poll_interval_ms);
             const std::lock_guard<std::mutex> lock(mutex_);
             report_ = local;
         }
@@ -360,6 +459,7 @@ void ProtocolSubReactor::run() noexcept {
         report_ = local;
     }
     queue_.close();
+    completions_.close();
     if (ready) {
         std::unique_lock<std::mutex> lock(mutex_);
         cv_.wait(lock, [this] {
@@ -377,6 +477,8 @@ void ProtocolSubReactor::run() noexcept {
         ++local.discarded;
         first(local.cleanup_error, source->close());
     }
+    while (auto result = completions_.try_pop())
+        ++local.completion_discarded; // 静止后只销毁，不应用停止期间的结果。
     if (wakeup_registered)
         first(local.cleanup_error, epoll_remove(epoll.get(), wakeup.get()));
     first(local.cleanup_error, wakeup.close());

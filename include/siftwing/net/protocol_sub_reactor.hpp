@@ -8,6 +8,7 @@
 #pragma once
 #include "siftwing/net/connection.hpp"
 #include "siftwing/net/main_reactor.hpp"
+#include "siftwing/net/completion_wakeup.hpp"
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -25,6 +26,10 @@ struct ProtocolSubConfig {
     std::size_t io_attempt_budget = 16;    ///< [1,1024]，read/flush各自的尝试预算。
     std::uint32_t reactor_id =
         0; ///< 本地身份命名空间；0保留旧默认行为，控制者保证并存目标唯一且旧结果存活时不重用。
+    std::size_t completion_capacity = 128; ///< [1,1024]，陈旧结果也占独立结果条目容量。
+    std::size_t completion_budget = 16; ///< [1,1024]，每轮最多消费结果数，与eventfd计数无关。
+    RoutedRequestSubmitter *request_submitter =
+        nullptr; ///< 可选稳定借用，start前配置到join后存活。
 };
 /** @brief quiescing已停止业务但保留资源等发布者；stopped已清理，joined已回收线程。 */
 enum class ProtocolSubState {
@@ -50,12 +55,18 @@ struct ProtocolSubStatus {
     std::error_code first_error;            ///< 启动/运行首因，正常停止为空。
     std::error_code cleanup_error;          ///< 首个独立清理诊断，不覆盖运行首因。
     std::error_code first_connection_error; ///< 局部客户端错误，不自动终止Sub。
+    std::size_t completion_received = 0; ///< 正常调度取出结果数，等于applied+stale+rejected。
+    std::size_t completion_applied = 0; ///< 已复制进所属Connection输出，不证明发送完成。
+    std::size_t completion_stale = 0; ///< 身份表拒绝的旧代次/未知slot结果，锁外销毁。
+    std::size_t completion_rejected = 0; ///< 当前身份但无等待请求/不匹配/应用异常的结果。
+    std::size_t completion_discarded = 0; ///< 停止且发布者静止后直接销毁的残留，不应用。
 };
 /**
  * @brief 拥有专用queue与一个协议I/O线程，不监听，不accept，不访问其他Sub连接
  * @note 构造/start/target/release_publishers/join/析构由唯一外部控制者串行调用。
  *     request_stop/status可并发，但this须存活，析构前撤入口并等调用返回。不可copy/move。
- *     只响应PING/PONG与受信ERROR，搜索/worker未接入；停止立即丢弃，不保证响应排空。
+ *     默认只响应PING/PONG与受信ERROR；可选submitter交接SEARCH/SUGGEST并接收worker结果。
+ *     不执行真实查询，不拥有submitter/worker；停止立即丢弃，不保证响应排空。
  */
 class ProtocolSubReactor final {
 public:
@@ -92,6 +103,15 @@ public:
      */
     [[nodiscard]] std::variant<MainReactorTarget, std::error_code> target();
     /**
+     * @brief 控制者取得本Sub结果队列与同一eventfd的稳定发布借用
+     * @return
+     *     running时目标，否则ECANCELED；release后禁止使用旧借用。
+     * @note
+     *     控制者须等Main、submitter、worker及全部完整发布/通知调用返回后才release。
+     *     停止期间入口会关闭，已提交结果保留到静止后的所属线程清理。
+     */
+    [[nodiscard]] std::variant<CompletionTarget, std::error_code> completion_target();
+    /**
      * @brief 跨线程单调stop并有限通知，不关闭资源或等待发布者/线程
      * @return
      *     通知诊断；失败标志仍生效，撤销内部fd镜像后为空。
@@ -100,7 +120,7 @@ public:
     [[nodiscard]] std::error_code request_stop();
     /**
      * @brief 控制者承诺全部外部发布/通知已返回并撤销target，允许Sub最终清理，幂等
-     * @note 必须先停止并等待Main所有调用、最后控制通知与其他raw借用者返回。
+     * @note 必须先停止并等待Main、Sub提交回调、worker发布、最后控制通知与其他raw借用者返回。
      *     此方法同时置stop；不自动检测或等待借用者，不能在尚有发布者时调用。
      *     控制同步可抛；无通知系统调用，100ms等待后备仍有效。
      */
@@ -119,7 +139,8 @@ private:
     void run() noexcept;
     const ProtocolSubConfig config_; ///< 构造预检后固定，Sub线程借用到join返回。
     FdHandoffQueue queue_; ///< 专用目标；原始目标借用保持到release，无跨Sub消费。
-    std::thread thread_;   ///< 控制者串行拥有句柄，线程借用this。
+    concurrency::CompletionQueue completions_; ///< 固定owner邮箱，消费及残留销毁仅在Sub线程。
+    std::thread thread_;            ///< 控制者串行拥有句柄，线程借用this。
     std::atomic<bool> stop_{false}; ///< 请求标志，不能代替发布者静止。
     mutable std::mutex mutex_; ///< 保护报告/启动/屏障/内部通知镜像，不保护Connection。
     std::condition_variable cv_;       ///< ready与发布者静止谓词等待，不持锁join。

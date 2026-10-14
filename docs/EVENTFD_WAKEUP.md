@@ -2,7 +2,7 @@
 
 独立组件的公共合同在[头文件](../include/siftwing/net/eventfd_wakeup.hpp)。
 它将[fd移交队列](FD_HANDOFF_QUEUE.md)的真实数据与通知分开，提供提交后通知组合函数。
-真实epoll消费者测试验证协议；现有[Sub Reactor](SUB_REACTOR.md)的连接和队列接入仍属后续集成。
+独立epoll消费者测试验证通知合同；[协议Sub集成](MULTI_REACTOR.md)已有fd队列接入，原[空Sub Reactor](SUB_REACTOR.md)保持独立基线。
 
 `create_eventfd_wakeup()`单次创建普通聚合eventfd，带NONBLOCK/CLOEXEC，不用SEMAPHORE。
 成功返回UniqueFd，错误返回generic errno；创建EINTR不重试。fd 0也是有效拥有者。
@@ -44,4 +44,6 @@ closed/empty都不证明发布者静止；过早关闭会让迟到write误写复
 真实CTest为`net.eventfd_wakeup`、`net.eventfd_wakeup_concurrency`、`net.eventfd_wakeup_failures`。
 覆盖聚合/饱和/flags/fd 0/有限预算、即时epoll可读与清除、多发布者恰好一次消费及停止静止门禁，
 并以test-only链接包装注入EINTR、短读写、创建/通知/部分drain失败、加锁异常和一次close诊断。
-测试不依赖assert，Release仍执行。未声明Main/Sub生产服务集成、吞吐、公平性、硬实时或任意调度正确性。
+测试不依赖assert，Release仍执行。本节独立专项不证明正式业务服务、吞吐、公平性、硬实时或任意调度正确性；Main/Sub组合见各自集成说明。
+
+结果发布已复用同一通知组件接入ProtocolSubReactor，见[eventfd结果回投](COMPLETION_WAKEUP.md)。fd移交、结果和stop可以共享一个普通eventfd；消费者分别检查真实队列，不能按通知计数分配消费次数。
