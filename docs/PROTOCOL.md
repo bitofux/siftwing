@@ -165,3 +165,24 @@ V1 的离线能力与限制仍见 [V1基线](V1.md)。本规范不改变其快�
 Main-Sub Reactor和[在线服务](ONLINE_SEARCH.md)已有真实查询路径；
 每连接[输出背压](OUTPUT_BACKPRESSURE.md)已有水位/硬限及RESOURCE_LIMIT或局部关闭策略；
 [空闲/请求期限](DEADLINES.md)已有默认关闭的局部关闭策略；[优雅退出](GRACEFUL_SHUTDOWN.md)已有已在途响应的限时排空，完整线格式不变；全局字节准入仍留后续。
+
+
+## 四命令请求与响应入口
+
+以下是 Body 示例；发送时仍须按UTF-8序列化字节填写长度，并使用本页定义的头、方向和非零关联号。
+
+| 请求 | Body示例 | 成功响应 |
+|---|---|---|
+| PING | `{}`，恰为两字节 | PONG，Body恰为`{}` |
+| SERVER_INFO_REQUEST | `{}`；允许JSON对象空白 | SERVER_INFO_RESPONSE，固定公开元信息 |
+| SEARCH_REQUEST | `{"query":"lantern","mode":"or","top_k":5}` | SEARCH_RESPONSE；无命中也成功 |
+| SUGGEST_REQUEST | `{"key":"lantern","top_k":5,"normalize_key":false}` | SUGGEST_RESPONSE；无候选也成功 |
+
+业务严格字段、默认值、资源及结果schema沿[在线服务](ONLINE_SEARCH.md)，元信息沿
+[网络客户端](NETWORK_CLIENT.md)，不把示例当作全部字段或独立schema。有效ERROR_RESPONSE
+仍使用原关联号及状态1—6；它是完整响应，客户端退出5，不计作成功查询。
+
+[公开运行与小型基准](V2.md)给出完整建库、服务、客户端命令；[故障/并发矩阵](V2_TESTING.md)
+关联半包、慢写、满队列、fd复用、期限和关闭证据。SIGINT/SIGTERM触发正常排空属于
+[服务退出策略](GRACEFUL_SHUTDOWN.md)，不新增线消息；请求deadline策略到期局部关闭，
+不能仅凭定义了DEADLINE_EXCEEDED状态就声称每次超时都会发送该ERROR。
