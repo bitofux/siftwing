@@ -61,6 +61,9 @@ set pagination off
 set print pretty on
 break apps/indexer/main.cc:452
 break siftwing::text::TextPipeline::analyze
+break apps/indexer/main.cc:594
+break apps/indexer/main.cc:621
+break apps/indexer/main.cc:624
 break apps/indexer/main.cc:636
 break siftwing::snapshot::write_snapshot
 run
@@ -72,17 +75,21 @@ print input
 ```
 
 行号是该 V1 实现的入口定位提示；先 `list` 确认所在语句，后续源码移动时用符号和
-`rg -n 'Analysis analyze|const auto &raw|write_snapshot' apps/indexer/main.cc` 重新定位。
+`rg -n 'Analysis analyze|std::vector<document::DuplicateCandidate>|tf.clear|recommendation.frequencies.clear|const auto &raw|write_snapshot' apps/indexer/main.cc` 重新定位。
 `analyze` 会分别进入 search/recommendation，管线会多次命中。用 `info breakpoints` 看编号，
-观察一次后 `disable 编号`，避免无意义重复；`continue` 到 `raw` 所在行。
+观察一次后 `disable 编号`，避免无意义重复；依次在下表的批次、TF和累计停靠点保存观察，再继续至 `raw`。
 
 | 停靠点 | 观察动作 | 必须解释的关系 |
 |---|---|---|
 | `analyze` | `print role`、`print branch.sources`、`bt 5` | 同一管线为何有两支输入，谁负责分配来源与 DocId |
 | `TextPipeline::analyze` | `print input`，`next` 跟随规范化/分词/过滤，`bt 5` | 原文、规范化字节、token 与 TF 不是同一个对象 |
-| `run` 的 `raw` 行 | `print search.frequencies`、`print recommendation.frequencies`、`print duplicates.counts`、`print tf`、`print accumulated` | 搜索只交付保留集，推荐独立累计；被移动的搜索 TF 不再当完整原表使用 |
+| `run` 第594行，两支analyze均已返回 | `print search.frequencies`、`print recommendation.frequencies` | 此时两支原始TF尚未移动或清空，搜索去重与推荐累计使用各自输入 |
+| 第621行，执行 `tf.clear()` 之前 | `print duplicates.counts`、`print tf`、`print documents` | TF与正文只包含搜索保留集，原DocId不重编号；`search.frequencies`此时已清空 |
+| 第624行，执行 `recommendation.frequencies.clear()` 之前 | `print recommendation.frequencies`、`print accumulated` | 推荐仍按其全部交付TF累计，未复用搜索保留集 |
 | 下一行已有 `raw` 引用 | `print raw`、`print documents`，观察原 DocId 和词表/Posting | DF 是列表篇数，TF 是关系上的次数，空篇对 N 的处理由合同决定 |
 | `write_snapshot` | `info args`、`bt 5`，继续至进程结束 | Writer 同步借用局部部件；完整编码/校验后无覆盖发布，不负责重新分词 |
+
+到第636行时，`search.frequencies`、`tf`和`recommendation.frequencies`已清空，`accumulated.terms`也已释放；这是已消费临时数据的正常生命周期，不能在该处还原之前的TF或累计词表。需要复看时，以新输出版本重新运行并在清空前停靠。
 
 GDB 调用 C++ getter 可能受内联或调试器函数调用限制；优先 `print` 已有局部值和
 `info locals`，不要把 `Cannot evaluate function` 当程序失败。停止观察后继续至正常退出，

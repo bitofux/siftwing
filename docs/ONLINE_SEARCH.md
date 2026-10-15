@@ -31,7 +31,7 @@ k为1..服务max_top_k；窗口1..4096，context为0..window-1。降低窗口须
 
 计算预算沿CLI profile1：查询原文/规范化各65536字节、k100、评分/完整结果显示/推荐距离各50000000工作，Reader单payload512MiB、单资源16MiB。网络成功Body上限为1MiB且再取task本地预算；固定安全ERROR仍受task预算。`--max-query-bytes`、`--max-top-k`、`--max-work`、`--max-output-bytes`、`--max-snapshot-bytes`、`--max-resource-bytes`只允许降低对应预算，正值含端点。请求不提供文件路径、资源或预算配置；预算不是RSS/CPU/总任务字节硬上限。
 
-业务参数非法映射INVALID_REQUEST，工作/输出预算映射RESOURCE_LIMIT，非法显示元数据及未知内部失败映射INTERNAL_ERROR；ERROR使用原codec固定安全message，不泄露异常文本。任务未接纳full/closed沿既有OVERLOADED/STOPPING。任务接纳后生成结果、发布、应用、send排空及对端接收仍分别计量；无法生成错误结果、结果full/意外拒绝或通知失败记录首因并停止整体，不撤销accepted、不重投。此为安全兜底，生产饱和策略后续。
+业务参数非法映射INVALID_REQUEST，工作/输出预算映射RESOURCE_LIMIT，非法显示元数据及未知内部失败映射INTERNAL_ERROR；ERROR使用原codec固定安全message，不泄露异常文本。任务未接纳full/closed沿既有OVERLOADED/STOPPING。任务接纳后生成结果、发布、应用、send排空及对端接收仍分别计量；无法生成错误结果、结果full/意外拒绝或通知失败记录首因并停止整体，不撤销accepted、不重投。这是completion发布失败的安全兜底；worker等待队列满已有[同ID OVERLOADED拒绝](WORKER_SATURATION.md)，全局字节准入与优雅排空仍未提供。
 
 ## 线程与停止
 

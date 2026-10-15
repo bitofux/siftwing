@@ -122,7 +122,7 @@ build-version、输出路径、SnapshotVersion、时间不进入两支来源/配
 应用忽略本进程SIGPIPE，让关闭输出管道成为报告流错误；报告写出失败时已发布快照保留。
 外部终止信号仍可能中断进程。Writer的Linux无覆盖rename、临时目录保留、发布前后错误
 边界和durability合同完全沿用。发布成功不保证断电恢复；不会清理临时目录、删除已有
-快照或更新CURRENT。未实现在线服务、本地SEARCH/SUGGEST命令或私有业务质量评估。
+快照或更新CURRENT。索引器只负责建库；本地SEARCH/SUGGEST由[CLI](CLI.md)提供，网络查询由[在线服务](ONLINE_SEARCH.md)提供。私有业务质量评估未完成。
 
 CTest的 `app.indexer_integration` 和 `app.indexer_failures` 用原创临时文件运行真实应用。
 独立参考核对TF、整数SimHash去重、DF/IDF/L2、字符关系、原始来源摘要、八文件和CRC，
