@@ -54,6 +54,9 @@ target_link_libraries(siftwing_fd_handoff_queue PUBLIC siftwing_socket Threads::
 add_library(siftwing_eventfd_wakeup STATIC src/net/eventfd_wakeup.cc)
 target_link_libraries(siftwing_eventfd_wakeup PUBLIC siftwing_fd_handoff_queue)
 
+add_library(siftwing_deadline STATIC src/net/deadline_queue.cc src/net/deadline_timer.cc)
+target_link_libraries(siftwing_deadline PUBLIC siftwing_socket)
+
 add_library(siftwing_main_reactor STATIC src/net/main_reactor.cc)
 target_link_libraries(siftwing_main_reactor PUBLIC siftwing_listener siftwing_epoll siftwing_eventfd_wakeup)
 
@@ -118,7 +121,7 @@ target_link_libraries(siftwing_routed_payload PUBLIC siftwing_search_task siftwi
 add_library(siftwing_protocol_sub_reactor STATIC src/net/protocol_sub_reactor.cc)
 add_library(siftwing_completion_wakeup STATIC src/net/completion_wakeup.cc)
 target_link_libraries(siftwing_completion_wakeup PUBLIC siftwing_completion_queue siftwing_eventfd_wakeup siftwing_task_queue)
-target_link_libraries(siftwing_protocol_sub_reactor PUBLIC siftwing_connection siftwing_main_reactor siftwing_connection_identity siftwing_completion_wakeup)
+target_link_libraries(siftwing_protocol_sub_reactor PUBLIC siftwing_connection siftwing_main_reactor siftwing_connection_identity siftwing_completion_wakeup siftwing_deadline)
 
 add_library(siftwing_protocol_loop STATIC src/net/protocol_loop.cc)
 target_link_libraries(siftwing_protocol_loop PUBLIC siftwing_connection siftwing_listener siftwing_epoll)
@@ -313,6 +316,20 @@ if(SIFTWING_BUILD_CODEC_FUZZER AND
     message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
 endif()
 if(BUILD_TESTING)
+    add_executable(siftwing_deadline_queue_test tests/unit/deadline_queue_test.cc)
+    target_link_libraries(siftwing_deadline_queue_test PRIVATE siftwing_deadline)
+    add_test(NAME net.deadline_queue COMMAND siftwing_deadline_queue_test)
+    add_executable(siftwing_deadline_timer_test tests/unit/deadline_timer_test.cc)
+    target_link_libraries(siftwing_deadline_timer_test PRIVATE siftwing_deadline siftwing_epoll)
+    target_link_options(siftwing_deadline_timer_test PRIVATE
+        -Wl,--wrap=timerfd_create -Wl,--wrap=timerfd_settime -Wl,--wrap=clock_gettime -Wl,--wrap=read)
+    add_test(NAME net.deadline_timer COMMAND siftwing_deadline_timer_test)
+    add_executable(siftwing_sub_timer_test tests/integration/sub_timer_test.cc)
+    target_link_libraries(siftwing_sub_timer_test PRIVATE siftwing_protocol_sub_reactor)
+    target_link_options(siftwing_sub_timer_test PRIVATE
+        -Wl,--wrap=timerfd_create -Wl,--wrap=epoll_ctl -Wl,--wrap=read -Wl,--wrap=close)
+    add_test(NAME net.sub_timer COMMAND siftwing_sub_timer_test)
+    set_tests_properties(net.deadline_queue net.deadline_timer net.sub_timer PROPERTIES TIMEOUT 30)
     add_executable(siftwing_completion_wakeup_test tests/integration/completion_wakeup_test.cc)
     target_link_libraries(siftwing_completion_wakeup_test PRIVATE siftwing_protocol_sub_reactor)
     add_test(NAME net.completion_wakeup COMMAND siftwing_completion_wakeup_test)

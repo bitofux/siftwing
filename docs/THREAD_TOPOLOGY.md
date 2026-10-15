@@ -11,13 +11,14 @@
 在线服务拓扑包含1个Main I/O线程、启动时配置的N个Sub I/O线程（N为正，默认2）和独立worker池。
 [有界业务线程池](WORKER_POOL.md)已提供固定1—64线程；真实业务已由[在线服务](ONLINE_SEARCH.md)接入，
 不把硬件并发数当作必然可用线程数。每个 Reactor 使用自己的 LT epoll 和 wakeup eventfd；
+正式协议Sub另独占一个[单调timerfd](DEADLINES.md)，当前disarmed，连接超时策略尚未接入。
 ET、动态扩缩容、连接迁移和无锁队列留给有证据的后续扩展。
 
 | 角色 | 所属线程内的职责与资源 | 允许的跨线程入口 | 禁止的动作 |
 |---|---|---|---|
 | 生命周期控制者 | 启动配置、线程拥有者、就绪/失败汇总、停止编排、join | 同步后的启动结果、停止请求、错误报告 | 直接读写/关闭活跃 Sub 的连接或 epoll；持有目标线程需要的锁时join |
 | Main | Listener、监听 epoll、accept4、新 socket 配置、轮询选择、停止接入 | 有界 fd 移交、通知目标 Sub | recv/send 客户端业务数据、JSON 解析、查询/分词/文件 I/O |
-| Sub | 自己的 epoll/wakeup、连接表、Connection、Buffer、注册和写偏移 | 消费自己的 fd/Completion 队列；非阻塞提交业务任务 | 访问其他 Sub 的连接、跨 Sub 迁移连接、等待业务队列空位 |
+| Sub | 自己的 epoll/wakeup/timerfd、连接表、Connection、Buffer、注册和写偏移 | 消费自己的 fd/Completion 队列；非阻塞提交业务任务 | 访问其他 Sub 的连接、跨 Sub 迁移连接、等待业务队列空位 |
 | worker | 拥有型任务、查询/推荐/摘要/响应序列化；只读索引 | 向目标 Sub 的有界队列投递 Completion，再通知 | 持有 Connection 指针或客户端 fd；直接 epoll_ctl/recv/send |
 
 生命周期控制者是职责，不额外要求一个常驻线程；可由应用调用线程承担。Main 的全局停止

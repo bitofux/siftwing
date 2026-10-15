@@ -78,6 +78,8 @@ struct ProtocolSubStatus {
  *     输出达到高水位暂停读，降到低水位只解除输出原因，pending仍须等drained；绝不提前finish。
  *     响应超hard尝试同ID固定RESOURCE_LIMIT；仍不适配或构造异常只关该连接，不递归或截断。
  *     不执行真实查询，不拥有submitter/worker；停止立即丢弃，不保证响应排空。
+ *     每线程独占一个CLOCK_MONOTONIC timerfd，初始disarmed，与eventfd共用控制token0；
+ *     当前无空闲/请求超时策略，不按内核计数推断到期连接，非零身份token空间保持。
  */
 class ProtocolSubReactor final {
 public:

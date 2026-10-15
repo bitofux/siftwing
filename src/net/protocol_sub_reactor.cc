@@ -8,6 +8,7 @@
 #include "siftwing/net/protocol_sub_reactor.hpp"
 #include "siftwing/net/epoll_ops.hpp"
 #include "siftwing/net/connection_identity.hpp"
+#include "siftwing/net/deadline_timer.hpp"
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -64,6 +65,7 @@ class Sessions final {
     };
     std::vector<Slot> slots_;
     int epoll_;
+    int timer_; // 所属Sub栈拥有的timerfd借用，覆盖Sessions整个生命周期。
     const ProtocolSubConfig &config_;
     ProtocolSubStatus &report_;
     ConnectionIdentityTable identities_; // 代次跨slot复用保留，token仍全表单调且0保留wakeup。
@@ -219,8 +221,8 @@ class Sessions final {
     }
 
 public:
-    Sessions(int epoll, const ProtocolSubConfig &config, ProtocolSubStatus &report)
-        : slots_(config.max_connections), epoll_(epoll), config_(config), report_(report),
+    Sessions(int epoll, int timer, const ProtocolSubConfig &config, ProtocolSubStatus &report)
+        : slots_(config.max_connections), epoll_(epoll), timer_(timer), config_(config), report_(report),
           identities_(config.reactor_id, config.max_connections) {}
     void admit(UniqueFd &source) {
         auto slot = std::find_if(slots_.begin(), slots_.end(), [](const Slot &value) {
@@ -281,7 +283,11 @@ public:
             if (token == 0) {
                 if (events[static_cast<std::size_t>(i)].events & (EPOLLERR | EPOLLHUP))
                     throw std::system_error(code(EIO));
-                continue; // 下轮先清通知、再按真实queue状态取有限批次。
+                // 两种控制fd共用0，不侵占Connection非零token；陈旧就绪读到EAGAIN正常。
+                const auto timer = drain_deadline_timer(timer_);
+                if (timer.state == TimerDrainState::failed)
+                    throw std::system_error(timer.error);
+                continue; // eventfd下轮清通知；timer初始disarmed，无连接超时策略。
             }
             const auto identity = identities_.lookup(token);
             if (!identity)
@@ -416,10 +422,10 @@ ProtocolSubStatus ProtocolSubReactor::status() const {
     return result;
 }
 void ProtocolSubReactor::run() noexcept {
-    UniqueFd epoll, wakeup;
+    UniqueFd epoll, wakeup, timer;
     std::unique_ptr<Sessions> sessions;
     ProtocolSubStatus local;
-    bool ready = false, wakeup_registered = false;
+    bool ready = false, wakeup_registered = false, timer_registered = false;
     try {
         if (stop_.load())
             throw std::system_error(code(ECANCELED));
@@ -431,10 +437,17 @@ void ProtocolSubReactor::run() noexcept {
         if (auto *error = std::get_if<std::error_code>(&notification))
             throw std::system_error(*error);
         wakeup = std::move(std::get<UniqueFd>(notification));
-        sessions = std::make_unique<Sessions>(epoll.get(), config_, local);
+        auto deadline = create_deadline_timer();
+        if (auto *error = std::get_if<std::error_code>(&deadline))
+            throw std::system_error(*error);
+        timer = std::move(std::get<UniqueFd>(deadline));
+        sessions = std::make_unique<Sessions>(epoll.get(), timer.get(), config_, local);
         if (const auto error = epoll_add(epoll.get(), wakeup.get(), EPOLLIN, 0))
             throw std::system_error(error);
         wakeup_registered = true;
+        if (const auto error = epoll_add(epoll.get(), timer.get(), EPOLLIN, 0))
+            throw std::system_error(error);
+        timer_registered = true;
         if (stop_.load())
             throw std::system_error(code(ECANCELED));
         {
@@ -503,8 +516,10 @@ void ProtocolSubReactor::run() noexcept {
         const std::lock_guard<std::mutex> lock(mutex_);
         borrowed_wakeup_ = -1;
     }
-    if (sessions)
+    if (sessions) {
         sessions->close();
+        sessions.reset(); // 撤销timer/epoll借用后再关闭所属线程资源。
+    }
     // 最终同步设施无法工作时不能悄悄把残留fd留到控制者析构；noexcept收口明确terminate。
     while (auto source = queue_.try_pop()) {
         ++local.discarded;
@@ -512,6 +527,9 @@ void ProtocolSubReactor::run() noexcept {
     }
     while (auto result = completions_.try_pop())
         ++local.completion_discarded; // 静止后只销毁，不应用停止期间的结果。
+    if (timer_registered)
+        first(local.cleanup_error, epoll_remove(epoll.get(), timer.get()));
+    first(local.cleanup_error, timer.close());
     if (wakeup_registered)
         first(local.cleanup_error, epoll_remove(epoll.get(), wakeup.get()));
     first(local.cleanup_error, wakeup.close());
