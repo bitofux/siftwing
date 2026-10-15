@@ -4,7 +4,7 @@
 调用方在该线程create、重复run_once、close和析构；组件不创建线程，不读取或发送客户端业务数据，不构造Connection。
 它组合[监听接入](LISTENER.md)、[fd队列](FD_HANDOFF_QUEUE.md)和[eventfd通知](EVENTFD_WAKEUP.md)。
 旧Sub生命周期和单Loop保持；[多Sub协议集成](MULTI_REACTOR.md)使用独立ProtocolSubReactor组合Main，验证Connection固定归属。
-本文的三个Main单元测试仍仅验证交接协议；worker与正式搜索服务命令尚未接入。
+本文的三个Main单元测试仍仅验证交接协议；worker与正式搜索服务命令的组合见[在线服务](ONLINE_SEARCH.md)。
 
 调用方提供1—64个固定目标，每个包含稳定的queue指针与普通非阻塞eventfd数字。
 全部目标必须在创建前完整就绪且开放，彼此queue与fd数字不能重复，默认不会按负载重选或动态缩容。

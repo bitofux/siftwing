@@ -86,7 +86,7 @@ ConnectionId、generation、全局唯一身份或幂等承诺。客户端不能�
 
 版本 1 的硬上限为 1 MiB（1048576 字节）；实现可配置更小的接收上限，配置范围
 `[2,1048576]`，默认 1048576。响应同样受上限约束，不把超限 JSON 截断成成功响应。
-独立 codec 已验证 UTF-8、JSON 对象和心跳；业务字段验证由后续模块完成。
+独立codec验证UTF-8、JSON对象和心跳；业务字段由已有SearchService验证，详见[在线搜索](ONLINE_SEARCH.md)。
 本地 JSON 准入最多64层容器，拒绝库不能表示的数值；这些准入限制不改变线头。
 仅头部长度合法不证明 Body 合法，decode_next 仍只拆字节帧。
 
@@ -115,8 +115,8 @@ ConnectionId、generation、全局唯一身份或幂等承诺。客户端不能�
 
 ## 独立黄金字节
 
-以下每组先列完整 24 字节头，后列 Body。期望字节由字段偏移手工构造，供后续 codec
-测试采用；当前只核对线格式，不证明 socket、半包状态机或业务响应已实现。
+以下每组先列完整 24 字节头，后列 Body。期望字节由字段偏移手工构造，对应[codec验证](CODEC_TESTING.md)中的独立黄金参考。
+这里只说明线格式；socket、半包状态机与业务响应的组合证据见[Connection](CONNECTION_READ.md)及[在线服务](ONLINE_SEARCH.md)。
 
 ### PING 请求
 
@@ -163,4 +163,5 @@ V1 的离线能力与限制仍见 [V1基线](V1.md)。本规范不改变其快�
 资源相容前提。已有最小 Buffer、增量拆帧和独立编码/Body准入/响应构造；进一步
 已有codec边界验证、socket资源/调用基线及Connection有界收发接线、单循环协议探针；
 Main-Sub Reactor和[在线服务](ONLINE_SEARCH.md)已有真实查询路径；
-deadline/背压/优雅退出仍按后续模块推进。
+每连接[输出背压](OUTPUT_BACKPRESSURE.md)已有水位/硬限及RESOURCE_LIMIT或局部关闭策略；
+deadline/全局过载/优雅退出仍按后续模块推进。

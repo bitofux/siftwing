@@ -14,7 +14,7 @@ socket；本层不额外探测类型或连接状态。`get()` 只借用数字，
 
 Body 上限为 `[2,1048576]`，默认 1 MiB；输入 Buffer 上限固定为 `24+Body上限`。
 返回 Frame 拥有原 Body，不借用 Buffer，连接关闭/析构后仍可使用。JSON 对象、UTF-8、
-方向及 PING 的 `{}` 在交付时已检查，SEARCH/SUGGEST 等业务字段仍由后续模块验证。
+方向及 PING 的 `{}` 在交付时已检查，SEARCH/SUGGEST 业务字段由[SearchService](ONLINE_SEARCH.md)验证，Connection不承担业务schema。
 输入上限不等于进程 RSS；Frame 副本、JSON 解析存储、Buffer 增长临时空间仍需内存。
 
 ## 读取和门禁

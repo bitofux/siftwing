@@ -40,9 +40,26 @@ MessageType response_type(MessageType request) noexcept {
 }
 } // namespace
 
+OutputWatermarks checked_output_watermarks(std::size_t max_body_bytes, OutputWatermarks value) {
+    if (max_body_bytes < 2 || max_body_bytes > frame_max_body_bytes)
+        throw std::invalid_argument("invalid output body limit");
+    const auto limit = frame_header_bytes + max_body_bytes;
+    if (value.low_bytes == 0 && value.high_bytes == 0 && value.hard_bytes == 0)
+        value = {limit / 2, limit * 3 / 4, limit};
+    if (value.hard_bytes < frame_header_bytes + 2 || value.hard_bytes > limit
+        || value.low_bytes >= value.high_bytes || value.high_bytes > value.hard_bytes)
+        throw std::invalid_argument("invalid output watermarks");
+    return value;
+}
 Connection::Connection(UniqueFd &&socket, std::size_t max_body_bytes, std::size_t initial_capacity)
-    : input_(input_limit(socket, max_body_bytes), initial_capacity),
-      output_(frame_header_bytes + max_body_bytes), socket_(std::move(socket)),
+    : Connection(std::move(socket), max_body_bytes, initial_capacity, {}) {}
+Connection::Connection(UniqueFd &&socket,
+    std::size_t max_body_bytes,
+    std::size_t initial_capacity,
+    OutputWatermarks output)
+    : output_watermarks_(checked_output_watermarks(max_body_bytes, output)),
+      input_(input_limit(socket, max_body_bytes), initial_capacity),
+      output_(output_watermarks_.hard_bytes), socket_(std::move(socket)),
       max_body_bytes_(max_body_bytes) {}
 
 void Connection::terminate(
@@ -52,6 +69,7 @@ void Connection::terminate(
     terminal_error_ = error;
     pending_ = false;
     response_queued_ = false;
+    output_paused_ = false;
     body_rejected_ = false;
     pending_id_ = 0;
     write_terminal_ = WriteStop::closed;
@@ -67,6 +85,7 @@ std::error_code Connection::close() noexcept {
     terminal_error_.clear();
     pending_ = false;
     response_queued_ = false;
+    output_paused_ = false;
     body_rejected_ = false;
     pending_id_ = 0;
     write_terminal_ = WriteStop::closed;
@@ -173,6 +192,12 @@ QueueResult Connection::queue_response(const Frame &response) {
         || (response.message_type != MessageType::error_response
             && (body_rejected_ || response.message_type != response_type(pending_type_))))
         return {QueueStop::request_mismatch};
+    // 协议/关联拒绝优先，硬限在编码前验证；超限不分配完整线副本，也不消费响应源。
+    if (response.body.size() > output_watermarks_.hard_bytes - frame_header_bytes) {
+        if (auto error = validate_frame(response, ReceiveRole::client, max_body_bytes_))
+            return {QueueStop::protocol_error, *error};
+        return {QueueStop::output_limit};
+    }
     auto encoded = encode_frame(response, ReceiveRole::client, max_body_bytes_);
     if (auto *error = std::get_if<ProtocolError>(&encoded))
         return {QueueStop::protocol_error, *error};
@@ -180,6 +205,7 @@ QueueResult Connection::queue_response(const Frame &response) {
     if (!output_.append(std::get<std::string>(encoded)))
         throw std::logic_error("connection output capacity invariant violated");
     response_queued_ = true;
+    output_paused_ = output_.readable_bytes() >= output_watermarks_.high_bytes;
     return {QueueStop::queued};
 }
 
@@ -210,6 +236,8 @@ WriteResult Connection::flush_output(std::size_t byte_budget, std::size_t attemp
         ++result.attempts;
         if (io.state == IoState::progress && io.bytes != 0 && io.bytes <= bytes.size()) {
             (void)output_.consume(io.bytes); // bytes来源于当前可读区，边界已检查。
+            if (output_paused_ && output_.readable_bytes() <= output_watermarks_.low_bytes)
+                output_paused_ = false;
             result.bytes += io.bytes;
             continue;
         }

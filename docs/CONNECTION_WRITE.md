@@ -7,14 +7,14 @@
 ## 所有权、容量与关联
 
 Connection 独占 socket、输入和输出 Buffer，由所属 I/O 线程串行操作，不能复制或移动。
-每个 Buffer 的上限独立为 `24+max_body_bytes`，默认 Body 上限 1 MiB；输出延迟分配。
+输入上限为 `24+max_body_bytes`，输出默认同上，显式输出配置可降低硬限；默认Body上限1MiB，输出延迟分配。
 这不是进程 RSS 上限：调用者 Frame、临时编码字符串、JSON 验证及扩容会增加峰值内存。
 构造所有 Buffer 成功后才接管 fd，失败时调用方资源保持。`get()` 是借用；使用本输出
 API 时不能另行 send 打乱顺序或外部 close，fd 0 合法。
 
 每次读取交付保存独立的请求 ID、类型和 Body 拒绝标记，不依赖调用者之后可修改的 Frame。
 `queue_response(const Frame&)` 先检查 closed、no_request、response_pending，再检查
-request_mismatch，最后由客户端接收方向的 codec 检查协议准入。ID 必须匹配；成功类型
+request_mismatch，由客户端接收方向的codec检查协议准入，最后检查独立输出硬限（超限返回output_limit，源和门禁保持）。ID 必须匹配；成功类型
 显式对应 PING/PONG、SERVER_INFO、SEARCH、SUGGEST。ERROR_RESPONSE 可关联所有请求，
 其 status、Body、UTF-8/JSON 等仍须合法；Body 被拒绝的请求只允许错误响应。
 
@@ -66,6 +66,9 @@ ctest --test-dir build/release --output-on-failure --no-tests=error -R '^net.con
 send/close，以真实前缀发送配合有限 errno/零进展注入验证偏移、双预算、首因和单次关闭；
 逐实际分配点 bad_alloc 验证入队强保证，检查 flush 无分配。Release 检查不依赖 assert。
 
-注入验证错误政策，不能证明真实 OOM 或任意错误时序。Connection自身不提供 Loop、worker、业务
-字段、跨线程完成、连接 generation、高低水位、全局限额或超时，不承诺任意线程安全、
-服务容量或性能；这些需相应后续模块明确启动。
+注入验证错误政策，不能证明真实OOM或任意错误时序。Connection自身不提供Loop、worker、业务字段、
+跨线程完成或连接generation；现有协作见[协议Loop](PROTOCOL_LOOP.md)、[结果回投](COMPLETION_WAKEUP.md)
+和[在线服务](ONLINE_SEARCH.md)。全局限额与超时仍待后续模块，不承诺任意线程安全、服务容量或性能。
+
+输出水位配置、滞回查询、硬限拒绝及正式Sub替代/关闭策略见[输出背压](OUTPUT_BACKPRESSURE.md)。
+低位解除输出原因后仍必须遵守pending，排空才可finish。

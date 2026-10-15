@@ -546,6 +546,13 @@ if(BUILD_TESTING)
     add_test(NAME net.buffer COMMAND siftwing_buffer_test)
     set_tests_properties(net.buffer PROPERTIES TIMEOUT 30)
     find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
+    add_executable(siftwing_output_backpressure_test tests/integration/output_backpressure_test.cc)
+    target_link_libraries(siftwing_output_backpressure_test PRIVATE siftwing_protocol_sub_reactor)
+    target_link_options(siftwing_output_backpressure_test PRIVATE -Wl,--wrap=recv -Wl,--wrap=send -Wl,--wrap=epoll_ctl -Wl,--wrap=accept4)
+    foreach(suite IN ITEMS limits sub tcp)
+        add_test(NAME net.output_backpressure_${suite} COMMAND siftwing_output_backpressure_test ${suite})
+        set_tests_properties(net.output_backpressure_${suite} PROPERTIES TIMEOUT 30)
+    endforeach()
     add_executable(siftwing_single_inflight_test tests/integration/single_inflight_test.cc)
     target_link_libraries(siftwing_single_inflight_test PRIVATE siftwing_protocol_sub_reactor siftwing_worker_pool)
     target_link_options(siftwing_single_inflight_test PRIVATE -Wl,--wrap=recv -Wl,--wrap=send -Wl,--wrap=epoll_ctl)
@@ -556,6 +563,18 @@ if(BUILD_TESTING)
     add_executable(siftwing_online_server_failure_test tests/integration/online_server_failure_test.cc)
     target_link_libraries(siftwing_online_server_failure_test PRIVATE siftwing_online_server)
     target_link_options(siftwing_online_server_failure_test PRIVATE -Wl,--wrap=write -Wl,--wrap=_Znwm -Wl,--wrap=epoll_ctl -Wl,--wrap=epoll_wait -Wl,--wrap=send -Wl,--wrap=recv)
+    add_executable(siftwing_worker_saturation_test tests/integration/worker_saturation_test.cc)
+    target_link_libraries(siftwing_worker_saturation_test PRIVATE siftwing_online_server siftwing_json)
+    target_link_options(siftwing_worker_saturation_test PRIVATE
+        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskE
+        -Wl,--wrap=_ZN8siftwing11concurrency10WorkerPool10try_submitERSt10unique_ptrINS0_10WorkerTaskESt14default_deleteIS3_EE)
+    foreach(subs IN ITEMS 1 2)
+        add_test(NAME net.worker_saturation_${subs} COMMAND Python3::Interpreter -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/worker_saturation_test.py"
+            --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
+            --native "$<TARGET_FILE:siftwing_worker_saturation_test>" --subs ${subs})
+        set_tests_properties(net.worker_saturation_${subs} PROPERTIES TIMEOUT 60)
+    endforeach()
     foreach(suite IN ITEMS integration concurrency failures native)
         add_test(NAME net.online_search_${suite} COMMAND Python3::Interpreter -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/online_search_test.py"

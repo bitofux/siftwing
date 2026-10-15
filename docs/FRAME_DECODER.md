@@ -36,8 +36,8 @@ status 与类型组合、Body 长度和本地 Body 上限、request_id、接收�
 
 Frame 只表示头部验证及字节完整。Body 保留原字节，本模块不验证 UTF-8、JSON 对象、
 PING/PONG 的 `{}` 或业务字段；它不能直接视为有效请求。`DecodeError` 是本地拒绝原因，
-Frame 的 status 是线上状态，二者不可互换。独立[帧codec](FRAME_CODEC.md)提供编码、JSON对象准入和统一错误响应；业务字段处理
-与网络接线由后续模块实现，不据非法头猜测 request_id 并发送响应。
+Frame 的 status 是线上状态，二者不可互换。独立[帧codec](FRAME_CODEC.md)提供编码、JSON对象准入和统一错误响应；业务字段由[在线服务](ONLINE_SEARCH.md)处理，
+网络读取及EOF处理见[Connection](CONNECTION_READ.md)；遇到非法头不猜测 request_id 并发送响应。
 
 当前没有 EOF 参数。上层收到 EOF 时，非空未完成帧应判为截断并终止，不能发布部分 Body。
 本模块没有 recv/send、连接状态、在途请求控制、Reactor、线程池或背压实现；内存粘连测试
@@ -48,4 +48,4 @@ Frame 的 status 是线上状态，二者不可互换。独立[帧codec](FRAME_C
 真实 CTest `net.frame_decoder` 使用手工黄金字节和独立字段构造，覆盖全部两段切割位置、
 逐字节输入、多帧与所有末尾前缀、不同分块下的 Buffer 复用、九种类型/角色/status、
 大端高位关联号、最大 Body、本地上限、非法头拒绝顺序和定点分配失败保持。
-这是本层的行为验证；独立编码与Body准入见[帧codec](FRAME_CODEC.md)，进一步的黄金/fuzz见[codec验证](CODEC_TESTING.md)，网络验证尚待后续模块。
+这是本层的行为验证；独立编码与Body准入见[帧codec](FRAME_CODEC.md)，进一步的黄金/fuzz见[codec验证](CODEC_TESTING.md)，网络组合验证见[Connection](CONNECTION_READ.md)、[多Sub集成](MULTI_REACTOR.md)及[在线服务](ONLINE_SEARCH.md)。

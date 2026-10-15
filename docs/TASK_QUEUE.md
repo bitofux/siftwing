@@ -3,7 +3,7 @@
 [TaskQueue<T>](../include/siftwing/concurrency/task_queue.hpp)是独立的多生产者/多消费者
 拥有型 FIFO，CMake 目标 `siftwing_task_queue` 声明 C++17、项目编译选项及 `Threads::Threads`。
 它只交接 `std::unique_ptr<T>`，不创建线程、不执行任务、不访问 Connection 或 fd。
-固定worker执行已由独立[WorkerPool](WORKER_POOL.md)复用本队列；独立[SearchTask/Completion](SEARCH_TASK.md)已有拥有载荷，结果发布由独立[CompletionQueue](COMPLETION_QUEUE.md)提供归属和容量合同；正式网络业务接入仍待后续。
+固定worker执行已由独立[WorkerPool](WORKER_POOL.md)复用本队列；独立[SearchTask/Completion](SEARCH_TASK.md)已有拥有载荷，结果发布由独立[CompletionQueue](COMPLETION_QUEUE.md)提供归属和容量合同；正式网络业务已由[OnlineServer](ONLINE_SEARCH.md)组合。
 
 ## 容量、提交与拥有关系
 
@@ -43,7 +43,8 @@ wait_pop 在锁内检查真实 size/closed，支持通知先到、合并和虚�
 
 closed/empty 只描述队列，不能证明所有调用者已返回或任务已执行完。
 析构不自动 close、唤醒或 join；仅在无活跃调用者时在析构线程销毁残留任务，不能替代 worker 排空协议。
-任务执行异常、取消和结果回投策略属于后续调用方，本组件不携带执行回调。
+任务执行异常由[WorkerPool](WORKER_POOL.md)隔离，结果回投与服务失败策略由
+[在线服务](ONLINE_SEARCH.md)组合；取消仍未实现。本组件不携带执行回调。
 
 容量 2 的例子：提交任务 101、102 后，103 遇 full 仍由源拥有；消费者取 101 释放一个槽，
 103 重试 accepted。close 保留 102、103，消费者仍取完二者，随后 wait_pop 返回空指针。

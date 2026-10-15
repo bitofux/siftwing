@@ -12,6 +12,8 @@ build/release/siftwing-server --snapshot /absolute/snapshots --version 1 --port 
 
 ## 业务Body
 
+等待队列满时，Sub不等空位，向本次请求返回同ID OVERLOADED；错误输出服从连接硬限，容量释放后新请求可重新准入。合同、确定满队列及健康连接验证见[worker队列饱和](WORKER_SATURATION.md)。
+
 沿[固定协议版本1](PROTOCOL.md)的24字节头和UTF8 JSON对象；业务字段严格检查，拒绝未知/重复键、错误类型与非整数k。请求完成后允许再次使用同一request_id；generation仍是连接身份，不是请求代次。每接纳任务至多发布一个结果。
 
 | 请求 | 必需字段 | 可选字段和默认值 |
@@ -43,4 +45,8 @@ OnlineServer的create/run_once/port/report/stop/析构由创建线程串行；Ma
 
 真实CTest覆盖生产indexer→server→TCP查询/推荐、独立数学/Unicode参考、英文稀疏身份/中文共享只读资源、参数/预算/启动失败，以及部分启动分配故障、worker分配异常固定安全响应、真实结果full、accepted后通知失败和晚到通知停止屏障。插桩范围以实际日志为准；不证明任意调度、DSO内部、真实OOM、质量或性能。
 
-SERVER_INFO仍保持未接入时的INVALID_REQUEST；正式客户端模式、请求deadline/取消、背压、版本缓存、热切换、signalfd和优雅排空属于后续模块。
+SERVER_INFO仍保持未接入时的INVALID_REQUEST；正式客户端模式、请求deadline/取消、全局过载策略、版本缓存、热切换、signalfd和优雅排空属于后续模块。
+
+每连接已有[输出水位与硬限策略](OUTPUT_BACKPRESSURE.md)，可由OnlineServerConfig.sub.output配置，
+命令当前使用自动默认值。输出过大时Sub尝试同ID固定RESOURCE_LIMIT，错误也无法容纳则局部关闭；
+worker和结果邮箱的拥有、发布与停止屏障保持。低位仍不允许在响应排空前接纳下一请求。

@@ -14,7 +14,7 @@ try_publish接受独占unique_ptr左值，同锁按closed、invalid_completion�
 
 try_pop非阻塞按FIFO交出拥有结果，空返回nullptr；FIFO指成功发布的锁内顺序，不保证业务完成顺序。身份和请求/响应字节随拥有者一起转交，内部不暴露借用。
 
-worker不访问Connection或身份表。旧generation可能在发布前或入队后失效；队列不扫描/自动驱逐，陈旧条目仍占容量。所属I/O线程取出后查询当前身份并核Connection和请求状态，陈旧结果在锁外丢弃，释放容量。request_id/deadline门禁及正式响应应用留给接入模块；拥有结果和accepted不证明响应已发送。
+worker不访问Connection或身份表。旧generation可能在发布前或入队后失效；队列不扫描/自动驱逐，陈旧条目仍占容量。所属I/O线程取出后查询当前身份并核Connection和请求状态，陈旧结果在锁外丢弃，释放容量。request_id门禁与正式响应应用已由[Sub回投路径](COMPLETION_WAKEUP.md)实现，deadline仍未实现；拥有结果和accepted不证明响应已发送。
 
 ## 关闭与生命周期
 

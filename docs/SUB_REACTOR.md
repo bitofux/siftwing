@@ -4,7 +4,7 @@
 [sub_reactor.hpp](../include/siftwing/net/sub_reactor.hpp) 为准，依赖已有 epoll/UniqueFd
 及 CMake `Threads::Threads`。当前线程只拥有一个空 LT epoll，不接收客户端 fd，
 不监听端口。本文类型保持空生命周期基线；专用连接队列、eventfd与Main协议接入由独立
-[ProtocolSubReactor](MULTI_REACTOR.md)提供。worker与业务排空仍按[线程拓扑合同](THREAD_TOPOLOGY.md)后续实现。
+[ProtocolSubReactor](MULTI_REACTOR.md)提供。worker接入与停止屏障已由[在线服务](ONLINE_SEARCH.md)组合；当前立即丢弃网络输出，优雅排空仍未实现。
 
 ## 调用与拥有关系
 
@@ -45,7 +45,7 @@ epoll 创建、等待和关闭全部在所属 Sub 线程执行。控制者不能
 | idle 时 join | 无操作，仍可 start；运行中 join 不隐含 stop |
 
 100ms 是单次等待参数，包含调度延迟的退出时间没有硬实时保证。每次 EINTR 都回到
-停止检查，不因信号不断到达而跳过检查。eventfd 接入前，这是空线程观察停止的过渡路径。
+停止检查，不因信号不断到达而跳过检查。本类型保留有限等待基线；带eventfd的连接服务由独立ProtocolSubReactor提供。
 
 线程创建 system_error 保留 code，bad_alloc 映射 not_enough_memory，其他异常映射
 io_error；epoll_create1 失败原 errno 不重试，epoll_wait 非 EINTR 错误终止运行。

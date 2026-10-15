@@ -2,7 +2,7 @@
 
 `concurrency::WorkerPool` 复用[有界TaskQueue](TASK_QUEUE.md)，提供固定线程的启动、独占任务执行、异常隔离与关闭排空。CMake 目标 `siftwing_worker_pool` 声明线程与队列依赖，公共合同以 [worker_pool.hpp](../include/siftwing/concurrency/worker_pool.hpp) 为准。
 
-`WorkerTask` 是具有虚析构与 `execute()` 的基础类型。生产者先构造拥有输入与依赖生命周期的任务，以 `unique_ptr<WorkerTask>` 左值提交；任务不得借用 Connection 或以 fd 数字代表连接。独立[SearchTask/Completion](SEARCH_TASK.md)已有拥有型数据与响应构造，可由执行任务组合；业务执行和网络接入属于后续模块，当前组件没有正式业务调用方。
+`WorkerTask` 是具有虚析构与 `execute()` 的基础类型。生产者先构造拥有输入与依赖生命周期的任务，以 `unique_ptr<WorkerTask>` 左值提交；任务不得借用 Connection 或以 fd 数字代表连接。独立[SearchTask/Completion](SEARCH_TASK.md)已有拥有型数据与响应构造，已由[OnlineServer](ONLINE_SEARCH.md)组合为执行任务，在worker调用只读SearchService，并向所属Sub回投结果。
 
 ## 启动与拥有
 
@@ -27,6 +27,8 @@
 析构在没有外部调用者时自动 close/drain/join；禁止从本池 worker 销毁 pool。停止不取消执行中的任务，没有截止时间；阻塞任务可能令 join 或析构无限等待。销毁前须撤销外部入口并等全部 producer/stop/观测/join 调用完整返回，含提交的锁外通知。join 只证明 worker 已回收，不证明外部生产者已静止。
 
 ## 验证边界
+
+生产服务把worker等待队列full映射为同ID OVERLOADED，其他连接独立推进；正式OnlineServer/TCP确定饱和与恢复的专项见[worker队列饱和](WORKER_SATURATION.md)。底层pool仍只返回提交结果，不自行生成网络响应。
 
 三个真实 CTest 验证单 worker 顺序、满/关闭拒绝与源保留、异常继续执行、首异常、锁外销毁、自停止、自 join 与并发 join；多生产者检查每个任务的执行次数、提交前普通字段可见性、并发关闭的拥有关系；启动逐次分配与初次锁错误注入，通过Linux实际tid识别四个预热worker、join后确认其条目消失；随后按包含运行时辅助线程的精确`/proc/self/task`基线，以5秒期限观察每次部分启动回滚无线程遗留。join完成不要求Linux目录观测立即同步。
 

@@ -49,6 +49,7 @@ ProtocolSubConfig checked(ProtocolSubConfig config) {
         || config.completion_capacity > 1024 || config.completion_budget == 0
         || config.completion_budget > 1024)
         throw std::invalid_argument("invalid ProtocolSubConfig");
+    config.output = checked_output_watermarks(config.max_body_bytes, config.output);
     return config;
 }
 // 仅Sub栈内使用；复用Connection协议合同，监听和线程生命周期由外层分别承担。
@@ -59,6 +60,7 @@ class Sessions final {
         std::uint32_t mask = 0;
         bool runnable = false, serviced = false;
         bool awaiting_completion = false; // 仅所属线程读写；发布者不接触slot。
+        Frame request_metadata{MessageType::ping, 0, 0, "{}"}; // 仅保存受信类型/ID供硬限错误关联。
     };
     std::vector<Slot> slots_;
     int epoll_;
@@ -82,6 +84,26 @@ class Sessions final {
         --report_.active;
         ++report_.dropped;
     }
+    /** @brief 保持原关联检查顺序；仅合法响应的硬限拒绝可替换为一次固定错误。 */
+    QueueStop queue_response(Slot &slot, const Frame &response) {
+        auto &connection = *slot.connection;
+        const auto result = connection.queue_response(response).stop;
+        if (result != QueueStop::output_limit)
+            return result;
+        ++report_.output_limit_rejections;
+        try {
+            const auto fallback = make_error_response(
+                slot.request_metadata, ErrorStatus::resource_limit, config_.max_body_bytes);
+            const auto *frame = std::get_if<Frame>(&fallback);
+            if (frame && connection.queue_response(*frame).stop == QueueStop::queued)
+                return QueueStop::queued;
+        } catch (...) {
+            ++report_.output_limit_closes;
+            throw; // 外层统一记录原异常并局部drop；不递归分配第二个错误。
+        }
+        ++report_.output_limit_closes;
+        return QueueStop::output_limit;
+    }
     void service(Slot &slot) noexcept {
         slot.serviced = true;
         slot.runnable = false;
@@ -92,6 +114,8 @@ class Sessions final {
                     connection.read_request(config_.read_byte_budget, config_.io_attempt_budget);
                 if (read.stop == ReadStop::request) {
                     ++report_.requests;
+                    slot.request_metadata.message_type = read.request->message_type;
+                    slot.request_metadata.request_id = read.request->request_id;
                     if (!read.body_error && config_.request_submitter
                         && (read.request->message_type == MessageType::search_request
                             || read.request->message_type == MessageType::suggest_request)) {
@@ -125,9 +149,11 @@ class Sessions final {
                                     : ErrorStatus::internal_error,
                                 config_.max_body_bytes);
                             const auto *frame = std::get_if<Frame>(&response);
-                            if (!frame
-                                || connection.queue_response(*frame).stop != QueueStop::queued) {
-                                drop(slot, code(EPROTO));
+                            const auto queued =
+                                frame ? queue_response(slot, *frame) : QueueStop::protocol_error;
+                            if (queued != QueueStop::queued) {
+                                drop(slot,
+                                    code(queued == QueueStop::output_limit ? EMSGSIZE : EPROTO));
                                 return;
                             }
                         }
@@ -141,8 +167,10 @@ class Sessions final {
                                           : ErrorStatus::invalid_request,
                                       config_.max_body_bytes);
                         const auto *frame = std::get_if<Frame>(&response);
-                        if (!frame || connection.queue_response(*frame).stop != QueueStop::queued) {
-                            drop(slot, code(EPROTO));
+                        const auto queued =
+                            frame ? queue_response(slot, *frame) : QueueStop::protocol_error;
+                        if (queued != QueueStop::queued) {
+                            drop(slot, code(queued == QueueStop::output_limit ? EMSGSIZE : EPROTO));
                             return;
                         }
                     }
@@ -172,9 +200,11 @@ class Sessions final {
             // 输出未空时只订阅OUT，避免半关闭RDHUP造成持续空转；排空后主动服务缓存。
             // 等worker期间移除IN/RDHUP，避免缓存后续请求或半关闭导致LT空转。
             // 全关闭的ERR/HUP仍由内核无条件报告；结果到达后恢复正常读写意向。
-            const std::uint32_t mask = connection.needs_write()   ? EPOLLOUT
-                                       : slot.awaiting_completion ? 0U
-                                                                  : (EPOLLIN | EPOLLRDHUP);
+            const std::uint32_t mask =
+                connection.needs_write() ? EPOLLOUT
+                : (slot.awaiting_completion || connection.output_backpressured())
+                    ? 0U
+                    : (EPOLLIN | EPOLLRDHUP);
             if (mask != slot.mask) {
                 if (const auto error = epoll_modify(
                         epoll_, connection.get(), mask, slot.registration.poll_token)) {
@@ -201,7 +231,8 @@ public:
             first(report_.cleanup_error, source.close());
             return;
         }
-        auto connection = std::make_unique<Connection>(std::move(source), config_.max_body_bytes);
+        auto connection = std::make_unique<Connection>(
+            std::move(source), config_.max_body_bytes, 0, config_.output);
         const auto issued = identities_.activate(static_cast<std::size_t>(slot - slots_.begin()));
         const auto *registration = std::get_if<ConnectionRegistration>(&issued);
         if (!registration)
@@ -279,9 +310,11 @@ public:
             return;
         }
         try {
-            if (slot.connection->queue_response(*result.payload()->frame()).stop
-                != QueueStop::queued) {
+            const auto queued = queue_response(slot, *result.payload()->frame());
+            if (queued != QueueStop::queued) {
                 ++report_.completion_rejected;
+                if (queued == QueueStop::output_limit)
+                    drop(slot, code(EMSGSIZE));
                 return; // 错ID/类型或重复结果不解除正确请求门禁。
             }
             slot.awaiting_completion = false;

@@ -2,8 +2,9 @@
 
 `FdHandoffQueue` 是独立的固定容量组件，公共合同见
 [头文件](../include/siftwing/net/fd_handoff_queue.hpp)。它实现
-[线程拓扑合同](THREAD_TOPOLOGY.md)中的 fd 所有权提交；当前尚未接入
-[Sub Reactor](SUB_REACTOR.md)或Main；已有独立[eventfd通知组合函数](EVENTFD_WAKEUP.md)。
+[线程拓扑合同](THREAD_TOPOLOGY.md)中的 fd 所有权提交；已有独立
+[eventfd通知组合函数](EVENTFD_WAKEUP.md)，并由[Main](MAIN_REACTOR.md)与
+[ProtocolSubReactor](MULTI_REACTOR.md)用于连接移交；空Sub生命周期基线保持独立。
 
 构造要求正容量，预分配全部 `UniqueFd` 环形槽位。零容量抛 `invalid_argument`，
 超出容器可表示范围抛 `length_error`，分配失败抛 `bad_alloc`。构造后的正常返回路径不分配；
@@ -35,8 +36,8 @@ if (auto fd = queue.try_pop()) {
 ```
 
 组件支持多个发布者，由调用方安排一个目标消费者；它不创建线程、不绑定消费者身份，
-也不唤醒消费者。后续通知是独立阶段，入队成功后通知失败不能收回或重新关闭源 fd。
-队列自身测试使用主动检查；独立eventfd组合的真实epoll消费者验证见[eventfd说明](EVENTFD_WAKEUP.md)，服务接入仍由后续模块完成。
+也不唤醒消费者。通知是提交后的独立阶段，入队成功后通知失败不能收回或重新关闭源 fd。
+队列自身测试使用主动检查；独立eventfd组合的真实epoll消费者验证见[eventfd说明](EVENTFD_WAKEUP.md)，服务接入见[多Sub集成](MULTI_REACTOR.md)及[在线服务](ONLINE_SEARCH.md)。
 
 正常退出协议是：关闭发布入口，撤销发布者并确认已进入调用返回，目标线程取完并关闭
 遗留条目，join 后销毁队列。所有调用须保证对象存活；析构不能与调用并发。

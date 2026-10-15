@@ -30,6 +30,7 @@ struct ProtocolSubConfig {
     std::size_t completion_budget = 16; ///< [1,1024]，每轮最多消费结果数，与eventfd计数无关。
     RoutedRequestSubmitter *request_submitter =
         nullptr; ///< 可选稳定借用，start前配置到join后存活。
+    OutputWatermarks output; ///< 可选输出水位/硬限；全0按max_body解析，非法组合在任何线程前拒绝。
 };
 /** @brief quiescing已停止业务但保留资源等发布者；stopped已清理，joined已回收线程。 */
 enum class ProtocolSubState {
@@ -56,10 +57,13 @@ struct ProtocolSubStatus {
     std::error_code cleanup_error;          ///< 首个独立清理诊断，不覆盖运行首因。
     std::error_code first_connection_error; ///< 局部客户端错误，不自动终止Sub。
     std::size_t completion_received = 0; ///< 正常调度取出结果数，等于applied+stale+rejected。
-    std::size_t completion_applied = 0; ///< 已复制进所属Connection输出，不证明发送完成。
+    std::size_t completion_applied = 0; ///< 已复制结果或硬限替代ERROR，不证明发送完成。
     std::size_t completion_stale = 0; ///< 身份表拒绝的旧代次/未知slot结果，锁外销毁。
     std::size_t completion_rejected = 0; ///< 当前身份但无等待请求/不匹配/应用异常的结果。
     std::size_t completion_discarded = 0; ///< 停止且发布者静止后直接销毁的残留，不应用。
+    std::size_t output_limit_rejections = 0; ///< 合法关联响应被输出硬限拒绝次数，含直接错误响应。
+    std::size_t output_limit_closes =
+        0; ///< 硬限拒绝后固定RESOURCE_LIMIT也无法入队/构造的局部关闭。
 };
 /**
  * @brief 拥有专用queue与一个协议I/O线程，不监听，不accept，不访问其他Sub连接
@@ -71,6 +75,8 @@ struct ProtocolSubStatus {
  *     排空只证明字节交本机内核；finish后主动继续缓存，不要求peer重新发送。
  *     SHUT_WR不撤销完整请求，缓存帧处理后才观察EOF；ERR/HUP和停止仍可立即丢弃。
  *     request_id可在完成后复用；generation不是请求代次，每接纳任务须至多发布一个结果。
+ *     输出达到高水位暂停读，降到低水位只解除输出原因，pending仍须等drained；绝不提前finish。
+ *     响应超hard尝试同ID固定RESOURCE_LIMIT；仍不适配或构造异常只关该连接，不递归或截断。
  *     不执行真实查询，不拥有submitter/worker；停止立即丢弃，不保证响应排空。
  */
 class ProtocolSubReactor final {

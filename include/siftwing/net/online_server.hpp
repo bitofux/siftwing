@@ -16,7 +16,7 @@ struct OnlineServerConfig {
     ListenConfig listen; ///< 沿Listener数值地址合同，默认127.0.0.1/端口0。
     std::size_t sub_count = 2; ///< [1,64]，各Sub身份为0..count-1，不动态扩缩容。
     std::size_t workers = 4; ///< [1,64]固定worker，服务在所有线程退出后才销毁。
-    std::size_t task_capacity = 128; ///< [1,1024]等待任务条目；full返回既有OVERLOADED。
+    std::size_t task_capacity = 128; ///< [1,1024]等待条目，不含执行中任务；full不等空位。
     ProtocolSubConfig sub; ///< 复用Sub固定预算；reactor_id须0、submitter须空，由控制者设置。
     MainReactorConfig main; ///< 复用Main有限接入预算。
 };
@@ -32,6 +32,8 @@ struct OnlineServerReport {
  * @brief 创建线程拥有Main、固定Sub/worker与SearchService；worker只处理拥有数据
  * @note 所有公共API和析构由创建线程串行调用，无跨线程控制借用；不可copy/move/重启。
  *     Main在调用线程接入，Sub独占Connection，worker共享稳定只读服务。
+ *     worker等待队列full只拒绝本次任务：Sub返回同ID OVERLOADED；可等mutex，不等容量。
+ *     错误输出仍服从Sub硬限/局部关闭，排空后可继续缓存请求；容量释放后允许新提交。
  *     停止立即丢弃网络输出，worker关闭排空；无期限、取消或优雅退出承诺。
  */
 class OnlineServer final {

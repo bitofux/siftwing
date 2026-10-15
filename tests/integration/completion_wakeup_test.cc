@@ -136,7 +136,9 @@ int main() {
             auto old = take_request(sink);
             check(!old_peer.close(), "old pending client fully closes");
             await([&] {
-                return sub.status().active == 0;
+                // take_request可早于本轮报告发布；旧active=0不能证明刚注册的fd已关闭。
+                return sub.status().active == 0 && ::fcntl(reserved, F_GETFD) == -1
+                       && errno == EBADF;
             });
             check(::fcntl(reserved, F_GETFD) == -1 && errno == EBADF,
                 "old registered fd is actually released");
@@ -163,7 +165,8 @@ int main() {
                 "only new generation writes replacement");
             check(!peer.close(), "replacement peer closes");
             await([&] {
-                return sub.status().active == 0;
+                return sub.status().active == 0 && ::fcntl(reserved, F_GETFD) == -1
+                       && errno == EBADF;
             });
         }
         const auto report = sub.status();

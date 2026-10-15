@@ -8,7 +8,7 @@
 
 ## 线程与职责
 
-目标拓扑包含1个Main I/O线程、启动时配置的N个Sub I/O线程（N为正，默认2）和独立worker池。
+在线服务拓扑包含1个Main I/O线程、启动时配置的N个Sub I/O线程（N为正，默认2）和独立worker池。
 [有界业务线程池](WORKER_POOL.md)已提供固定1—64线程；真实业务已由[在线服务](ONLINE_SEARCH.md)接入，
 不把硬件并发数当作必然可用线程数。每个 Reactor 使用自己的 LT epoll 和 wakeup eventfd；
 ET、动态扩缩容、连接迁移和无锁队列留给有证据的后续扩展。
@@ -18,7 +18,7 @@ ET、动态扩缩容、连接迁移和无锁队列留给有证据的后续扩展
 | 生命周期控制者 | 启动配置、线程拥有者、就绪/失败汇总、停止编排、join | 同步后的启动结果、停止请求、错误报告 | 直接读写/关闭活跃 Sub 的连接或 epoll；持有目标线程需要的锁时join |
 | Main | Listener、监听 epoll、accept4、新 socket 配置、轮询选择、停止接入 | 有界 fd 移交、通知目标 Sub | recv/send 客户端业务数据、JSON 解析、查询/分词/文件 I/O |
 | Sub | 自己的 epoll/wakeup、连接表、Connection、Buffer、注册和写偏移 | 消费自己的 fd/Completion 队列；非阻塞提交业务任务 | 访问其他 Sub 的连接、跨 Sub 迁移连接、等待业务队列空位 |
-| worker（业务接入后续） | 拥有型任务、查询/推荐/摘要/缓存/响应序列化；只读索引 | 向目标 Sub 的有界队列投递 Completion，再通知 | 持有 Connection 指针或客户端 fd；直接 epoll_ctl/recv/send |
+| worker | 拥有型任务、查询/推荐/摘要/响应序列化；只读索引 | 向目标 Sub 的有界队列投递 Completion，再通知 | 持有 Connection 指针或客户端 fd；直接 epoll_ctl/recv/send |
 
 生命周期控制者是职责，不额外要求一个常驻线程；可由应用调用线程承担。Main 的全局停止
 控制负责停止接入并协调报告，不能绕过所属线程清理资源。所有 join 由线程拥有者在目标
@@ -31,13 +31,14 @@ flowchart LR
     Main -.->|eventfd：提示检查队列| Sub[Sub：注册与连接 I/O]
     Queue -->|所属线程取出| Sub
     Sub <-->|recv / send| Peer
-    Sub -->|拥有型任务；后续| Workers[独立 worker 池]
-    Workers -->|拥有型 Completion；后续| Results[目标 Sub 的有界结果队列]
+    Sub -->|拥有型任务| Workers[独立 worker 池]
+    Workers -->|拥有型 Completion| Results[目标 Sub 的有界结果队列]
     Results --> Sub
 ```
 
 数据由队列持有，eventfd 只提示队列可能有工作；通知次数、任务数和连接数不相等。
-Main/Sub的队列与通知协议链已有集成验证；图中worker与Sub的业务接入、Completion回投和搜索业务路径仍是计划；独立WorkerPool及请求/响应拥有载荷已有组件验证。
+Main/Sub的队列与通知协议链已有集成验证；图中worker业务执行、Completion回投和真实搜索路径
+已由[在线服务](ONLINE_SEARCH.md)组合。组件测试与端到端业务测试的证据范围分别维护。
 
 ## fd 转交：每个时点只有一个拥有者
 
@@ -71,7 +72,8 @@ fd队列已用FdHandoffResult区分accepted与closed/invalid_fd/full，公共合
 Connection 从注册到终止固定归属一个 Sub，保持已有“不复制、不移动、所属线程串行”
 合同；必要时用 unique_ptr 保持地址稳定。Main 不保留 Connection 引用，worker 只带拥有
 的输入和结果。当前 Loop 的单调 token 只是注册身份；跨线程结果的[ConnectionId/generation与路由包装](CONNECTION_IDENTITY.md)已提供独立组件并迁移Sub注册元数据；
-request_id/deadline校验及过期结果应用仍由后续回投模块完成，不用fd数字代替。
+request_id、等待状态和陈旧结果门禁已由[Sub回投路径](COMPLETION_WAKEUP.md)实现，
+deadline仍未实现；连接generation不等于请求代次，不用fd数字代替。
 
 队列状态、停止标志与错误报告是跨线程同步对象；Connection/Buffer/epoll 状态是所属
 线程对象。const、volatile、unique_ptr 或“只写一次”都不自动提供同步。队列锁内只做
@@ -82,15 +84,16 @@ request_id/deadline校验及过期结果应用仍由后续回投模块完成，�
 eventfd。运行失败同样先撤销入口并协调生产者静止，再清理，不让旧借用写入复用 fd。
 
 只读索引可以由任务保留共同生命期，但 shared_ptr 只保护拥有关系，不保护可变对象。
-未来 worker 使用的分析器、缓存及业务辅助对象必须另证线程安全或采用每 worker 独立
-实例；本合同不把现有 const API 扩大为可并发调用。索引热切换仍属于后续版本。
+现有worker共享[SearchService](ONLINE_SEARCH.md)拥有的固定只读索引、分析器资源，
+查询与JSON结果在每次调用中独立持有。该具体并发合同不扩大为任意const API线程安全；
+新增可变辅助对象须另证同步或采用每worker独立实例。版本缓存与索引热切换仍未实现。
 
 ## 启动、失败与停止
 
-1. 控制者完整预检配置，建立固定 Sub 拓扑；线程创建、对象分配和就绪报告都有失败出口。
+1. 控制者完整预检配置并预分配固定Sub/提交器，再启动worker；线程创建、对象分配和就绪报告都有失败出口。
 2. 每个 Sub 在自己的线程内建立并清理 I/O 资源，发布完整就绪或首个失败；启动中的 Sub
    不接收 fd。控制者不能仅凭线程已创建就视为就绪。
-3. 全部 Sub 就绪后才开放 Main 接入。后续若含 worker，也须先完成其启动门禁。
+3. worker完成启动门禁、全部Sub及结果目标就绪后才开放Main接入。
    Main 的监听创建/注册失败仍须请求停止并 join 已启动 Sub，不能发布半个服务。
 4. 部分启动失败时停止已启动线程、让其所属线程清理，然后逐个 join；未创建的线程
    不 join，线程函数边界吸收异常并报告首因。清理错误另记，不覆盖原失败。
@@ -99,9 +102,10 @@ eventfd。运行失败同样先撤销入口并协调生产者静止，再清理�
    通知调用全部返回，控制者完成停止通知后也撤销该借用；Sub 清理前须取得生产者静止确认。
 6. 当前在线闭环沿用立即丢弃模式；完整发布者屏障见[在线服务](ONLINE_SEARCH.md)。Sub已停止提交且worker join后，Sub关闭待接入 fd 和连接，在所属线程移除并关闭
    wakeup/epoll，再退出；控制者 join 后才能销毁队列、通知端点和线程借用的配置。
-7. 业务引入后，须先完成/取消在途任务并停止、join worker，再让 Sub 收口 Completion
-   和输出，最后清理并 join Reactor。worker 可能回投时，接收队列及通知端点保持有效。
-   具体截止时间、结果排空、丢弃规则和线上状态由优雅退出模块实现，本模块不承诺交付。
+7. 现有在线控制者先等Sub停止提交，再由WorkerPool关闭排空并join；完整发布/通知返回后
+   撤销结果目标、release各Sub，最后由所属线程清理并join Reactor。worker可能回投时，
+   接收队列及通知端点保持有效。现有停止不取消任务、立即丢弃网络输出；截止时间与
+   响应优雅排空仍由后续模块实现，不承诺停止时交付响应。
 
 跨线程停止必须有可验证的唤醒或有限等待后备路径，不允许无限 epoll_wait 配合仅写一个
 停止标志。eventfd 接入前可由生命周期模块采用有限等待过渡；eventfd 接入后的通知失败
@@ -127,7 +131,8 @@ codec、socket 与 epoll 组件，Main 组合 Listener；共享算法需要提�
 
 M2.12 的验证仅为合同审读与文档检查；Sub生命周期验证见[组件说明](SUB_REACTOR.md)，
 独立fd队列的验证入口见[队列说明](FD_HANDOFF_QUEUE.md)。
-Main/Sub 连接与协议组合验证见[多Sub集成](MULTI_REACTOR.md)；吞吐、延迟、公平性和
-独立worker生命周期见[WorkerPool](WORKER_POOL.md)，业务接入见[在线服务](ONLINE_SEARCH.md)，优雅退出仍待后续验证，不能以本文件存在或空 Sub 生命周期测试通过替代。
+Main/Sub连接与协议组合验证见[多Sub集成](MULTI_REACTOR.md)，独立worker生命周期见
+[WorkerPool](WORKER_POOL.md)，业务接入见[在线服务](ONLINE_SEARCH.md)。吞吐、延迟、公平性
+及优雅退出仍未验证，不能以本文件存在或空Sub生命周期测试通过替代。
 
 独立eventfd唤醒协议的真实epoll验证与稳定借用停止门禁见[eventfd说明](EVENTFD_WAKEUP.md)。

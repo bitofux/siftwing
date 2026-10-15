@@ -3,7 +3,8 @@
 `siftwing_frame_codec` 在[增量拆帧](FRAME_DECODER.md)之后独立验证 Body，并按
 [版本1线格式](PROTOCOL.md)生成完整帧。公共合同在
 [frame_codec.hpp](../include/siftwing/net/frame_codec.hpp)；公共接口不暴露第三方类型。
-已有内存接口与行为测试；socket、实际业务执行、收发调度和 EOF 接线尚未实现。
+本层提供内存接口与行为测试；socket、收发调度和EOF由[Connection](CONNECTION_READ.md)
+及[Sub](MULTI_REACTOR.md)负责，实际业务执行由[在线服务](ONLINE_SEARCH.md)组合。
 
 ## 接口与所有权
 
@@ -29,7 +30,8 @@ DOM。必须是一个完整对象，允许 JSON 首尾空白，拒绝 BOM、注�
 非法转义及未配对 UTF-16 surrogate 转义；合法 `\u0000` 和 surrogate pair 允许。
 容器最多64层，根对象计一层，数组/对象都计层；解析中超限立即返回 `json_depth`。
 库不能表示的数值（如 `1e999`）返回 `json`；准入不是任意精度数值服务。
-重复键、字段名称、类型及业务范围尚未验证，调用方仍须按后续业务合同检查。
+本层不验证重复键、字段名称、类型及业务范围；SEARCH/SUGGEST的这些检查由
+[SearchService](ONLINE_SEARCH.md)执行。
 PING/PONG 必须恰为两个字节 `{}`；`{ }` 或 ` {} ` 对其他消息可合法，对心跳拒绝。
 
 编码保留原Body的空白、中文和键顺序，不重新序列化；多字节字段按大端逐字节写入，
@@ -59,8 +61,9 @@ SUGGEST_RESPONSE，并验证响应Body。它不执行查询，不决定无命中
 调用方流程：`decode_next` 等待就保留输入；DecodeError关闭流，不猜ID或重同步；完整
 Frame再验证Body。合法请求头下的非法Body可用INVALID_REQUEST，本地深度/计算预算可用
 RESOURCE_LIMIT；非法响应由客户端关闭。正常业务完成才构造对应响应。EOF截断、输出
-队列容量、断连和停止时的发送策略仍由后续连接模块接线。上述都是调用合同，当前没有
-执行 socket 关闭/发送的代码。V2.0仍一连接最多一个在途业务请求。
+队列容量、断连和停止时的发送策略由[Connection输出](CONNECTION_WRITE.md)、
+[输出背压](OUTPUT_BACKPRESSURE.md)及[在线服务](ONLINE_SEARCH.md)组合。
+codec自身不执行socket关闭或发送；V2采用[单连接一个在途请求](SINGLE_INFLIGHT.md)。
 
 ## 验证入口与限制
 
@@ -71,4 +74,5 @@ RESOURCE_LIMIT；非法响应由客户端关闭。正常业务完成才构造对
 
 进一步的独立黄金、损坏输入与有界覆盖反馈fuzz见[codec验证](CODEC_TESTING.md)。
 真实系统OOM、网络、并发、吞吐、跨平台和业务字段不在这些证据范围。
-EOF、send/recv短写与连接生命未接线，内存成功不证明响应已到达对端。
+EOF、send/recv短写与连接生命周期的组合证据见[Connection读取](CONNECTION_READ.md)
+和[输出](CONNECTION_WRITE.md)；内存成功不证明响应已到达对端。

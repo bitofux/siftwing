@@ -12,6 +12,26 @@
 #include <system_error>
 
 namespace siftwing::net {
+/** @brief 输出未发送线字节阈值；全0自动按24+max_body解析，其他组合须显式完整配置。 */
+struct OutputWatermarks final {
+    std::size_t low_bytes = 0; ///< 降到此值或以下解除输出暂停原因；不解除请求pending。
+    std::size_t high_bytes = 0; ///< 达到此值或以上暂停读取，低/高之间保持前态。
+    std::size_t hard_bytes = 0; ///< 完整响应线字节硬限，不截断；不是进程RSS或内核发送缓存上限。
+};
+/**
+ * @brief 解析默认值并验证0<=low<high<=hard<=24+max_body，hard至少容纳26字节PONG
+ * @param[in] max_body_bytes
+ *     [2,frame_max_body_bytes]，协议Body上限独立保持。
+ * @param[in] watermarks
+ *     全0解析为hard=24+max_body、high=hard*3/4、low=hard/2；否则逐字段使用。
+ *
+ * @return
+ *     已解析的独立值，可在启动线程/移动fd之前预检。
+ * @throws
+ *     非法组合抛invalid_argument；不分配、不取得资源。
+ */
+[[nodiscard]] OutputWatermarks checked_output_watermarks(
+    std::size_t max_body_bytes, OutputWatermarks watermarks = {});
 /** @brief 本轮读取停止原因；budget_exhausted不表示内核或用户缓冲区已经排空。 */
 enum class ReadStop {
     request, ///< 完整头合法，request有值；Body拒绝详body_error，不交给业务执行。
@@ -50,7 +70,8 @@ enum class QueueStop {
     no_request,       ///< 没有本连接交付的在途请求。
     response_pending, ///< 本请求已接纳一个响应，即使已排空也不能重复入队。
     request_mismatch, ///< ID/成功类型不匹配；Body拒绝的请求只能用错误响应。
-    protocol_error    ///< codec拒绝响应字段或Body，详protocol_error。
+    protocol_error,   ///< codec拒绝响应字段或Body，详protocol_error。
+    output_limit ///< 合法完整响应线字节超过独立输出硬限；零编码/复制/send，可换小错误响应。
 };
 /** @brief 值结果不拥有Frame；protocol_error只在同名分支有值。 */
 struct QueueResult final {
@@ -78,7 +99,7 @@ struct WriteResult final {
  * @brief 独占已连接流socket和输入/输出Buffer，每次最多交付一个请求
  *
  * @note 同一对象只由所属I/O线程串行操作；不复制、不移动、不自动注册epoll，不含worker、
- *     回调或业务执行。每请求至多一个完整响应；输出上限同输入为24+max_body_bytes。
+ *     回调或业务执行。每请求至多一个完整响应；默认输出上限同输入为24+max_body_bytes。
  *     get可供所属线程使用；使用本输出链路时不得另行send打乱字节顺序或外部close。
  *     不同Connection可独立使用；const查询不提供同步，fd数字不替代连接身份。
  *     在途包含等待业务和输出未排空；已缓存后续帧不等于已交付请求。正式Sub在排空响应后
@@ -106,6 +127,24 @@ public:
     explicit Connection(UniqueFd &&socket,
         std::size_t max_body_bytes = frame_max_body_bytes,
         std::size_t initial_capacity = 0);
+    /**
+     * @brief 显式输出水位版本；其余前置、fd交接和异常保证同原三参构造
+     * @param[in,out] socket
+     *     成功才移动独占socket；任意配置/初始存储失败时源保持。
+     * @param[in] max_body_bytes
+     *     独立协议及输入Body上限，范围同原构造。
+     * @param[in] initial_capacity
+     *     输入初始容量；不影响输出延迟分配。
+     * @param[in] output
+     *     checked_output_watermarks合同；输出Buffer本身以解析后hard为容量上限。
+     *
+     * @throws
+     *     invalid_argument或分配异常；尚未接管socket。
+     */
+    Connection(UniqueFd &&socket,
+        std::size_t max_body_bytes,
+        std::size_t initial_capacity,
+        OutputWatermarks output);
     ~Connection() = default;
     Connection(const Connection &) = delete;
     Connection &operator=(const Connection &) = delete;
@@ -129,6 +168,17 @@ public:
     [[nodiscard]] std::size_t output_bytes() const noexcept {
         return output_.readable_bytes();
     }
+    /** @brief 返回构造后固定的已解析水位值，无内部借用。 */
+    [[nodiscard]] OutputWatermarks output_watermarks() const noexcept {
+        return output_watermarks_;
+    }
+    /**
+     * @brief 达到高位后保持暂停，实际send降到低位或close才解除；所属线程查询
+     * @note false只解除输出原因；request_pending仍禁止下一帧，正式Sub必须等排空才finish。
+     */
+    [[nodiscard]] bool output_backpressured() const noexcept {
+        return output_paused_;
+    }
     /**
      * @brief 输出非空且fd有效时需要EPOLLOUT；空输出/终止时为false
      *
@@ -146,7 +196,7 @@ public:
      *     同步稳定借用；ID须匹配，成功类型须对应请求，错误响应须通过codec。
      *
      * @return
-     *     按closed→no_request→response_pending→request_mismatch→codec错误顺序检查。
+     *     按closed→no_request→response_pending→request_mismatch→codec错误→output_limit顺序检查。
      *     Body拒绝的请求只接纳ERROR_RESPONSE；成功编码为客户端方向后复制完整线字节。
      *
      * @throws
@@ -211,13 +261,15 @@ public:
 
 private:
     // 声明顺序保证Buffer构造/配置失败时尚未移动调用方fd。
+    const OutputWatermarks output_watermarks_; ///< 独立固定阈值，构造时解析，不跨线程共享可变状态。
     Buffer input_;    ///< 独占有界数组，终止清可读区，不缩容。
     Buffer output_;   ///< 独占完整响应的未发送后缀，consume推进写偏移。
     UniqueFd socket_; ///< 已连接fd，终止/close清空，析构只关闭一次。
     const std::size_t max_body_bytes_; ///< 同时用于拆帧和Body准入的固定上限。
     bool pending_ = false; ///< 已交付但尚未完成的逻辑请求，所属线程维护。
     bool response_queued_ = false; ///< 本请求已接纳响应，排空后仍防重复发送。
-    bool body_rejected_ = false;   ///< Body错误只允许关联错误响应。
+    bool output_paused_ = false; ///< 高/低之间有历史依赖，不能仅由当前字节数重新计算。
+    bool body_rejected_ = false; ///< Body错误只允许关联错误响应。
     std::uint64_t pending_id_ = 0; ///< 在途受信请求ID；不用外部Frame的可变副本当状态。
     MessageType pending_type_ = MessageType::ping; ///< 在途受信请求类型。
     WriteStop write_terminal_ = WriteStop::closed; ///< 发送失败的重复查询保持io_error。

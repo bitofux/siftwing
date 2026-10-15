@@ -1,7 +1,7 @@
 # epoll 创建与 LT 注册合同
 
 已有[fd/socket基线](SOCKET_BASELINE.md)负责资源和单次收发；本层提供Linux epoll创建和注册，
-供后续所属I/O线程使用。接口权威为`include/siftwing/net/epoll_ops.hpp`，目标`siftwing_epoll`
+供所属I/O线程使用，已有[单Loop](PROTOCOL_LOOP.md)与[多Sub](MULTI_REACTOR.md)调用方。接口权威为`include/siftwing/net/epoll_ops.hpp`，目标`siftwing_epoll`
 PUBLIC依赖`siftwing_socket`。本层没有事件循环、等待封装、Listener、Connection或业务分发。
 
 ## 创建、借用与标识
@@ -16,7 +16,7 @@ fd 0合法，移动/释放/关闭沿用`UniqueFd`合同。epoll拥有内核注�
 本层不持有回调、连接指针、注册镜像或锁；所有接口noexcept、自身无分配，不承诺保持errno。
 
 token是完整`uint64_t`值，包括0和最大值，复制到`event.data.u64`。它不携带所有权，也不是
-可直接解引用的指针。未来上层负责映射稳定身份、检查generation并处理已关闭对象。
+可直接解引用的指针。上层负责映射稳定身份、检查generation并处理已关闭对象，现有Sub实现见[连接身份](CONNECTION_IDENTITY.md)。
 
 ## LT 掩码与错误
 

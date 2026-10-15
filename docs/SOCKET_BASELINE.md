@@ -1,6 +1,6 @@
 # fd RAII 与 socket 基线
 
-已有[codec](FRAME_CODEC.md)处理内存帧。本层提供Linux资源拥有和原始socket调用，供后续
+已有[codec](FRAME_CODEC.md)处理内存帧。本层提供Linux资源拥有和原始socket调用，供上层
 事件循环使用，并已供[Listener](LISTENER.md)与[Connection读取](CONNECTION_READ.md)复用；
 socket基线自身没有epoll、连接调度、协议处理或业务服务。
 
