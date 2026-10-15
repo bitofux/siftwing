@@ -35,4 +35,4 @@ request_id是关联号，允许前一请求完成后再次使用，既不要求�
 精确部分send/EAGAIN，按独立黄金线字节检查门禁、其他连接推进、缓存/内核余量续读、
 重复ID、错误/拒绝与SHUT_WR。该专项使用本地流socketpair；真实TCP业务沿[在线搜索测试](ONLINE_SEARCH.md)。
 注入不模拟TCP拥塞、真实慢网或任意调度，不证明性能。输出高低水位/硬限额与局部拒绝见[输出背压](OUTPUT_BACKPRESSURE.md)；低位不解除在途门禁。[可选请求期限](DEADLINES.md)覆盖从完整帧到排空，到期关闭连接；全局过载、
-取消、多在途、缓存及优雅退出各自留待对应模块。
+取消、多在途及优雅退出各自留待对应模块。[可选业务LRU](VERSIONED_LRU.md)只复用Body，每次仍经worker/Completion与单在途门禁。

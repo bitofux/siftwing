@@ -510,6 +510,10 @@ Options parse_request(const Options &fixed, const concurrency::SearchTask &task)
     return o;
 }
 void validate_config(const SearchServiceConfig &o) {
+    if (o.cache.capacity > 4096 || o.cache.bytes == 0 || o.cache.bytes > 64 * mib
+        || o.cache.max_value_bytes == 0 || o.cache.max_value_bytes > mib
+        || o.cache.max_value_bytes > o.cache.bytes)
+        throw Failure("service.cache_config", "非法缓存配置");
     if (o.parent.empty() || !o.query_bytes || o.query_bytes > 65536 || !o.max_k || o.max_k > 100
         || !o.work || o.work > 50000000 || !o.output_bytes || o.output_bytes > net::frame_max_body_bytes
         || !o.snapshot_bytes || o.snapshot_bytes > 512 * mib || !o.resource_bytes || o.resource_bytes > 16 * mib
@@ -523,8 +527,10 @@ struct SearchService::Impl {
     Options options;
     snapshot::SnapshotReader reader;
     Pipeline pipeline;
+    cache::VersionedLru cache;
     Impl(Options selected, snapshot::SnapshotReader loaded, Pipeline resources)
-        : options(std::move(selected)), reader(std::move(loaded)), pipeline(std::move(resources)) {}
+        : options(std::move(selected)), reader(std::move(loaded)), pipeline(std::move(resources)),
+          cache(options.cache) {}
 };
 SearchService::SearchService(std::unique_ptr<Impl> state) noexcept : state_(std::move(state)) {}
 SearchService::~SearchService() noexcept = default;
@@ -551,11 +557,35 @@ SearchServiceResult SearchService::execute(const concurrency::SearchTask &task) 
     try {
         const auto o = parse_request(state_->options, task);
         Json out(o.output_bytes); header(out, o, *state_->reader.manifest());
+        std::optional<cache::CacheKey> key;
+        if (o.cache.capacity != 0) {
+            // schema与原始文本预算先检查；同一规范化键不能替超长原请求绕过准入。
+            const bool is_search = o.command == "SEARCH";
+            const auto cap = is_search ? o.query_bytes : std::min<std::uint64_t>(4096, o.query_bytes);
+            if (o.input.size() > cap)
+                throw Failure("service.query_bytes", "原查询字节超限", Status::resource_limit);
+            auto canonical = is_search || o.normalize_key
+                ? take(text::normalize_utf8(o.input, {cap, cap})) : o.input;
+            // JSON数组按解析后的有效参数编码，键序/省略默认值等价，字符串不会有拼接歧义。
+            const auto params = is_search
+                ? nlohmann::json::array({o.top_k, o.mode == QueryMode::all, o.window, o.leading, o.output_bytes})
+                : nlohmann::json::array({o.top_k, o.normalize_key, o.output_bytes});
+            key = cache::CacheKey{state_->reader.manifest()->snapshot.value(),
+                is_search ? cache::Operation::search : cache::Operation::suggest,
+                std::move(canonical), params.dump()};
+            try { if (auto hit = state_->cache.get(*key)) return std::move(*hit); }
+            catch (const std::bad_alloc &) { /* 缓存副本失败，沿原计算路径尝试生成结果。 */ }
+        }
         if (o.command == "SEARCH") search(out, o, state_->reader, state_->pipeline);
         else suggest(out, o, state_->reader);
         out.raw("}");
+        if (key) {
+            try { (void)state_->cache.put(*key, out.bytes()); }
+            catch (const std::bad_alloc &) { /* 可选缓存分配失败不使已完成业务变成错误。 */ }
+        }
         return out.bytes();
     } catch (const Failure &error) { return error.status; }
     catch (const nlohmann::json::parse_error &) { return Status::invalid_request; }
 }
+cache::LruStats SearchService::cache_stats() const { return state_->cache.stats(); }
 } // namespace siftwing::query

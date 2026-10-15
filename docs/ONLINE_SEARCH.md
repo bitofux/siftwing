@@ -39,14 +39,16 @@ k为1..服务max_top_k；窗口1..4096，context为0..window-1。降低窗口须
 拒绝响应；等待worker或部分输出时不交付下一帧。SHUT_WR保留完整请求，排空后主动继续
 缓存帧，不要求客户端另发字节；排空不表示对端收到。不同连接仍可独立推进。
 
-OnlineServer的create/run_once/port/report/stop/析构由创建线程串行；Main在该线程只接入。各Sub提交拥有请求，worker共享稳定只读服务，生成最多一个RoutedCompletion并[发布通知](COMPLETION_WAKEUP.md)，所属Sub校验完整连接身份/等待请求后复制输出并预算发送。服务及提交器生命覆盖全部worker/Sub join。
+OnlineServer的create/run_once/port/report/stop/析构由创建线程串行；Main在该线程只接入。各Sub提交拥有请求，worker共享固定只读查询资源与独立mutex保护的[可选LRU](VERSIONED_LRU.md)，生成最多一个RoutedCompletion并[发布通知](COMPLETION_WAKEUP.md)，所属Sub校验完整连接身份/等待请求后复制输出并预算发送。服务及提交器生命覆盖全部worker/Sub join。
 
 停止先Main close/销毁返回，请求所有Sub停止并等quiescing（最后提交器调用已返回），随后WorkerPool close/drain/join，完整发布及通知都返回后撤目标、release各Sub，再join其连接/结果/fd清理。quiescing报告不证明queue已经closed，closed/empty/worker统计不证明调用静止。部分启动失败按同顺序回滚；通知fd不能在晚到write前关闭。
 
 真实CTest覆盖生产indexer→server→TCP查询/推荐、独立数学/Unicode参考、英文稀疏身份/中文共享只读资源、参数/预算/启动失败，以及部分启动分配故障、worker分配异常固定安全响应、真实结果full、accepted后通知失败和晚到通知停止屏障。插桩范围以实际日志为准；不证明任意调度、DSO内部、真实OOM、质量或性能。
 
-空闲/请求期限已由[Sub策略](DEADLINES.md)接入，默认关闭、可通过sub配置启用，到期关连接而不取消worker。SERVER_INFO仍保持未接入时的INVALID_REQUEST；正式客户端模式、取消、全局过载策略、版本缓存、热切换、signalfd和优雅排空属于后续模块。
+空闲/请求期限已由[Sub策略](DEADLINES.md)接入，默认关闭、可通过sub配置启用，到期关连接而不取消worker。SERVER_INFO仍保持未接入时的INVALID_REQUEST；正式客户端模式、取消、全局过载策略、热切换、signalfd和优雅排空属于后续模块。
 
 每连接已有[输出水位与硬限策略](OUTPUT_BACKPRESSURE.md)，可由OnlineServerConfig.sub.output配置，
 命令当前使用自动默认值。输出过大时Sub尝试同ID固定RESOURCE_LIMIT，错误也无法容纳则局部关闭；
 worker和结果邮箱的拥有、发布与停止屏障保持。低位仍不允许在响应排空前接纳下一请求。
+
+版本感知LRU已由SearchService可选配置接入，默认关闭、当前CLI无缓存参数；实例缓存成功JSON Body（含空结果），错误不存，完整参数/有效Body预算隔离，详见[缓存合同](VERSIONED_LRU.md)。

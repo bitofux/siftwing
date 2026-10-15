@@ -31,7 +31,7 @@ struct OnlineServerReport {
 /**
  * @brief 创建线程拥有Main、固定Sub/worker与SearchService；worker只处理拥有数据
  * @note 所有公共API和析构由创建线程串行调用，无跨线程控制借用；不可copy/move/重启。
- *     Main在调用线程接入，Sub独占Connection，worker共享稳定只读服务。
+ *     Main在调用线程接入，Sub独占Connection，worker共享固定只读查询资源和服务内同步的可选LRU。
  *     worker等待队列full只拒绝本次任务：Sub返回同ID OVERLOADED；可等mutex，不等容量。
  *     错误输出仍服从Sub硬限/局部关闭，排空后可继续缓存请求；容量释放后允许新提交。
  *     可选期限沿sub配置，默认关闭；到期关连接但不取消worker。停止立即丢弃，无优雅退出承诺。

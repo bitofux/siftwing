@@ -299,8 +299,11 @@ target_link_libraries(siftwing_cli PRIVATE siftwing_snapshot_reader siftwing_top
     siftwing_summary siftwing_highlight siftwing_recommendation siftwing_cppjieba_tokenizer siftwing_utf8cpp)
 
 # 在线服务只组合已封板核心；不迁移V1 CLI或旧ProtocolLoop合同。
+add_library(siftwing_versioned_lru STATIC src/cache/versioned_lru.cc)
+target_link_libraries(siftwing_versioned_lru PUBLIC siftwing_base Threads::Threads)
 add_library(siftwing_search_service STATIC src/query/search_service.cc)
 target_link_libraries(siftwing_search_service PUBLIC siftwing_search_task
+    siftwing_versioned_lru
     PRIVATE siftwing_snapshot_reader siftwing_top_k siftwing_recommendation siftwing_summary
     siftwing_highlight siftwing_cppjieba_tokenizer siftwing_utf8cpp siftwing_json)
 add_library(siftwing_online_server STATIC src/net/online_server.cc)
@@ -316,6 +319,12 @@ if(SIFTWING_BUILD_CODEC_FUZZER AND
     message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
 endif()
 if(BUILD_TESTING)
+    foreach(kind IN ITEMS test concurrency_test failure_test)
+        add_executable(siftwing_versioned_lru_${kind} tests/unit/versioned_lru_${kind}.cc)
+        target_link_libraries(siftwing_versioned_lru_${kind} PRIVATE siftwing_versioned_lru)
+        add_test(NAME cache.versioned_lru_${kind} COMMAND siftwing_versioned_lru_${kind})
+        set_tests_properties(cache.versioned_lru_${kind} PROPERTIES TIMEOUT 30)
+    endforeach()
     add_executable(siftwing_sub_deadlines_test tests/integration/sub_deadlines_test.cc)
     target_link_libraries(siftwing_sub_deadlines_test PRIVATE siftwing_protocol_sub_reactor)
     target_link_options(siftwing_sub_deadlines_test PRIVATE
@@ -586,6 +595,15 @@ if(BUILD_TESTING)
     add_executable(siftwing_online_server_failure_test tests/integration/online_server_failure_test.cc)
     target_link_libraries(siftwing_online_server_failure_test PRIVATE siftwing_online_server)
     target_link_options(siftwing_online_server_failure_test PRIVATE -Wl,--wrap=write -Wl,--wrap=_Znwm -Wl,--wrap=epoll_ctl -Wl,--wrap=epoll_wait -Wl,--wrap=send -Wl,--wrap=recv)
+    add_executable(siftwing_versioned_cache_test tests/integration/versioned_cache_test.cc)
+    target_link_libraries(siftwing_versioned_cache_test PRIVATE siftwing_online_server siftwing_json)
+    foreach(subs IN ITEMS 1 2)
+        add_test(NAME cache.service_${subs} COMMAND Python3::Interpreter -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/versioned_cache_test.py"
+            --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
+            --native "$<TARGET_FILE:siftwing_versioned_cache_test>" --subs ${subs})
+        set_tests_properties(cache.service_${subs} PROPERTIES TIMEOUT 60)
+    endforeach()
     add_executable(siftwing_online_deadlines_test tests/integration/online_deadlines_test.cc)
     target_link_libraries(siftwing_online_deadlines_test PRIVATE siftwing_online_server siftwing_json)
     target_link_options(siftwing_online_deadlines_test PRIVATE

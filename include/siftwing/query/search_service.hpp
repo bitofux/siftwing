@@ -8,6 +8,7 @@
 #pragma once
 #include "siftwing/concurrency/search_task.hpp"
 #include "siftwing/base/result.hpp"
+#include "siftwing/cache/versioned_lru.hpp"
 #include <memory>
 
 namespace siftwing::query {
@@ -24,14 +25,16 @@ struct SearchServiceConfig {
     std::uint64_t output_bytes = net::frame_max_body_bytes; ///< 正上限<=1MiB，实际再取task Body预算。
     std::uint64_t snapshot_bytes = 512U * 1024U * 1024U; ///< 正单payload/文档库预算<=512MiB。
     std::uint64_t resource_bytes = 16U * 1024U * 1024U; ///< 正单资源装载预算<=16MiB。
+    cache::LruConfig cache; ///< 可选实例LRU，默认capacity=0关闭；固定快照/资源/预算不跨实例共享。
 };
 /** @brief 成功拥有完整JSON对象Body（无LF），失败为六种线上安全状态之一，无部分结果。 */
 using SearchServiceResult = std::variant<std::string, net::ErrorStatus>;
 /**
  * @brief 完整Reader与固定分词/停用资源的拥有者；查询只读内存，不访问socket或文件
  * @note 不可copy/move；同实例execute可并发，配置、Reader及初始化后的分词资源只读，
- *     所有中间结果为调用局部。调用者保证到最后调用/worker join返回才销毁。
- *     不认证建库资源相容、不热切换、不缓存、不取消，不改变V1 CLI接口。
+ *     中间结果为调用局部，可选LRU独立mutex保护，业务计算不持缓存锁。
+ *     调用者保证到最后调用/worker join返回才销毁；不认证建库资源相容、不热切换、不取消。
+ *     既有业务结果/错误和V1 CLI接口不变，缓存只拥有成功JSON Body，无任务/连接借用。
  */
 class SearchService final {
 public:
@@ -64,9 +67,11 @@ public:
      *     分配与未知异常传播；worker负责固定安全错误或报告无法交付的服务首因。
      */
     [[nodiscard]] SearchServiceResult execute(const concurrency::SearchTask &task) const;
+    /** @brief 可与execute并发取得缓存统计值快照；锁异常传播，无文件/socket操作。 */
+    [[nodiscard]] cache::LruStats cache_stats() const;
 private:
     struct Impl;
     explicit SearchService(std::unique_ptr<Impl> state) noexcept;
-    std::unique_ptr<Impl> state_; ///< 独占不可变状态，无客户端资源；生命覆盖全部execute。
+    std::unique_ptr<Impl> state_; ///< 独占固定只读查询资源与同步缓存，无客户端资源；覆盖全部execute。
 };
 } // namespace siftwing::query
