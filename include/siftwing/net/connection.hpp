@@ -81,6 +81,8 @@ struct WriteResult final {
  *     回调或业务执行。每请求至多一个完整响应；输出上限同输入为24+max_body_bytes。
  *     get可供所属线程使用；使用本输出链路时不得另行send打乱字节顺序或外部close。
  *     不同Connection可独立使用；const查询不提供同步，fd数字不替代连接身份。
+ *     在途包含等待业务和输出未排空；已缓存后续帧不等于已交付请求。正式Sub在排空响应后
+ *     才finish，PING/错误响应共用门禁；底层finish仍由调用者负责确认逻辑完成。
  */
 class Connection final {
 public:

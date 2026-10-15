@@ -33,6 +33,10 @@ k为1..服务max_top_k；窗口1..4096，context为0..window-1。降低窗口须
 
 ## 线程与停止
 
+每连接从完整请求交付到响应排空保持[单在途门禁](SINGLE_INFLIGHT.md)，包括PING、错误和
+拒绝响应；等待worker或部分输出时不交付下一帧。SHUT_WR保留完整请求，排空后主动继续
+缓存帧，不要求客户端另发字节；排空不表示对端收到。不同连接仍可独立推进。
+
 OnlineServer的create/run_once/port/report/stop/析构由创建线程串行；Main在该线程只接入。各Sub提交拥有请求，worker共享稳定只读服务，生成最多一个RoutedCompletion并[发布通知](COMPLETION_WAKEUP.md)，所属Sub校验完整连接身份/等待请求后复制输出并预算发送。服务及提交器生命覆盖全部worker/Sub join。
 
 停止先Main close/销毁返回，请求所有Sub停止并等quiescing（最后提交器调用已返回），随后WorkerPool close/drain/join，完整发布及通知都返回后撤目标、release各Sub，再join其连接/结果/fd清理。quiescing报告不证明queue已经closed，closed/empty/worker统计不证明调用静止。部分启动失败按同顺序回滚；通知fd不能在晚到write前关闭。

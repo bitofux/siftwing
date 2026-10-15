@@ -66,6 +66,11 @@ struct ProtocolSubStatus {
  * @note 构造/start/target/release_publishers/join/析构由唯一外部控制者串行调用。
  *     request_stop/status可并发，但this须存活，析构前撤入口并等调用返回。不可copy/move。
  *     默认只响应PING/PONG与受信ERROR；可选submitter交接SEARCH/SUGGEST并接收worker结果。
+ *     每连接最多一个在途请求：从完整受信帧交付到响应排空保持门禁，PING和Body拒绝也串行。
+ *     等结果时不订阅IN/RDHUP；有输出时只订阅OUT，不recv或交付下一帧，其他连接独立服务。
+ *     排空只证明字节交本机内核；finish后主动继续缓存，不要求peer重新发送。
+ *     SHUT_WR不撤销完整请求，缓存帧处理后才观察EOF；ERR/HUP和停止仍可立即丢弃。
+ *     request_id可在完成后复用；generation不是请求代次，每接纳任务须至多发布一个结果。
  *     不执行真实查询，不拥有submitter/worker；停止立即丢弃，不保证响应排空。
  */
 class ProtocolSubReactor final {

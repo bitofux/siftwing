@@ -8,6 +8,10 @@
 Main-Sub Reactor及SEARCH/SUGGEST业务网络服务已有接入，见[在线搜索闭环](ONLINE_SEARCH.md)。
 业务JSON采用该独立schema，V1 CLI接口及输出合同保持。
 
+当前采用[单连接一个在途请求](SINGLE_INFLIGHT.md)：从完整帧交付到响应排空保持门禁，
+后续帧按流顺序保留，PING与错误响应也串行。响应排空后request_id可复用；连接generation
+不表示请求代次。SHUT_WR允许完整请求继续获得响应，发送排空不证明对端收到。
+
 ## 传输与帧边界
 
 传输使用 TCP。一个应用层帧由固定 24 字节帧头和紧随其后的 Body 组成。TCP 保持字节
