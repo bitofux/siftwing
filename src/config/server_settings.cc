@@ -41,6 +41,10 @@ struct Field {
 };
 constexpr Field fields[] = {{"snapshot", Kind::text},
     {"version", Kind::text},
+    {"log_level", Kind::text},
+    {"log_file", Kind::text},
+    {"log_max_bytes", Kind::number, 2048, 1073741824},
+    {"log_max_files", Kind::number, 1, 20},
     {"listen_address", Kind::text},
     {"tokenizer", Kind::text},
     {"stopwords", Kind::text},
@@ -106,7 +110,22 @@ void apply(ServerSettings &s, const Field &f, const std::string &v) {
     if (v.empty() || v.find('\0') != std::string::npos)
         reject("config.value", "字段为空或含NUL：" + key);
     if (f.kind == Kind::text) {
-        if (key == "snapshot")
+        if (key == "log_file")
+            s.log_file = v;
+        else if (key == "log_level") {
+            if (v == "off")
+                s.log_level = logging::Level::off;
+            else if (v == "debug")
+                s.log_level = logging::Level::debug;
+            else if (v == "info")
+                s.log_level = logging::Level::info;
+            else if (v == "warn")
+                s.log_level = logging::Level::warn;
+            else if (v == "error")
+                s.log_level = logging::Level::error;
+            else
+                reject("config.value", "未知日志级别");
+        } else if (key == "snapshot")
             s.service.parent = v;
         else if (key == "version")
             s.service.version = number(v, 0, UINT64_MAX);
@@ -140,7 +159,11 @@ void apply(ServerSettings &s, const Field &f, const std::string &v) {
         return;
     }
     const auto n = number(v, f.min, f.max);
-    if (key == "port")
+    if (key == "log_max_bytes")
+        s.log_rotation.max_bytes = static_cast<std::size_t>(n);
+    else if (key == "log_max_files")
+        s.log_rotation.max_files = static_cast<std::size_t>(n);
+    else if (key == "port")
         s.server.listen.port = static_cast<std::uint16_t>(n);
     else if (key == "backlog")
         s.server.listen.backlog = static_cast<int>(n);
@@ -343,6 +366,8 @@ base::Result<ServerSettings> load_server_settings(const std::vector<std::string>
         }
         if (!supplied.count("snapshot") || !supplied.count("version"))
             reject("config.required", "必须显式指定snapshot和version");
+        if (settings.log_level == logging::Level::off && !settings.log_file.empty())
+            reject("config.value", "日志文件要求启用日志级别");
         const auto &s = settings.service;
         if ((s.tokenizer == "english"
                 && (supplied.count("hmm") || !s.dictionary.empty() || !s.model.empty()

@@ -4,7 +4,7 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 
 [V2工程基线](docs/V2.md)汇总公开输入的四命令运行、协议与验收矩阵、小型loopback基准和交接限制。
 
-已实现单机离线索引与本地查询，当前能力、验收入口及限制见 [V1基线](docs/V1.md)，两条调用链的调试、故障和修改练习见 [V1调试学习包](docs/V1_DEBUGGING.md)。Main-Sub Reactor 已接通正式网络搜索服务，当前采用[单连接一个在途请求](docs/SINGLE_INFLIGHT.md)，已有[输出高低水位与背压](docs/OUTPUT_BACKPRESSURE.md)和[worker队列饱和拒绝](docs/WORKER_SATURATION.md)；已接入[可选空闲超时与请求deadline](docs/DEADLINES.md)，默认关闭、到期局部关闭连接；业务层支持[可选版本感知LRU](docs/VERSIONED_LRU.md)，默认关闭，成功Body有界缓存并隔离全部结果参数。已有[网络客户端](docs/NETWORK_CLIENT.md)支持PING、SERVER_INFO、SEARCH、SUGGEST，连接/发送/接收共用固定总期限。现有[严格JSON启动配置](docs/SERVER_CONFIG.md)可配置监听地址、线程/队列、路径、缓存、期限与关闭预算，按默认值→文件→CLI合并。后续完善资源控制、可靠性、可观测性和性能；各阶段按独立门禁推进。
+已实现单机离线索引与本地查询，当前能力、验收入口及限制见 [V1基线](docs/V1.md)，两条调用链的调试、故障和修改练习见 [V1调试学习包](docs/V1_DEBUGGING.md)。Main-Sub Reactor 已接通正式网络搜索服务，当前采用[单连接一个在途请求](docs/SINGLE_INFLIGHT.md)，已有[输出高低水位与背压](docs/OUTPUT_BACKPRESSURE.md)和[worker队列饱和拒绝](docs/WORKER_SATURATION.md)；已接入[可选空闲超时与请求deadline](docs/DEADLINES.md)，默认关闭、到期局部关闭连接；业务层支持[可选版本感知LRU](docs/VERSIONED_LRU.md)，默认关闭，成功Body有界缓存并隔离全部结果参数。已有[网络客户端](docs/NETWORK_CLIENT.md)支持PING、SERVER_INFO、SEARCH、SUGGEST，连接/发送/接收共用固定总期限。现有[严格JSON启动配置](docs/SERVER_CONFIG.md)可配置监听地址、线程/队列、路径、缓存、期限与关闭预算，按默认值→文件→CLI合并。另有可选[结构化日志](docs/LOGGING.md)关联线程、连接代次、请求与查询阶段，默认关闭。后续完善资源控制、可靠性、可观测性和性能；各阶段按独立门禁推进。
 
 V2 的 [帧头与字节序合同](docs/PROTOCOL.md)定义 24 字节布局、消息编号、长度和错误边界，
 并提供黄金字节例子；已有[有界连续 Buffer](docs/BUFFER.md)和[增量帧解码](docs/FRAME_DECODER.md)，
@@ -64,7 +64,7 @@ clangd 18 支持读取同一配置，编辑器可通过其格式化功能应用�
 
 ## 在 Ubuntu 上构建与测试
 
-需要 CMake 3.20+、C++17 编译器；启用测试时还需要 Python 3.8+。文本处理使用utfcpp 4.0.6，HTML片段使用Lexbor 3.0.0，RSS XML使用tinyxml2 11.0.0，中文分词使用cppjieba 5.6.7及固定limonp子模块，均固定版本及归档哈希。首次配置需要网络或已核实的本地依赖源码；来源、许可与离线配置见[DEPENDENCIES.md](docs/DEPENDENCIES.md)。不安装系统依赖。
+需要 CMake 3.20+、C++17 编译器；启用测试时还需要 Python 3.8+。文本处理使用utfcpp 4.0.6，HTML片段使用Lexbor 3.0.0，RSS XML使用tinyxml2 11.0.0，中文分词使用cppjieba 5.6.7及固定limonp子模块，结构化日志使用spdlog 1.15.3及bundled fmt 11.2.0；依赖均固定版本及归档哈希。首次配置需要网络或已核实的本地依赖源码；来源、许可与离线配置见[DEPENDENCIES.md](docs/DEPENDENCIES.md)。不安装系统依赖。
 
 ```sh
 cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug
@@ -404,3 +404,9 @@ Query、候选集合与余弦排序见上文；正式离线建库已接通；本
 通过人工抽取/词界黄金与独立数学参考检查正确结果、八文件损坏拒绝、确定性和同进程资源交接。
 CTest注册v1.golden、v1.rejection、v1.lifecycle；原始fixture保持只读，生产接口与格式不变。
 该验收不替代阶段工程封板、性能/业务质量评估或学习者本人的调试与修改证据。
+
+
+服务默认以info启用[结构化日志](docs/LOGGING.md)，记录生命周期、连接与异常；debug另记录线程/连接代次/请求/索引关联、
+查询耗时、结果数、缓存及队列阶段；不记录正文或路径。`--log-level debug --log-file run.jsonl`只创建新文件，
+已有当前文件或配置范围内的归档时启动拒绝；文件输出自动使用spdlog大小轮转，默认10MiB、3份归档加当前文件。
+日志目录须当前用户拥有且不允许组/其他用户写入，本文件族由实例独占管理；同步输出可能阻塞，写入/轮转失败停用该实例并让业务继续，不提供持久化或性能保证。

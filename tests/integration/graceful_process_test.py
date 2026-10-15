@@ -24,7 +24,8 @@ def check(value, reason):
 
 
 def run(options, parent, extra, stop_signal=None):
-    command = [options.server, "--snapshot", str(parent), "--version", "0", *extra]
+    # 关闭测试保留空stderr断言；默认日志的完整停止路径由structured_logging验证。
+    command = [options.server, "--log-level", "off", "--snapshot", str(parent), "--version", "0", *extra]
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     peers = []
     try:

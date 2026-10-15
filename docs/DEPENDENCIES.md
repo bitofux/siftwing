@@ -300,3 +300,24 @@ SHA-256: 0d8ef5af7f9794e3263480193c491549b2ba6cc74bb018906202ada498a79406
 首次配置需要网络；离线可用 `-DFETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON=/ABS/VERIFIED/json-3.11.3`，
 该覆盖绕过下载哈希校验，必须独立确认来源/版本/完整性。升级须重验语法、数值、转义、
 深度与异常合同，不能只检查编译。
+
+## 结构化日志：spdlog与bundled fmt
+
+[spdlog](https://github.com/gabime/spdlog) **1.15.3**（tag commit
+`6fa36017cfd5731d617e1a934f0e5ea9c4445b13`）以header-only方式私有接入日志实现，
+使用其bundled **fmt 11.2.0**，不依赖系统fmt或编译器扩展。两者MIT许可原文分别保留在
+[spdlog-LICENSE.txt](../third_party/licenses/spdlog-LICENSE.txt)与
+[fmt-LICENSE.txt](../third_party/licenses/fmt-LICENSE.txt)。分发含该实现的程序须保留适用许可。
+
+```text
+https://codeload.github.com/gabime/spdlog/tar.gz/refs/tags/v1.15.3
+SHA-256: 15a04e69c222eb6c01094b5c7ff8a249b36bb22788d72519646fb85feb267e67
+```
+
+CMake FetchContent固定归档与哈希，通过SYSTEM INTERFACE目标声明include；不运行上游工程、
+安装、示例或测试，不修改上游源码，不注册全局logger或创建后台线程。仅日志实现暴露给上游库，
+项目公共头文件无spdlog/fmt类型。同步sink复用spdlog锁/formatter/阈值，窄fd适配负责安全文件接管、
+短写与SIGPIPE隔离；行为与局限见[结构化日志](LOGGING.md)。
+
+离线可设置`-DFETCHCONTENT_SOURCE_DIR_SPDLOG=/ABS/VERIFIED/spdlog-1.15.3`，该覆盖绕过下载校验，
+须独立核对版本、源码和许可。升级须复核formatter行界、异常处理、并发、故障隔离及bundled fmt许可。

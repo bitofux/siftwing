@@ -41,14 +41,31 @@ void direct(const std::string &parent, const std::string &second) {
     auto cached = service(parent, {64, 1048576, 65536});
     auto plain = service(parent, {});
     const auto query = task(R"({"query":"red"})");
-    const auto expected = body(plain->execute(query));
+    // 每调用输出不依赖全局计数差；关闭、冷、热及早期拒绝在同一输出变量上验证重置。
+    query::CacheObservation observation = query::CacheObservation::hit;
+    const auto expected = body(plain->execute(query, &observation));
+    check(observation == query::CacheObservation::disabled && plain->index_version() == 0,
+        "disabled observation and actual version");
     const auto json = nlohmann::json::parse(expected);
     std::set<std::string> ids;
     for (const auto &hit : json.at("results")) ids.insert(hit.at("document_id").get<std::string>());
     check(ids == std::set<std::string>{"0", "3"}, "independent original red document identities");
-    check(body(cached->execute(query)) == expected && cached->cache_stats().misses == 1, "cold computes same Body");
-    check(body(cached->execute(task(R"({"query":"  RED\t","top_k":10,"mode":"or","summary_window":160,"summary_context":40})")))
-        == expected && cached->cache_stats().hits == 1, "normalize and explicit defaults share key");
+    check(body(cached->execute(query, &observation)) == expected
+              && cached->cache_stats().misses == 1 && observation == query::CacheObservation::miss,
+        "cold computes same Body and exact miss");
+    check(body(cached->execute(query, &observation)) == expected
+              && observation == query::CacheObservation::hit,
+        "per-call exact hit");
+    check(cached->execute(task(R"({"query":null})"), &observation)
+                  == query::SearchServiceResult{ErrorStatus::invalid_request}
+              && observation == query::CacheObservation::not_checked,
+        "early error resets observation");
+    check(
+        body(cached->execute(task(
+            R"({"query":"  RED\t","top_k":10,"mode":"or","summary_window":160,"summary_context":40})")))
+                == expected
+            && cached->cache_stats().hits == 2,
+        "normalize and explicit defaults share key");
     // 每个结果参数与有效输出预算都独立；与关闭缓存路径对照，并核确实miss。
     for (const std::string request : {R"({"query":"red","mode":"and"})", R"({"query":"red","top_k":1})",
              R"({"query":"red","summary_window":100})", R"({"query":"red","summary_context":20})"}) {

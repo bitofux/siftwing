@@ -8,6 +8,7 @@
  */
 #include "siftwing/net/online_server.hpp"
 #include "siftwing/net/deadline_timer.hpp"
+#include "siftwing/logging/logger.hpp"
 #include <arpa/inet.h>
 #include <array>
 #include <cstring>
@@ -38,16 +39,66 @@ void first(std::atomic<int> &error, int value) noexcept {
 class SearchJob final : public concurrency::WorkerTask {
 public:
     std::unique_ptr<concurrency::RoutedSearchTask> task;
-    SearchJob(const query::SearchService &service, CompletionTarget target, std::atomic<int> &error)
-        : service_(service), target_(target), error_(error) {}
+    SearchJob(const query::SearchService &service,
+        CompletionTarget target,
+        std::atomic<int> &error,
+        logging::Logger *logger)
+        : service_(service), target_(target), error_(error), logger_(logger) {}
     void execute() override {
         try {
             // 服务分配/未知异常尝试映射一次固定安全错误；错误构造再失败只记录首因，不递归。
+            const bool observe = logger_ && logger_->enabled(logging::Level::debug);
+            logging::Record record;
+            record.level = logging::Level::debug;
+            record.module = logging::Module::worker;
+            record.connection = task->route();
+            record.request_id = task->payload()->request()->request_id;
+            record.index_version = service_.index_version();
+            query::CacheObservation cache = query::CacheObservation::not_checked;
+            const auto begin = observe ? std::chrono::steady_clock::now()
+                                       : std::chrono::steady_clock::time_point{};
             query::SearchServiceResult result = ErrorStatus::internal_error;
             try {
-                result = service_.execute(*task->payload());
+                result = service_.execute(*task->payload(), observe ? &cache : nullptr);
             } catch (...) {
                 result = ErrorStatus::internal_error;
+            }
+            if (observe) {
+                // 观察只取此调用局部值，不用共享LRU计数差猜命中；不持有任何连接借用。
+                switch (cache) {
+                    case query::CacheObservation::not_checked:
+                        break;
+                    case query::CacheObservation::disabled:
+                        record.cache_state = logging::CacheState::disabled;
+                        break;
+                    case query::CacheObservation::miss:
+                        record.cache_state = logging::CacheState::miss;
+                        break;
+                    case query::CacheObservation::hit:
+                        record.cache_state = logging::CacheState::hit;
+                        break;
+                    case query::CacheObservation::unavailable:
+                        record.cache_state = logging::CacheState::unavailable;
+                        break;
+                }
+                record.elapsed_us = static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - begin)
+                        .count());
+                record.module = logging::Module::cache;
+                record.event = logging::Event::cache_lookup;
+                logger_->write(record);
+                record.module = logging::Module::worker;
+                record.event = logging::Event::query_finished;
+                if (const auto *body = std::get_if<std::string>(&result))
+                    logger_->write_query(record, *body);
+            }
+            if (const auto *status = std::get_if<ErrorStatus>(&result); status && logger_) {
+                record.level = logging::Level::warn;
+                record.event = logging::Event::query_finished;
+                record.code = logging::Code::business_error;
+                record.native_error = static_cast<int>(*status);
+                logger_->write(record);
             }
             auto built =
                 std::holds_alternative<std::string>(result)
@@ -60,6 +111,22 @@ public:
             auto output = std::make_unique<concurrency::RoutedCompletion>(
                 std::get<concurrency::RoutedCompletion>(std::move(built)));
             const auto receipt = try_publish_and_notify(*target_.queue, output, target_.wakeup_fd);
+            if (logger_) {
+                record.event = receipt.publish == concurrency::CompletionPublishResult::accepted
+                                       && !receipt.notification_error
+                                   ? logging::Event::completion_published
+                                   : logging::Event::completion_rejected;
+                record.level = record.event == logging::Event::completion_published
+                                   ? logging::Level::debug
+                                   : logging::Level::warn;
+                record.code = record.event == logging::Event::completion_published
+                                  ? logging::Code::ok
+                                  : logging::Code::publication_failed;
+                record.native_error = receipt.notification_error.value();
+                record.elapsed_us.reset();
+                record.cache_state = logging::CacheState::not_checked;
+                logger_->write(record);
+            }
             // stopping期间closed是预期立即丢弃；其他拒绝/通知失败停整体，不重试消费源。
             if (receipt.publish != concurrency::CompletionPublishResult::accepted
                 && receipt.publish != concurrency::CompletionPublishResult::closed)
@@ -75,19 +142,20 @@ private:
     const query::SearchService &service_;
     CompletionTarget target_;
     std::atomic<int> &error_;
+    logging::Logger *logger_;
 };
 /** @brief 每Sub独立适配；目标在监听开放前冻结，直到该Sub及worker都join。 */
 class Submitter final : public RoutedRequestSubmitter {
 public:
     CompletionTarget target{nullptr, -1};
     concurrency::WorkerPool *pool = nullptr; // start前冻结，生命覆盖最后提交调用。
-    Submitter(const query::SearchService &service, std::atomic<int> &error)
-        : service_(service), error_(error) {}
+    Submitter(const query::SearchService &service, std::atomic<int> &error, logging::Logger *logger)
+        : service_(service), error_(error), logger_(logger) {}
     concurrency::TaskSubmitResult try_submit(
         std::unique_ptr<concurrency::RoutedSearchTask> &source) override {
         if (!source || !source->valid())
             return concurrency::TaskSubmitResult::invalid_task;
-        auto job = std::make_unique<SearchJob>(service_, target, error_);
+        auto job = std::make_unique<SearchJob>(service_, target, error_, logger_);
         // 所有分配先于消费；pool拒绝/初次锁异常恢复原unique_ptr，accepted后不访问可能已销毁job。
         job->task = std::move(source);
         std::unique_ptr<concurrency::WorkerTask> erased = std::move(job);
@@ -105,15 +173,17 @@ public:
 private:
     const query::SearchService &service_;
     std::atomic<int> &error_;
+    logging::Logger *logger_;
 };
 void validate(const OnlineServerConfig &config) {
     const auto &l = config.listen;
     if (!config.sub_count || config.sub_count > 64 || !config.workers || config.workers > 64
         || !config.task_capacity || config.task_capacity > 1024 || config.sub.request_submitter
-        || config.sub.reactor_id != 0 || !config.main.accept_attempt_budget
-        || config.main.accept_attempt_budget > 1024 || l.backlog <= 0
-        || (l.family != IpFamily::v4 && l.family != IpFamily::v6) || l.address.empty()
-        || l.address.size() >= INET6_ADDRSTRLEN || l.address.find('\0') != l.address.npos)
+        || config.sub.reactor_id != 0 || config.sub.logger || config.sub.log_index_version
+        || !config.main.accept_attempt_budget || config.main.accept_attempt_budget > 1024
+        || l.backlog <= 0 || (l.family != IpFamily::v4 && l.family != IpFamily::v6)
+        || l.address.empty() || l.address.size() >= INET6_ADDRSTRLEN
+        || l.address.find('\0') != l.address.npos)
         throw std::invalid_argument("invalid server configuration");
     std::array<char, INET6_ADDRSTRLEN> text{};
     std::memcpy(text.data(), l.address.data(), l.address.size());
@@ -138,9 +208,11 @@ struct OnlineServer::Impl {
     }
     void initialize(const OnlineServerConfig &config) {
         for (std::size_t i = 0; i < config.sub_count; ++i) {
-            auto sink = std::make_unique<Submitter>(*service, publication_error);
+            auto sink = std::make_unique<Submitter>(*service, publication_error, config.logger);
             auto selected = config.sub;
             selected.server_info_body = service->server_info();
+            selected.logger = config.logger;
+            selected.log_index_version = service->index_version();
             selected.reactor_id = static_cast<std::uint32_t>(i);
             selected.request_submitter = sink.get();
             auto sub = std::make_unique<ProtocolSubReactor>(selected);

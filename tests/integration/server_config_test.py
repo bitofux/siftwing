@@ -33,7 +33,8 @@ def run(root, host="127.0.0.1"):
                   tcp_no_delay=True, run_ms=1)
     config.write_text(json.dumps(values), encoding="utf-8")
     # --port/--run-ms在文件前后均覆盖；run_ms=1若未覆盖会提前退出。
-    process = subprocess.Popen([OPTIONS.server, "--port", "0", "--config", "server.json", "--run-ms", "0"],
+    # 本夹具保持空stderr的配置合同；默认info的真实进程接线另有日志集成测试。
+    process = subprocess.Popen([OPTIONS.server, "--log-level", "off", "--port", "0", "--config", "server.json", "--run-ms", "0"],
                                cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
         check(select.select([process.stdout], [], [], 20)[0], "启动期限")

@@ -22,6 +22,8 @@ int main(int argc, char **argv) {
         std::cout
             << "用法：siftwing-server --snapshot <父目录> --version <uint64> [选项]\n"
                "默认监听127.0.0.1，可显式指定数值IPv4/IPv6；支持PING、SERVER_INFO及SEARCH/SUGGEST；固定快照，停止限时排空网络输出。\n"
+               "--log-level off|debug|info|warn|error（默认info） --log-file 全新文件（启用时默认stderr）\n"
+               "--log-max-bytes 2048..1073741824（默认10485760） --log-max-files 1..20（默认3份归档；仅文件输出）\n"
                "--config JSON文件（schema_version=1；默认值→文件→CLI；启动时读取）\n"
                "--listen-address 数值IP --port 0..65535（默认0） --subs 1..64（默认2） --workers 1..64（默认4）\n"
                "--task-capacity 1..1024（默认128） --run-ms 0..86400000（默认0，等停止信号）\n"
@@ -40,6 +42,22 @@ int main(int argc, char **argv) {
         std::cout.flush();
         return std::cout ? 0 : 3;
     }
+    std::unique_ptr<siftwing::logging::Logger> logger;
+    bool logging_requested = false;
+    std::optional<std::uint64_t> index_version;
+    using namespace siftwing::logging;
+    const auto emit = [&logger, &index_version](
+                          Event event, Code code = Code::ok, int native = 0) noexcept {
+        if (!logger)
+            return;
+        Record record;
+        record.event = event;
+        record.code = code;
+        record.native_error = native;
+        record.index_version = index_version;
+        record.level = event == Event::server_failed ? Level::error : Level::info;
+        logger->write(record);
+    };
     try {
         std::vector<std::string> arguments(argv + 1, argv + argc);
         auto configured = siftwing::config::load_server_settings(arguments);
@@ -49,24 +67,40 @@ int main(int argc, char **argv) {
             return 2;
         }
         auto settings = std::move(configured).value();
-        const auto config = siftwing::config::online_config(settings);
+        logging_requested = settings.log_level != Level::off;
+        auto initialized =
+            Logger::create(settings.log_level, settings.log_file, settings.log_rotation);
+        if (!initialized) {
+            std::cerr << "日志初始化失败，context=" << initialized.error().context << '\n';
+            return 1;
+        }
+        logger = std::move(initialized).value();
+        emit(Event::server_starting);
+        auto config = siftwing::config::online_config(settings);
+        config.logger = logger.get();
         const auto duration = settings.run_ms;
         const auto shutdown_ms = settings.shutdown_ms;
         // 只在进程入口装载；worker请求不携带路径，也不重新读取快照或资源。
         auto loaded = siftwing::query::SearchService::create(std::move(settings.service));
         if (!loaded) {
-            std::cerr << "服务装载失败，context=" << loaded.error().context << '\n';
+            if (settings.log_level == Level::off)
+                std::cerr << "服务装载失败，context=" << loaded.error().context << '\n';
+            emit(Event::server_failed, Code::service_load);
             return 1;
         }
+        index_version = loaded.value()->index_version();
         auto created = siftwing::net::OnlineServer::create(std::move(loaded).value(), config);
         if (auto *error = std::get_if<std::error_code>(&created)) {
-            std::cerr << "服务启动失败，errno=" << error->value() << '\n';
+            if (settings.log_level == Level::off)
+                std::cerr << "服务启动失败，errno=" << error->value() << '\n';
+            emit(Event::server_failed, Code::server_io, error->value());
             return 1;
         }
         auto server = std::move(std::get<std::unique_ptr<siftwing::net::OnlineServer>>(created));
         if (std::signal(SIGINT, stop_signal) == SIG_ERR
             || std::signal(SIGTERM, stop_signal) == SIG_ERR)
             throw std::runtime_error("signal setup failed");
+        emit(Event::server_started);
         std::cout << "PORT " << server->port() << '\n';
         std::cout.flush();
         if (!std::cout)
@@ -80,14 +114,19 @@ int main(int argc, char **argv) {
                        >= static_cast<std::int64_t>(duration))
                 break;
             if (const auto error = server->run_once(20)) {
-                std::cerr << "服务运行失败，errno=" << error.value() << '\n';
+                if (settings.log_level == Level::off)
+                    std::cerr << "服务运行失败，errno=" << error.value() << '\n';
+                emit(Event::server_failed, Code::server_io, error.value());
                 return 1;
             }
         }
         if (const auto error = server->shutdown(shutdown_ms)) {
-            std::cerr << "服务停止失败，errno=" << error.value() << '\n';
+            if (settings.log_level == Level::off)
+                std::cerr << "服务停止失败，errno=" << error.value() << '\n';
+            emit(Event::server_failed, Code::server_io, error.value());
             return 1;
         }
+        emit(Event::server_stopped);
         const auto report = server->report();
         std::size_t requests = 0, responses = 0, active = 0;
         for (const auto &sub : report.subs) {
@@ -102,7 +141,9 @@ int main(int argc, char **argv) {
         std::cout.flush();
         return std::cout ? 0 : 3;
     } catch (...) {
-        std::cerr << "服务本地资源或库异常。\n";
+        emit(Event::server_failed, Code::local_exception);
+        if (!logging_requested)
+            std::cerr << "服务本地资源或库异常。\n";
         return 4;
     }
 }

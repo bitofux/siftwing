@@ -6,6 +6,10 @@
  * BRIEF   : 真实服务中执行/排队任务到期、晚结果丢弃与新请求恢复
  */
 #include "siftwing/net/online_server.hpp"
+#include "siftwing/logging/logger.hpp"
+#include <filesystem>
+#include <fstream>
+#include <map>
 #include "../support/multi_reactor_fixture.hpp"
 #include <nlohmann/json.hpp>
 namespace {
@@ -23,17 +27,21 @@ void check(bool ok, const char *why) {
 // 先释放测试worker门再析构server，避免异常展开把生产join留在无人释放的门上。
 struct ReleaseGate { ~ReleaseGate() { released = true; } };
 }
-query::SearchServiceResult real_execute(const query::SearchService *, const SearchTask &)
-    __asm__("__real__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskE");
-query::SearchServiceResult wrapped_execute(const query::SearchService *, const SearchTask &)
-    __asm__("__wrap__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskE");
-query::SearchServiceResult wrapped_execute(const query::SearchService *service, const SearchTask &task) {
+query::SearchServiceResult
+real_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *) __asm__(
+    "__real__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE");
+query::SearchServiceResult
+wrapped_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *) __asm__(
+    "__wrap__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE");
+query::SearchServiceResult wrapped_execute(const query::SearchService *service,
+    const SearchTask &task,
+    query::CacheObservation *observation) {
     ++executions;
     if (first.exchange(false)) {
         entered = true;
         while (!released.load()) std::this_thread::yield();
     }
-    return real_execute(service, task); // 仍执行正式查询，不伪造结果或更换生产worker。
+    return real_execute(service, task, observation); // 仍执行正式查询，不伪造结果或更换生产worker。
 }
 namespace {
 void eof(int fd) {
@@ -57,11 +65,21 @@ std::string response(int fd, std::uint16_t type, std::uint64_t id) {
 void run(const std::string &parent, std::size_t subs) {
     const auto descriptors = fd_count();
     {
+        char log_pattern[] = "/tmp/siftwing-event-hooks-XXXXXX";
+        const char *made = ::mkdtemp(log_pattern);
+        check(made != nullptr, "event log fixture directory");
+        const std::filesystem::path log_root(made);
+        auto logging =
+            logging::Logger::create(logging::Level::debug, (log_root / "events").string());
+        check(bool(logging), "event logger create");
+        auto logger = std::move(logging).value();
+        std::cerr << "event fixture=" << log_root << '\n';
         query::SearchServiceConfig resources; resources.parent = parent;
         auto loaded = query::SearchService::create(resources);
         if (!loaded) throw std::runtime_error(loaded.error().context);
         OnlineServerConfig config; config.workers = 1; config.task_capacity = 2; config.sub_count = subs;
         config.sub.request_timeout_ms = 200;
+        config.logger = logger.get();
         auto created = OnlineServer::create(std::move(loaded).value(), config);
         if (const auto *error = std::get_if<std::error_code>(&created)) throw std::system_error(*error);
         auto server = std::move(std::get<std::unique_ptr<OnlineServer>>(created));
@@ -112,6 +130,20 @@ void run(const std::string &parent, std::size_t subs) {
             check(sub.completion_received == sub.completion_applied + sub.completion_rejected + sub.completion_stale,
                 "completion outcome accounting conserved");
         }
+        check(!logger->failed(), "event logger healthy after server stop");
+        std::ifstream log_input(log_root / "events");
+        std::map<std::string, unsigned> events;
+        std::string line;
+        while (std::getline(log_input, line)) {
+            const auto row = nlohmann::json::parse(line);
+            ++events[row.at("event").get<std::string>()];
+            check(row.at("index_version") == "0", "actual hook index version");
+            if (row.at("event") == "task_rejected")
+                check(row.at("code") == "queue_full", "stable full reason");
+        }
+        check(events["request_expired"] == 2, "exact request_expired hook count");
+        check(events["completion_stale"] == 2, "exact completion_stale hook count");
+        std::filesystem::remove_all(log_root);
     }
     check(fd_count() == descriptors, "real server and peers release all descriptors");
 }

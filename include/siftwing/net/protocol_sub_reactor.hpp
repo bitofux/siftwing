@@ -14,6 +14,9 @@
 #include <mutex>
 #include <thread>
 
+namespace siftwing::logging {
+class Logger;
+}
 namespace siftwing::net {
 /** @brief 启动后固定的容量/预算；不约束全局RSS、JSON CPU或调度延迟。 */
 struct ProtocolSubConfig {
@@ -35,6 +38,8 @@ struct ProtocolSubConfig {
         0; ///< [0,86400000]；0关闭；无pending时从接纳/排空起、recv正字节刷新。
     std::int64_t request_timeout_ms =
         0; ///< 同范围；完整受信帧交付起至输出排空，不因读写/结果刷新。
+    logging::Logger *logger = nullptr; ///< 可选稳定借用，覆盖全部Sub调用和join；同步日志可能阻塞。
+    std::optional<std::uint64_t> log_index_version; ///< 控制者提供实际服务版本；无服务时null。
     std::string server_info_body; ///< 可选拥有固定JSON；空为未接入，构造前验证，启动后不变。
 };
 /** @brief draining只推进已在途；quiescing停止业务等发布者；stopped已清理，joined已回收线程。 */

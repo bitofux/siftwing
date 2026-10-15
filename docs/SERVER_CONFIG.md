@@ -28,6 +28,10 @@ CLI 数字也必须为规范十进制。下表文件键的下划线替换为连�
 
 | 文件键 | 默认值 | 范围或含义 |
 |---|---|---|
+| log_level | `info` | `off/debug/info/warn/error`；启用时默认复制stderr，详见[日志](LOGGING.md) |
+| log_file | 未提供 | 全新轮转文件族；要求启用日志，父目录由当前用户拥有且不允许组/其他用户写入；不追加旧文件或创建父目录 |
+| log_max_bytes | 10485760 | 2048..1073741824字节，单文件上限；仅文件输出使用 |
+| log_max_files | 3 | 1..20份归档，另有一个当前文件；仅文件输出使用 |
 | snapshot / version | 必填 | 快照父目录 / uint64 十进制字符串 |
 | listen_address | `127.0.0.1` | 数值 IPv4/IPv6；无 DNS、zone 或隐式双栈；IPv6 为 V6ONLY |
 | port / backlog | 0 / 128 | 0..65535（0为内核选端口）/ 1..2147483647，实际 backlog 受内核约束 |
@@ -61,12 +65,12 @@ CLI 数字也必须为规范十进制。下表文件键的下划线替换为连�
 
 ```text
 argv → 读取/解析配置 → 字段准入 → CLI覆盖 → 组合检查
-     → 装载完整只读快照/资源 → 创建worker/Sub/Main → PORT N
+     → 初始化可选日志 → 装载完整只读快照/资源 → 创建worker/Sub/Main → PORT N
 ```
 
 普通参数/文件/JSON/数值/必需项错误分别报告 `config.argument`、`config.file`、`config.json`、
 `config.value`、`config.required` 上下文，退出2且不发布端口。未知文件键沿 `config.argument`。
-快照、资源或服务启动失败退出1；stdout失败3；分配或未知库异常4；帮助正常输出0。
+日志目标初始化、快照、资源或服务启动失败退出1；stdout失败3；分配或未知库异常4；帮助正常输出0。
 配置验证不修改任何输入，失败 RAII 回收本次 fd/临时对象，不启动部分服务。
 
 `ServerSettings` 拥有路径与监听字符串，可复制/移动；`online_config(settings)` 返回的监听地址

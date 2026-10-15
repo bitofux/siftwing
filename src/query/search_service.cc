@@ -552,12 +552,20 @@ base::Result<std::unique_ptr<SearchService>> SearchService::create(SearchService
         return Output::failure({error.what(), error.context});
     }
 }
-SearchServiceResult SearchService::execute(const concurrency::SearchTask &task) const {
+SearchServiceResult SearchService::execute(
+    const concurrency::SearchTask &task, CacheObservation *observation) const {
+    const auto observe = [observation](CacheObservation value) noexcept {
+        if (observation)
+            *observation = value;
+    };
+    observe(CacheObservation::not_checked);
     if (!task.valid()) return Status::invalid_request;
     try {
         const auto o = parse_request(state_->options, task);
         Json out(o.output_bytes); header(out, o, *state_->reader.manifest());
         std::optional<cache::CacheKey> key;
+        if (o.cache.capacity == 0)
+            observe(CacheObservation::disabled);
         if (o.cache.capacity != 0) {
             // schema与原始文本预算先检查；同一规范化键不能替超长原请求绕过准入。
             const bool is_search = o.command == "SEARCH";
@@ -573,8 +581,15 @@ SearchServiceResult SearchService::execute(const concurrency::SearchTask &task) 
             key = cache::CacheKey{state_->reader.manifest()->snapshot.value(),
                 is_search ? cache::Operation::search : cache::Operation::suggest,
                 std::move(canonical), params.dump()};
-            try { if (auto hit = state_->cache.get(*key)) return std::move(*hit); }
-            catch (const std::bad_alloc &) { /* 缓存副本失败，沿原计算路径尝试生成结果。 */ }
+            observe(CacheObservation::miss);
+            try {
+                if (auto hit = state_->cache.get(*key)) {
+                    observe(CacheObservation::hit);
+                    return std::move(*hit);
+                }
+            } catch (const std::bad_alloc &) {
+                observe(CacheObservation::unavailable);
+            }
         }
         if (o.command == "SEARCH") search(out, o, state_->reader, state_->pipeline);
         else suggest(out, o, state_->reader);
@@ -596,6 +611,9 @@ std::string SearchService::server_info() const {
         {"commands", {"PING", "SERVER_INFO", "SEARCH", "SUGGEST"}},
         {"limits", {{"max_body_bytes", o.output_bytes}, {"max_query_bytes", o.query_bytes}, {"max_top_k", o.max_k}}},
         {"cache_enabled", o.cache.capacity != 0}}.dump();
+}
+std::uint64_t SearchService::index_version() const noexcept {
+    return state_->reader.manifest()->snapshot.value();
 }
 cache::LruStats SearchService::cache_stats() const { return state_->cache.stats(); }
 } // namespace siftwing::query

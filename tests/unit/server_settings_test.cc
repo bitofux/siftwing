@@ -12,6 +12,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <stdexcept>
+#include <utility>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -84,6 +85,28 @@ int main() {
                   && d.service.cache.capacity == 0 && d.server.sub.idle_timeout_ms == 0
                   && d.shutdown_ms == 1000 && d.listen_address == "127.0.0.1",
             "兼容默认值");
+        check(d.log_level == siftwing::logging::Level::info && d.log_file.empty(),
+            "默认info到stderr");
+        check(d.log_rotation.max_bytes == 10485760 && d.log_rotation.max_files == 3,
+            "默认10MiB和三份归档");
+        for (const auto &level : {"off", "debug", "info", "warn", "error"}) {
+            auto value =
+                load_server_settings({"--snapshot", "p", "--version", "0", "--log-level", level});
+            check(bool(value), "五种固定日志级别");
+        }
+        bad({"--snapshot", "p", "--version", "0", "--log-level", "verbose"}, "config.value");
+        auto file_default =
+            load_server_settings({"--snapshot", "p", "--version", "0", "--log-file", "new"});
+        check(bool(file_default) && file_default.value().log_level == siftwing::logging::Level::info
+                  && file_default.value().log_file == "new",
+            "只指定文件仍默认启用info");
+        bad({"--snapshot", "p", "--version", "0", "--log-level", "off", "--log-file", "new"},
+            "config.value");
+        for (const auto &pair : {std::pair{"--log-max-bytes", "2047"},
+                 std::pair{"--log-max-bytes", "1073741825"},
+                 std::pair{"--log-max-files", "0"},
+                 std::pair{"--log-max-files", "21"}})
+            bad({"--snapshot", "p", "--version", "0", pair.first, pair.second}, "config.value");
         const auto config = root / "config.json";
         write(config,
             R"({"schema_version":1,"snapshot":"cwd-relative","version":"18446744073709551615",
@@ -97,10 +120,16 @@ int main() {
           "output_low_bytes":25,"output_high_bytes":49,"output_hard_bytes":100,
           "max_query_bytes":20,"max_top_k":2,"max_work":999,"max_output_bytes":123,
           "max_snapshot_bytes":5678,"max_resource_bytes":2345,"backlog":17,
-          "tcp_no_delay":true,"reuse_address":true})");
+          "tcp_no_delay":true,"reuse_address":true,"log_level":"debug","log_file":"new-log",
+          "log_max_bytes":4096,"log_max_files":2})");
         auto loaded =
             load_server_settings({"--workers", "6", "--config", config.string(), "--port", "0"});
         check(bool(loaded), "文件全部字段与前后CLI覆盖");
+        check(loaded.value().log_level == siftwing::logging::Level::debug
+                  && loaded.value().log_file == "new-log"
+                  && loaded.value().log_rotation.max_bytes == 4096
+                  && loaded.value().log_rotation.max_files == 2,
+            "文件日志映射");
         auto moved = std::move(loaded).value();
         auto copied = moved;
         moved.listen_address = "127.0.0.1";

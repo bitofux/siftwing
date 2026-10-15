@@ -27,6 +27,14 @@ struct SearchServiceConfig {
     std::uint64_t resource_bytes = 16U * 1024U * 1024U; ///< 正单资源装载预算<=16MiB。
     cache::LruConfig cache; ///< 可选实例LRU，默认capacity=0关闭；固定快照/资源/预算不跨实例共享。
 };
+/** @brief 每次execute的独立观察，不通过共享计数器差推断命中；未到lookup为not_checked。 */
+enum class CacheObservation {
+    not_checked,
+    disabled,
+    miss,
+    hit,
+    unavailable
+};
 /** @brief 成功拥有完整JSON对象Body（无LF），失败为六种线上安全状态之一，无部分结果。 */
 using SearchServiceResult = std::variant<std::string, net::ErrorStatus>;
 /**
@@ -59,6 +67,8 @@ public:
      * @brief 校验严格业务schema，再复用V1查询、推荐、摘要和高亮生成有界JSON
      * @param[in] task
      *     同步稳定借用已准入拥有请求；移空拒INVALID_REQUEST，不消费或保存其借用。
+     * @param[out] observation
+     *     可选独占输出，每次入口重置；不保存指针，不允许跨并发调用共用同一输出值。
      *
      * @return
      *     SEARCH/SUGGEST成功Body或INVALID_REQUEST/RESOURCE_LIMIT/INTERNAL_ERROR；空results成功。
@@ -66,7 +76,10 @@ public:
      * @throws
      *     分配与未知异常传播；worker负责固定安全错误或报告无法交付的服务首因。
      */
-    [[nodiscard]] SearchServiceResult execute(const concurrency::SearchTask &task) const;
+    [[nodiscard]] SearchServiceResult execute(
+        const concurrency::SearchTask &task, CacheObservation *observation = nullptr) const;
+    /** @brief 实际已装载快照身份，固定值、无分配，可与execute并发。 */
+    [[nodiscard]] std::uint64_t index_version() const noexcept;
     /** @brief 可与execute并发取得缓存统计值快照；锁异常传播，无文件/socket操作。 */
     [[nodiscard]] cache::LruStats cache_stats() const;
     /** @brief 固定公开服务信息的拥有JSON，无路径/动态指标；可并发，分配异常传播。 */

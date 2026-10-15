@@ -8,6 +8,7 @@
 #pragma once
 #include "siftwing/base/result.hpp"
 #include "siftwing/net/online_server.hpp"
+#include "siftwing/logging/logger.hpp"
 #include <string>
 #include <vector>
 
@@ -18,6 +19,9 @@ namespace siftwing::config {
  *     底层服务仍会独立验证。没有热更新、环境变量插值或文件监视。
  */
 struct ServerSettings final {
+    logging::Level log_level = logging::Level::info; ///< 默认info；空file复制stderr，可显式off。
+    std::string log_file; ///< 新建0600文件族；启用大小轮转，不追加旧文件或创建父目录。
+    logging::Rotation log_rotation; ///< 启动时复制给Logger，stderr不使用轮转参数。
     query::SearchServiceConfig service; ///< 独占路径/查询资源及缓存预算；版本必须显式提供。
     net::OnlineServerConfig server; ///< 固定网络预算；listen.address由online_config临时绑定。
     std::string listen_address = "127.0.0.1"; ///< 拥有数值IP，不解析DNS；地址族由内容推导。

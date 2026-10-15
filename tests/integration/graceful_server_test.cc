@@ -40,13 +40,15 @@ struct ReleaseGate {
     }
 };
 }
-query::SearchServiceResult real_execute(const query::SearchService *, const SearchTask &) __asm__(
-    "__real__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskE");
 query::SearchServiceResult
-wrapped_execute(const query::SearchService *, const SearchTask &) __asm__(
-    "__wrap__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskE");
-query::SearchServiceResult wrapped_execute(
-    const query::SearchService *service, const SearchTask &task) {
+real_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *) __asm__(
+    "__real__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE");
+query::SearchServiceResult
+wrapped_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *) __asm__(
+    "__wrap__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE");
+query::SearchServiceResult wrapped_execute(const query::SearchService *service,
+    const SearchTask &task,
+    query::CacheObservation *observation) {
     worker = true;
     const auto id = task.request()->request_id;
     if (id < executions.size())
@@ -56,7 +58,7 @@ query::SearchServiceResult wrapped_execute(
         while (!release_job.load())
             std::this_thread::yield();
     }
-    return real_execute(service, task);
+    return real_execute(service, task, observation);
 }
 void real_pool_stop(WorkerPool *) __asm__(
     "__real__ZN8siftwing11concurrency10WorkerPool12request_stopEv");

@@ -101,6 +101,18 @@ FetchContent_Declare(nlohmann_json
 FetchContent_MakeAvailable(nlohmann_json)
 add_library(siftwing_json INTERFACE)
 target_include_directories(siftwing_json SYSTEM INTERFACE "${nlohmann_json_SOURCE_DIR}/include")
+# 固定spdlog及其bundled fmt；同步header-only，不注册全局logger或启用上游工程。
+FetchContent_Declare(spdlog
+    URL https://codeload.github.com/gabime/spdlog/tar.gz/refs/tags/v1.15.3
+    URL_HASH SHA256=15a04e69c222eb6c01094b5c7ff8a249b36bb22788d72519646fb85feb267e67
+    SOURCE_SUBDIR siftwing-header-only
+)
+FetchContent_MakeAvailable(spdlog)
+add_library(siftwing_spdlog INTERFACE)
+target_include_directories(siftwing_spdlog SYSTEM INTERFACE "${spdlog_SOURCE_DIR}/include")
+add_library(siftwing_logging STATIC src/logging/logger.cc)
+target_link_libraries(siftwing_logging PUBLIC siftwing_base PRIVATE siftwing_socket siftwing_json siftwing_spdlog Threads::Threads)
+
 add_library(siftwing_frame_codec STATIC src/net/frame_codec.cc)
 target_link_libraries(siftwing_frame_codec PUBLIC siftwing_frame_decoder
     PRIVATE siftwing_utf8cpp siftwing_json)
@@ -121,7 +133,7 @@ target_link_libraries(siftwing_routed_payload PUBLIC siftwing_search_task siftwi
 add_library(siftwing_protocol_sub_reactor STATIC src/net/protocol_sub_reactor.cc)
 add_library(siftwing_completion_wakeup STATIC src/net/completion_wakeup.cc)
 target_link_libraries(siftwing_completion_wakeup PUBLIC siftwing_completion_queue siftwing_eventfd_wakeup siftwing_task_queue)
-target_link_libraries(siftwing_protocol_sub_reactor PRIVATE siftwing_json PUBLIC siftwing_connection siftwing_main_reactor siftwing_connection_identity siftwing_completion_wakeup siftwing_deadline)
+target_link_libraries(siftwing_protocol_sub_reactor PRIVATE siftwing_json siftwing_logging PUBLIC siftwing_connection siftwing_main_reactor siftwing_connection_identity siftwing_completion_wakeup siftwing_deadline)
 
 add_library(siftwing_protocol_loop STATIC src/net/protocol_loop.cc)
 target_link_libraries(siftwing_protocol_loop PUBLIC siftwing_connection siftwing_listener siftwing_epoll)
@@ -611,7 +623,7 @@ if(BUILD_TESTING)
     add_executable(siftwing_online_deadlines_test tests/integration/online_deadlines_test.cc)
     target_link_libraries(siftwing_online_deadlines_test PRIVATE siftwing_online_server siftwing_json)
     target_link_options(siftwing_online_deadlines_test PRIVATE
-        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskE)
+        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE)
     foreach(subs IN ITEMS 1 2)
         add_test(NAME net.online_deadlines_${subs} COMMAND Python3::Interpreter -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/worker_saturation_test.py"
@@ -622,7 +634,7 @@ if(BUILD_TESTING)
     add_executable(siftwing_v2_fault_concurrency_test tests/integration/v2_fault_concurrency_test.cc)
     target_link_libraries(siftwing_v2_fault_concurrency_test PRIVATE siftwing_online_server siftwing_json)
     target_link_options(siftwing_v2_fault_concurrency_test PRIVATE
-        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskE
+        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE
         -Wl,--wrap=_ZN8siftwing11concurrency10WorkerPool10try_submitERSt10unique_ptrINS0_10WorkerTaskESt14default_deleteIS3_EE
         -Wl,--wrap=_ZN8siftwing11concurrency16RoutedSearchTask6createENS_3net12ConnectionIdERNS0_10SearchTaskE
         -Wl,--wrap=accept4 -Wl,--wrap=send -Wl,--wrap=recv -Wl,--wrap=epoll_ctl)
@@ -644,7 +656,7 @@ if(BUILD_TESTING)
     add_executable(siftwing_graceful_server_test tests/integration/graceful_server_test.cc)
     target_link_libraries(siftwing_graceful_server_test PRIVATE siftwing_online_server siftwing_json)
     target_link_options(siftwing_graceful_server_test PRIVATE
-        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskE
+        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE
         -Wl,--wrap=_ZN8siftwing11concurrency10WorkerPool12request_stopEv
         -Wl,--wrap=_ZN8siftwing3net11MainReactor5closeEv
         -Wl,--wrap=_ZN8siftwing3net18ProtocolSubReactor13request_drainEl
@@ -664,7 +676,7 @@ if(BUILD_TESTING)
     add_executable(siftwing_worker_saturation_test tests/integration/worker_saturation_test.cc)
     target_link_libraries(siftwing_worker_saturation_test PRIVATE siftwing_online_server siftwing_json)
     target_link_options(siftwing_worker_saturation_test PRIVATE
-        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskE
+        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE
         -Wl,--wrap=_ZN8siftwing11concurrency10WorkerPool10try_submitERSt10unique_ptrINS0_10WorkerTaskESt14default_deleteIS3_EE)
     foreach(subs IN ITEMS 1 2)
         add_test(NAME net.worker_saturation_${subs} COMMAND Python3::Interpreter -B
@@ -678,6 +690,18 @@ if(BUILD_TESTING)
     target_link_options(siftwing_network_client_test PRIVATE -Wl,--wrap=send -Wl,--wrap=recv -Wl,--wrap=poll)
     add_test(NAME net.client_native COMMAND siftwing_network_client_test)
     set_tests_properties(net.client_native PROPERTIES TIMEOUT 30)
+    add_test(NAME logging.production COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/structured_logging_test.py"
+        --server "$<TARGET_FILE:siftwing_server>" --indexer "$<TARGET_FILE:siftwing_indexer>"
+        --writer "$<TARGET_FILE:siftwing_writer_probe>")
+    set_tests_properties(logging.production PROPERTIES TIMEOUT 90)
+
+    add_executable(siftwing_logging_test tests/unit/logging_test.cc)
+    target_link_libraries(siftwing_logging_test PRIVATE siftwing_logging siftwing_json Threads::Threads)
+    target_link_options(siftwing_logging_test PRIVATE -Wl,--wrap=write)
+    add_test(NAME logging.contract COMMAND siftwing_logging_test)
+    set_tests_properties(logging.contract PROPERTIES TIMEOUT 30)
+
     add_executable(siftwing_server_settings_test tests/unit/server_settings_test.cc)
     target_link_libraries(siftwing_server_settings_test PRIVATE siftwing_server_settings)
     target_link_options(siftwing_server_settings_test PRIVATE -Wl,--wrap=read)

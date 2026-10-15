@@ -56,7 +56,8 @@ def read(peer, kind, identity, status=0):
 
 class Server:
     def __init__(self, parent, extra=()):
-        self.process = subprocess.Popen([OPTIONS.server, "--snapshot", str(parent), "--version", "0", *map(str, extra)],
+        # 本夹具只验证协议/业务且要求stderr空；日志默认启用由structured_logging独立验证。
+        self.process = subprocess.Popen([OPTIONS.server, "--log-level", "off", "--snapshot", str(parent), "--version", "0", *map(str, extra)],
                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if not select.select([self.process.stdout], [], [], 20)[0]:
             self.process.kill()

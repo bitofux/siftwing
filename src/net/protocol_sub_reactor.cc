@@ -7,6 +7,7 @@
  */
 #include "siftwing/net/protocol_sub_reactor.hpp"
 #include "siftwing/net/epoll_ops.hpp"
+#include "siftwing/logging/logger.hpp"
 #include "siftwing/net/connection_identity.hpp"
 #include "siftwing/net/deadline_timer.hpp"
 #include <nlohmann/json.hpp>
@@ -91,7 +92,50 @@ class Sessions final {
     DeadlineTime drain_deadline_ = 0;
     DeadlineQueue deadlines_; // key=slot下标+1；drop真实删除后才允许slot复用，无陈旧条目。
     ConnectionIdentityTable identities_; // 代次跨slot复用保留，token仍全表单调且0保留wakeup。
-    void drop(Slot &slot, std::error_code error = {}, bool cleanup = false) noexcept {
+    void log(logging::Event event,
+        logging::Level level,
+        ConnectionId identity,
+        std::optional<std::uint64_t> request = {},
+        logging::Code reason = logging::Code::ok,
+        int native_error = 0) noexcept {
+        if (!config_.logger)
+            return;
+        logging::Record record;
+        record.level = level;
+        record.module = logging::Module::sub;
+        record.event = event;
+        record.code = reason;
+        record.connection = identity;
+        record.request_id = request;
+        record.index_version = config_.log_index_version;
+        record.native_error = native_error;
+        config_.logger->write(record);
+    }
+    void log_timeout(const Slot &slot) noexcept {
+        const bool pending = slot.connection->request_pending();
+        log(pending ? logging::Event::request_expired : logging::Event::idle_expired,
+            logging::Level::warn,
+            slot.registration.identity,
+            pending ? std::optional<std::uint64_t>(slot.request_metadata.request_id) : std::nullopt,
+            logging::Code::timeout,
+            ETIMEDOUT);
+    }
+    void drop(Slot &slot,
+        std::error_code error = {},
+        bool cleanup = false,
+        logging::Code reason = logging::Code::ok) noexcept {
+        const auto category = reason != logging::Code::ok  ? reason
+                              : error.value() == ETIMEDOUT ? logging::Code::timeout
+                              : error                      ? logging::Code::io_error
+                                                           : logging::Code::ok;
+        log(logging::Event::connection_closed,
+            category == logging::Code::ok ? logging::Level::info : logging::Level::warn,
+            slot.registration.identity,
+            slot.connection->request_pending()
+                ? std::optional<std::uint64_t>(slot.request_metadata.request_id)
+                : std::nullopt,
+            category,
+            error.value());
         (void)deadlines_.erase(
             static_cast<std::uint64_t>(slot.registration.identity.slot_index) + 1);
         slot.deadline = 0;
@@ -139,6 +183,7 @@ class Sessions final {
             ++report_.request_timeouts;
         else
             ++report_.idle_timeouts;
+        log_timeout(slot);
         drop(slot, code(ETIMEDOUT));
         return true;
     }
@@ -157,6 +202,7 @@ class Sessions final {
                     ++report_.request_timeouts;
                 else
                     ++report_.idle_timeouts;
+                log_timeout(slot);
                 drop(slot, code(ETIMEDOUT));
             }
         }
@@ -179,6 +225,11 @@ class Sessions final {
         if (result != QueueStop::output_limit)
             return result;
         ++report_.output_limit_rejections;
+        log(logging::Event::output_limited,
+            logging::Level::warn,
+            slot.registration.identity,
+            slot.request_metadata.request_id,
+            logging::Code::output_limit);
         try {
             const auto fallback = make_error_response(
                 slot.request_metadata, ErrorStatus::resource_limit, config_.max_body_bytes);
@@ -213,6 +264,10 @@ class Sessions final {
                     reset_deadline(slot, true);
                     slot.request_metadata.message_type = read.request->message_type;
                     slot.request_metadata.request_id = read.request->request_id;
+                    log(logging::Event::request_received,
+                        logging::Level::debug,
+                        slot.registration.identity,
+                        read.request->request_id);
                     if (!read.body_error && config_.request_submitter
                         && (read.request->message_type == MessageType::search_request
                             || read.request->message_type == MessageType::suggest_request)) {
@@ -236,6 +291,16 @@ class Sessions final {
                                 slot, code(EPROTO)); // 适配器违反拥有交接合同，不能假定任务未提交。
                             return;
                         }
+                        log(submitted == TaskSubmitResult::accepted ? logging::Event::task_submitted
+                                                                    : logging::Event::task_rejected,
+                            submitted == TaskSubmitResult::accepted ? logging::Level::debug
+                                                                    : logging::Level::warn,
+                            slot.registration.identity,
+                            metadata.request_id,
+                            submitted == TaskSubmitResult::accepted ? logging::Code::ok
+                            : submitted == TaskSubmitResult::full   ? logging::Code::queue_full
+                            : submitted == TaskSubmitResult::closed ? logging::Code::queue_closed
+                                                                    : logging::Code::invalid_task);
                         if (submitted == TaskSubmitResult::accepted) {
                             slot.awaiting_completion = true;
                         } else {
@@ -286,7 +351,12 @@ class Sessions final {
                 } else if (read.stop == ReadStop::budget_exhausted)
                     slot.runnable = true;
                 else if (read.stop != ReadStop::would_block) {
-                    drop(slot, read.error);
+                    drop(slot,
+                        read.error,
+                        false,
+                        read.stop == ReadStop::header_error || read.stop == ReadStop::truncated
+                            ? logging::Code::protocol_error
+                            : logging::Code::ok);
                     return;
                 }
                 if (read.bytes && !connection.request_pending())
@@ -421,6 +491,7 @@ public:
         slot->serviced = false;
         ++report_.admitted;
         ++report_.active;
+        log(logging::Event::connection_opened, logging::Level::info, slot->registration.identity);
         slot->deadline = idle_deadline;
         if (idle_deadline
             && deadlines_.upsert(
@@ -484,6 +555,11 @@ public:
         const auto identity = result.route();
         if (!identities_.matches(identity)) {
             ++report_.completion_stale;
+            log(logging::Event::completion_stale,
+                logging::Level::warn,
+                identity,
+                result.payload()->frame()->request_id,
+                logging::Code::stale_identity);
             return; // 先查完整身份，不能按旧slot/fd猜当前Connection。
         }
         auto &slot = slots_[identity.slot_index];
@@ -515,6 +591,10 @@ public:
         }
         slot.awaiting_completion = false;
         ++report_.completion_applied;
+        log(logging::Event::completion_applied,
+            logging::Level::debug,
+            identity,
+            result.payload()->frame()->request_id);
         // 复制已应用；后续I/O/定时设施失败不将同一结果再计为rejected。
         service(slot);
     }
