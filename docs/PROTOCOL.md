@@ -6,7 +6,7 @@
 [监听接入](LISTENER.md)、[Connection读取与请求准入](CONNECTION_READ.md)
 及[有界响应写入](CONNECTION_WRITE.md)与[单循环协议探针](PROTOCOL_LOOP.md)。
 Main-Sub Reactor及SEARCH/SUGGEST业务网络服务已有接入，见[在线搜索闭环](ONLINE_SEARCH.md)。
-业务JSON采用该独立schema，V1 CLI接口及输出合同保持。
+业务JSON采用该独立schema；[网络客户端与固定SERVER_INFO](NETWORK_CLIENT.md)已提供，V1本地CLI接口及输出合同保持。
 
 当前采用[单连接一个在途请求](SINGLE_INFLIGHT.md)：从完整帧交付到响应排空保持门禁，
 后续帧按流顺序保留，PING与错误响应也串行。响应排空后request_id可复用；连接generation

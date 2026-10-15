@@ -623,13 +623,16 @@ int run(const Options &o) {
     return 0;
 }
 } // namespace
+#include "network.hpp"
 int main(int argc, char **argv) {
     try {
         if (std::signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
             throw Failure("cli.signal", "无法设置本进程SIGPIPE策略");
         }
+        if (argc >= 2 && std::string_view(argv[1]) == "--network")
+            return siftwing::cli::network_main(argc, argv);
         if (argc == 2 && std::string_view(argv[1]) == "--help") {
-            std::cout << help;
+            std::cout << help << siftwing::cli::network_help();
             std::cout.flush();
             return std::cout ? 0 : 3;
         }

@@ -9,6 +9,7 @@
 #include "siftwing/net/epoll_ops.hpp"
 #include "siftwing/net/connection_identity.hpp"
 #include "siftwing/net/deadline_timer.hpp"
+#include <nlohmann/json.hpp>
 #include "siftwing/net/deadline_queue.hpp"
 #include <algorithm>
 #include <array>
@@ -53,6 +54,9 @@ ProtocolSubConfig checked(ProtocolSubConfig config) {
         || config.idle_timeout_ms > 86400000 || config.request_timeout_ms < 0
         || config.request_timeout_ms > 86400000)
         throw std::invalid_argument("invalid ProtocolSubConfig");
+    if (!config.server_info_body.empty() && validate_frame(
+            {MessageType::server_info_response, 0, 1, config.server_info_body}, ReceiveRole::client))
+        throw std::invalid_argument("invalid server info JSON");
     config.output = checked_output_watermarks(config.max_body_bytes, config.output);
     return config;
 }
@@ -247,6 +251,14 @@ class Sessions final {
                                           ? ErrorStatus::resource_limit
                                           : ErrorStatus::invalid_request,
                                       config_.max_body_bytes);
+                        // 固定公开元信息由控制者在启动前复制拥有；旧probe默认空仍拒绝。
+                        if (!read.body_error && read.request->message_type == MessageType::server_info_request
+                            && !config_.server_info_body.empty()
+                            && nlohmann::json::parse(read.request->body).empty()) {
+                            response = make_response(*read.request, config_.server_info_body, config_.max_body_bytes);
+                            if (std::holds_alternative<ProtocolError>(response))
+                                response = make_error_response(*read.request, ErrorStatus::resource_limit, config_.max_body_bytes);
+                        }
                         const auto *frame = std::get_if<Frame>(&response);
                         const auto queued =
                             frame ? queue_response(slot, *frame) : QueueStop::protocol_error;

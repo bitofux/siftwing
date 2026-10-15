@@ -33,6 +33,7 @@ struct ProtocolSubConfig {
     OutputWatermarks output; ///< 可选输出水位/硬限；全0按max_body解析，非法组合在任何线程前拒绝。
     std::int64_t idle_timeout_ms = 0; ///< [0,86400000]；0关闭；无pending时从接纳/排空起、recv正字节刷新。
     std::int64_t request_timeout_ms = 0; ///< 同范围；完整受信帧交付起至输出排空，不因读写/结果刷新。
+    std::string server_info_body; ///< 可选拥有固定JSON；空为未接入，构造前验证，启动后不变。
 };
 /** @brief quiescing已停止业务但保留资源等发布者；stopped已清理，joined已回收线程。 */
 enum class ProtocolSubState {

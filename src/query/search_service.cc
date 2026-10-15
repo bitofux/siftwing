@@ -587,5 +587,15 @@ SearchServiceResult SearchService::execute(const concurrency::SearchTask &task) 
     } catch (const Failure &error) { return error.status; }
     catch (const nlohmann::json::parse_error &) { return Status::invalid_request; }
 }
+std::string SearchService::server_info() const {
+    const auto &o = state_->options;
+    const auto &m = *state_->reader.manifest();
+    return nlohmann::json{{"schema_version", 1}, {"command", "SERVER_INFO"},
+        {"protocol_version", 1}, {"snapshot_version", std::to_string(m.snapshot.value())},
+        {"build_version", m.build_version},
+        {"commands", {"PING", "SERVER_INFO", "SEARCH", "SUGGEST"}},
+        {"limits", {{"max_body_bytes", o.output_bytes}, {"max_query_bytes", o.query_bytes}, {"max_top_k", o.max_k}}},
+        {"cache_enabled", o.cache.capacity != 0}}.dump();
+}
 cache::LruStats SearchService::cache_stats() const { return state_->cache.stats(); }
 } // namespace siftwing::query

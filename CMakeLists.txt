@@ -121,7 +121,7 @@ target_link_libraries(siftwing_routed_payload PUBLIC siftwing_search_task siftwi
 add_library(siftwing_protocol_sub_reactor STATIC src/net/protocol_sub_reactor.cc)
 add_library(siftwing_completion_wakeup STATIC src/net/completion_wakeup.cc)
 target_link_libraries(siftwing_completion_wakeup PUBLIC siftwing_completion_queue siftwing_eventfd_wakeup siftwing_task_queue)
-target_link_libraries(siftwing_protocol_sub_reactor PUBLIC siftwing_connection siftwing_main_reactor siftwing_connection_identity siftwing_completion_wakeup siftwing_deadline)
+target_link_libraries(siftwing_protocol_sub_reactor PRIVATE siftwing_json PUBLIC siftwing_connection siftwing_main_reactor siftwing_connection_identity siftwing_completion_wakeup siftwing_deadline)
 
 add_library(siftwing_protocol_loop STATIC src/net/protocol_loop.cc)
 target_link_libraries(siftwing_protocol_loop PUBLIC siftwing_connection siftwing_listener siftwing_epoll)
@@ -292,10 +292,12 @@ target_link_libraries(siftwing_indexer PRIVATE siftwing_txt_reader siftwing_rss_
     siftwing_text_pipeline siftwing_cppjieba_tokenizer siftwing_duplicate_decision
     siftwing_snapshot_writer siftwing_tinyxml2)
 
-# 本地查询入口只消费完整只读快照；显示/推荐沿用各自核心，JSON限于固定结果schema。
-add_executable(siftwing_cli apps/cli/main.cc)
+# 独立单次交换与显式网络CLI；本地模式仍只消费完整只读快照。
+add_library(siftwing_client STATIC src/net/client.cc)
+target_link_libraries(siftwing_client PUBLIC siftwing_frame_codec siftwing_socket)
+add_executable(siftwing_cli apps/cli/main.cc apps/cli/network.cc)
 set_target_properties(siftwing_cli PROPERTIES OUTPUT_NAME siftwing-cli)
-target_link_libraries(siftwing_cli PRIVATE siftwing_snapshot_reader siftwing_top_k
+target_link_libraries(siftwing_cli PRIVATE siftwing_client siftwing_json siftwing_snapshot_reader siftwing_top_k
     siftwing_summary siftwing_highlight siftwing_recommendation siftwing_cppjieba_tokenizer siftwing_utf8cpp)
 
 # 在线服务只组合已封板核心；不迁移V1 CLI或旧ProtocolLoop合同。
@@ -626,6 +628,19 @@ if(BUILD_TESTING)
             --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
             --native "$<TARGET_FILE:siftwing_worker_saturation_test>" --subs ${subs})
         set_tests_properties(net.worker_saturation_${subs} PROPERTIES TIMEOUT 60)
+    endforeach()
+    add_executable(siftwing_network_client_test tests/unit/network_client_test.cc)
+    target_link_libraries(siftwing_network_client_test PRIVATE siftwing_client Threads::Threads)
+    target_link_options(siftwing_network_client_test PRIVATE -Wl,--wrap=send -Wl,--wrap=recv -Wl,--wrap=poll)
+    add_test(NAME net.client_native COMMAND siftwing_network_client_test)
+    set_tests_properties(net.client_native PROPERTIES TIMEOUT 30)
+    foreach(suite IN ITEMS integration protocol arguments)
+        add_test(NAME net.client_${suite} COMMAND Python3::Interpreter -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/network_client_test.py"
+            --cli "$<TARGET_FILE:siftwing_cli>" --server "$<TARGET_FILE:siftwing_server>"
+            --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
+            --suite ${suite})
+        set_tests_properties(net.client_${suite} PROPERTIES TIMEOUT 120)
     endforeach()
     foreach(suite IN ITEMS integration concurrency failures native)
         add_test(NAME net.online_search_${suite} COMMAND Python3::Interpreter -B

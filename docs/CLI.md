@@ -1,5 +1,7 @@
 # 本地查询程序
 
+本文描述本地快照模式；显式`--network`的四命令与传输合同见[网络客户端](NETWORK_CLIENT.md)。
+
 `siftwing-cli` 从正式完整快照执行独立的 SEARCH 和 SUGGEST。CMake目标为`siftwing_cli`，
 产物名为`siftwing-cli`，生产程序不依赖Python或测试探针。
 

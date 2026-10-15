@@ -69,6 +69,8 @@ public:
     [[nodiscard]] SearchServiceResult execute(const concurrency::SearchTask &task) const;
     /** @brief 可与execute并发取得缓存统计值快照；锁异常传播，无文件/socket操作。 */
     [[nodiscard]] cache::LruStats cache_stats() const;
+    /** @brief 固定公开服务信息的拥有JSON，无路径/动态指标；可并发，分配异常传播。 */
+    [[nodiscard]] std::string server_info() const;
 private:
     struct Impl;
     explicit SearchService(std::unique_ptr<Impl> state) noexcept;

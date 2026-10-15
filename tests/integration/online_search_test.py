@@ -201,7 +201,7 @@ def failures(root):
                                   {"key":"cat","query":"red"}], 40):
             peer.sendall(wire(4, i, body)); read(peer, 0xffff, i, 1)
         search(peer, 80, records, "red")
-        peer.sendall(wire(2, 81, {})); read(peer, 0xffff, 81, 1)  # SERVER_INFO仍旧未接入行为。
+        peer.sendall(wire(2, 81, {})); check(read(peer, 0x8002, 81)["command"] == "SERVER_INFO", "fixed server metadata")
     for flag, value, request in [("--max-output-bytes", 1, {"query":"red"}),
                                  ("--max-work", 1, {"query":"red blue"}),
                                  ("--max-query-bytes", 2, {"query":"red"})]:

@@ -111,7 +111,8 @@ struct OnlineServer::Impl {
     void initialize(const OnlineServerConfig &config) {
         for (std::size_t i = 0; i < config.sub_count; ++i) {
             auto sink = std::make_unique<Submitter>(*service, publication_error);
-            auto selected = config.sub; selected.reactor_id = static_cast<std::uint32_t>(i);
+            auto selected = config.sub; selected.server_info_body = service->server_info();
+            selected.reactor_id = static_cast<std::uint32_t>(i);
             selected.request_submitter = sink.get();
             auto sub = std::make_unique<ProtocolSubReactor>(selected);
             submitters.push_back(std::move(sink)); subs.push_back(std::move(sub));

@@ -18,6 +18,7 @@ build/release/siftwing-server --snapshot /absolute/snapshots --version 1 --port 
 
 | 请求 | 必需字段 | 可选字段和默认值 |
 |---|---|---|
+| SERVER_INFO_REQUEST | 空对象 | 无；固定公开元信息见[客户端说明](NETWORK_CLIENT.md) |
 | SEARCH_REQUEST | `query`字符串 | `mode`为`or`或`and`（默认or）；`top_k`默认10；`summary_window`默认160；`summary_context`默认40 |
 | SUGGEST_REQUEST | `key`字符串 | `top_k`默认10；`normalize_key`为bool（默认false） |
 
@@ -45,7 +46,7 @@ OnlineServer的create/run_once/port/report/stop/析构由创建线程串行；Ma
 
 真实CTest覆盖生产indexer→server→TCP查询/推荐、独立数学/Unicode参考、英文稀疏身份/中文共享只读资源、参数/预算/启动失败，以及部分启动分配故障、worker分配异常固定安全响应、真实结果full、accepted后通知失败和晚到通知停止屏障。插桩范围以实际日志为准；不证明任意调度、DSO内部、真实OOM、质量或性能。
 
-空闲/请求期限已由[Sub策略](DEADLINES.md)接入，默认关闭、可通过sub配置启用，到期关连接而不取消worker。SERVER_INFO仍保持未接入时的INVALID_REQUEST；正式客户端模式、取消、全局过载策略、热切换、signalfd和优雅排空属于后续模块。
+空闲/请求期限已由[Sub策略](DEADLINES.md)接入，默认关闭、可通过sub配置启用，到期关连接而不取消worker。正式SERVER_INFO已返回固定公开元信息，四命令[网络客户端](NETWORK_CLIENT.md)已提供；取消、全局字节准入、热切换、signalfd和优雅排空属于后续模块。
 
 每连接已有[输出水位与硬限策略](OUTPUT_BACKPRESSURE.md)，可由OnlineServerConfig.sub.output配置，
 命令当前使用自动默认值。输出过大时Sub尝试同ID固定RESOURCE_LIMIT，错误也无法容纳则局部关闭；

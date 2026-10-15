@@ -17,7 +17,7 @@ struct OnlineServerConfig {
     std::size_t sub_count = 2; ///< [1,64]，各Sub身份为0..count-1，不动态扩缩容。
     std::size_t workers = 4; ///< [1,64]固定worker，服务在所有线程退出后才销毁。
     std::size_t task_capacity = 128; ///< [1,1024]等待条目，不含执行中任务；full不等空位。
-    ProtocolSubConfig sub; ///< 复用Sub固定预算；reactor_id须0、submitter须空，由控制者设置。
+    ProtocolSubConfig sub; ///< 复用Sub固定预算；reactor_id须0、submitter须空；控制者覆盖server_info_body。
     MainReactorConfig main; ///< 复用Main有限接入预算。
 };
 /** @brief 控制线程取得的报告；运行时是快照，停止后worker/Sub全部静止。 */
