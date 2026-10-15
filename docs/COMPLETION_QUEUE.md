@@ -26,4 +26,4 @@ close同锁幂等关闭入口，保留已有条目继续取出，不创建或执
 
 三个真实CTest覆盖容量/环绕FIFO、拒绝保持及错误顺序、跨owner隔离和陈旧结果锁外门禁；真实WorkerPool多生产者向一个结果消费者交接，独立逐id/route/Body核恰一次；发布与close竞争按每次实际回执核所有结果。GNU静态new/mutex包装验证预分配失败、初次锁错误和操作零分配；不覆盖真实OOM、DSO内部new或任意同步设施损坏。
 
-Debug/Release全量及独立ASan/UBSan、TSan结果以验证日志为准。[eventfd通知及Sub应用](COMPLETION_WAKEUP.md)已实现；真实查询执行见[在线服务](ONLINE_SEARCH.md)，[连接期限](DEADLINES.md)已有可选策略，任务取消和优雅退出仍属于后续模块。本队列的独立测试不证明在线搜索已接通。
+Debug/Release全量及独立ASan/UBSan、TSan结果以验证日志为准。[eventfd通知及Sub应用](COMPLETION_WAKEUP.md)已实现；真实查询执行见[在线服务](ONLINE_SEARCH.md)，[连接期限](DEADLINES.md)已有可选策略，正式服务已支持[限时网络排空的优雅退出](GRACEFUL_SHUTDOWN.md)，任务取消仍留待后续。本队列的独立测试不证明在线搜索已接通。

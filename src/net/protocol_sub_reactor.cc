@@ -54,8 +54,9 @@ ProtocolSubConfig checked(ProtocolSubConfig config) {
         || config.idle_timeout_ms > 86400000 || config.request_timeout_ms < 0
         || config.request_timeout_ms > 86400000)
         throw std::invalid_argument("invalid ProtocolSubConfig");
-    if (!config.server_info_body.empty() && validate_frame(
-            {MessageType::server_info_response, 0, 1, config.server_info_body}, ReceiveRole::client))
+    if (!config.server_info_body.empty()
+        && validate_frame({MessageType::server_info_response, 0, 1, config.server_info_body},
+            ReceiveRole::client))
         throw std::invalid_argument("invalid server info JSON");
     config.output = checked_output_watermarks(config.max_body_bytes, config.output);
     return config;
@@ -86,10 +87,13 @@ class Sessions final {
     int timer_; // 所属Sub栈拥有的timerfd借用，覆盖Sessions整个生命周期。
     const ProtocolSubConfig &config_;
     ProtocolSubStatus &report_;
+    const std::atomic<std::int64_t> &drain_requested_; // 控制者只发布期限，连接仍由此线程处理。
+    DeadlineTime drain_deadline_ = 0;
     DeadlineQueue deadlines_; // key=slot下标+1；drop真实删除后才允许slot复用，无陈旧条目。
     ConnectionIdentityTable identities_; // 代次跨slot复用保留，token仍全表单调且0保留wakeup。
     void drop(Slot &slot, std::error_code error = {}, bool cleanup = false) noexcept {
-        (void)deadlines_.erase(static_cast<std::uint64_t>(slot.registration.identity.slot_index) + 1);
+        (void)deadlines_.erase(
+            static_cast<std::uint64_t>(slot.registration.identity.slot_index) + 1);
         slot.deadline = 0;
         (void)identities_.retire(slot.registration.identity); // 先撤销身份，再关闭可能复用的fd。
         first(report_.first_connection_error, error);
@@ -119,7 +123,8 @@ class Sessions final {
     // 同一slot的空闲与请求计时互斥，容量不超过活跃连接；无请求epoch或任务借用。
     void reset_deadline(Slot &slot, bool request) {
         const auto key = static_cast<std::uint64_t>(slot.registration.identity.slot_index) + 1;
-        slot.deadline = deadline_after(request ? config_.request_timeout_ms : config_.idle_timeout_ms);
+        slot.deadline =
+            deadline_after(request ? config_.request_timeout_ms : config_.idle_timeout_ms);
         if (!slot.deadline) {
             (void)deadlines_.erase(key);
             return;
@@ -157,12 +162,14 @@ class Sessions final {
         }
     }
     void arm() {
-        // 两项都关闭时保持旧disarmed行为，不增加时钟/设时系统调用。
-        if (!config_.idle_timeout_ms && !config_.request_timeout_ms)
+        // 未请求排空且两项都关闭时保持旧disarmed行为，不增加时钟/设时系统调用。
+        if (!config_.idle_timeout_ms && !config_.request_timeout_ms && !drain_deadline_)
             return;
         const auto next = deadlines_.next();
-        if (const auto error = arm_deadline_timer(timer_, next ? std::optional<DeadlineTime>(next->when)
-                                                             : std::nullopt))
+        auto when = next ? std::optional<DeadlineTime>(next->when) : std::nullopt;
+        if (drain_deadline_ && (!when || drain_deadline_ < *when))
+            when = drain_deadline_;
+        if (const auto error = arm_deadline_timer(timer_, when))
             throw DeadlineFailure(error);
     }
     /** @brief 保持原关联检查顺序；仅合法响应的硬限拒绝可替换为一次固定错误。 */
@@ -186,6 +193,9 @@ class Sessions final {
         return QueueStop::output_limit;
     }
     void service(Slot &slot) {
+        observe_drain();
+        if (!slot.connection)
+            return;
         if (expire(slot))
             return;
         slot.serviced = true;
@@ -193,6 +203,8 @@ class Sessions final {
         auto &connection = *slot.connection;
         try {
             if (!connection.request_pending()) {
+                if (drain_requested_.load())
+                    return; // 请求可能在本轮epoll期间发布；不再启动下一次read。
                 auto read =
                     connection.read_request(config_.read_byte_budget, config_.io_attempt_budget);
                 if (read.stop == ReadStop::request) {
@@ -252,12 +264,16 @@ class Sessions final {
                                           : ErrorStatus::invalid_request,
                                       config_.max_body_bytes);
                         // 固定公开元信息由控制者在启动前复制拥有；旧probe默认空仍拒绝。
-                        if (!read.body_error && read.request->message_type == MessageType::server_info_request
+                        if (!read.body_error
+                            && read.request->message_type == MessageType::server_info_request
                             && !config_.server_info_body.empty()
                             && nlohmann::json::parse(read.request->body).empty()) {
-                            response = make_response(*read.request, config_.server_info_body, config_.max_body_bytes);
+                            response = make_response(
+                                *read.request, config_.server_info_body, config_.max_body_bytes);
                             if (std::holds_alternative<ProtocolError>(response))
-                                response = make_error_response(*read.request, ErrorStatus::resource_limit, config_.max_body_bytes);
+                                response = make_error_response(*read.request,
+                                    ErrorStatus::resource_limit,
+                                    config_.max_body_bytes);
                         }
                         const auto *frame = std::get_if<Frame>(&response);
                         const auto queued =
@@ -276,7 +292,10 @@ class Sessions final {
                 if (read.bytes && !connection.request_pending())
                     reset_deadline(slot, false);
             }
-            // submitter/编码也可消耗时间；开始发送前再次拒绝已过期请求。
+            // submitter/编码也可消耗时间；开始发送前同时裁决公共排空与原请求期限。
+            observe_drain();
+            if (!slot.connection)
+                return;
             if (expire(slot))
                 return;
             if (connection.needs_write()) {
@@ -284,15 +303,25 @@ class Sessions final {
                     connection.flush_output(config_.write_byte_budget, config_.io_attempt_budget);
                 // 非阻塞syscall和有限多次send仍可能跨期限；在宣告排空/finish之前再核同钟。
                 if ((write.stop == WriteStop::drained || write.stop == WriteStop::would_block
-                        || write.stop == WriteStop::budget_exhausted) && expire(slot))
+                        || write.stop == WriteStop::budget_exhausted)
+                    && expire(slot))
                     return;
                 if (write.stop == WriteStop::drained) {
+                    // send可能跨排空截止；先裁决同钟时间，不能把超期结果计为排空成功。
+                    observe_drain();
+                    if (!slot.connection)
+                        return;
                     if (!connection.finish_request()) {
                         drop(slot, code(EIO));
                         return;
                     }
-                    reset_deadline(slot, false);
                     ++report_.responses;
+                    if (drain_deadline_) {
+                        ++report_.drain_responses;
+                        drop(slot);
+                        return; // 不交付已缓冲的后续请求。
+                    }
+                    reset_deadline(slot, false);
                     slot.runnable = connection.buffered_bytes() != 0;
                 } else if (write.stop != WriteStop::would_block
                            && write.stop != WriteStop::budget_exhausted) {
@@ -324,9 +353,38 @@ class Sessions final {
     }
 
 public:
-    Sessions(int epoll, int timer, const ProtocolSubConfig &config, ProtocolSubStatus &report)
-        : slots_(config.max_connections), epoll_(epoll), timer_(timer), config_(config), report_(report),
-          deadlines_(config.max_connections), identities_(config.reactor_id, config.max_connections) {}
+    Sessions(int epoll,
+        int timer,
+        const ProtocolSubConfig &config,
+        ProtocolSubStatus &report,
+        const std::atomic<std::int64_t> &drain_requested)
+        : slots_(config.max_connections), epoll_(epoll), timer_(timer), config_(config),
+          report_(report), drain_requested_(drain_requested), deadlines_(config.max_connections),
+          identities_(config.reactor_id, config.max_connections) {}
+    /** @brief 只由所属Sub观察单调排空请求；关闭空闲或截止连接，不取消拥有任务。 */
+    void observe_drain() {
+        const auto requested = drain_requested_.load();
+        if (!requested)
+            return;
+        const bool beginning = !drain_deadline_;
+        drain_deadline_ = requested;
+        report_.drain_started = true;
+        report_.state = ProtocolSubState::draining;
+        const bool expired = now() >= drain_deadline_;
+        if (!beginning && !expired)
+            return;
+        for (auto &slot : slots_)
+            if (slot.connection
+                && (expired || (beginning && !slot.connection->request_pending()))) {
+                if (expired && slot.connection->request_pending())
+                    ++report_.drain_timeouts;
+                drop(slot);
+            }
+    }
+    bool drained() {
+        observe_drain();
+        return drain_deadline_ && !report_.active;
+    }
     void admit(UniqueFd &source) {
         auto slot = std::find_if(slots_.begin(), slots_.end(), [](const Slot &value) {
             return !value.connection;
@@ -364,12 +422,16 @@ public:
         ++report_.admitted;
         ++report_.active;
         slot->deadline = idle_deadline;
-        if (idle_deadline && deadlines_.upsert({
-                static_cast<std::uint64_t>(slot->registration.identity.slot_index) + 1, idle_deadline})
-                != DeadlineUpdate::stored)
-            throw DeadlineFailure(code(EIO)); // 活跃数不超容量且新slot无旧条目，此分支仅防不变量破坏。
+        if (idle_deadline
+            && deadlines_.upsert(
+                   {static_cast<std::uint64_t>(slot->registration.identity.slot_index) + 1,
+                       idle_deadline})
+                   != DeadlineUpdate::stored)
+            throw DeadlineFailure(
+                code(EIO)); // 活跃数不超容量且新slot无旧条目，此分支仅防不变量破坏。
     }
     void tick(int timeout) {
+        observe_drain();
         expire_due();
         bool scheduled = false;
         for (auto &slot : slots_)
@@ -390,6 +452,7 @@ public:
         }
         if (count > static_cast<int>(events.size()))
             throw std::system_error(code(EIO));
+        observe_drain();
         expire_due(); // 先处理到期，再处理同一批I/O；epoll事件顺序不决定超时胜负。
         for (int i = 0; i < count; ++i) {
             const auto token = events[static_cast<std::size_t>(i)].data.u64;
@@ -416,6 +479,7 @@ public:
         }
     }
     void complete(const concurrency::RoutedCompletion &result) {
+        observe_drain();
         ++report_.completion_received;
         const auto identity = result.route();
         if (!identities_.matches(identity)) {
@@ -514,6 +578,19 @@ std::error_code ProtocolSubReactor::request_stop() {
     const std::lock_guard<std::mutex> lock(mutex_);
     return borrowed_wakeup_ >= 0 ? notify_eventfd(borrowed_wakeup_) : std::error_code{};
 }
+std::error_code ProtocolSubReactor::request_drain(std::int64_t deadline) {
+    if (deadline <= 0)
+        return code(EINVAL);
+    const std::lock_guard<std::mutex> lock(mutex_);
+    if (stop_.load() || publishers_released_
+        || (report_.state != ProtocolSubState::running
+            && report_.state != ProtocolSubState::draining))
+        return code(ECANCELED);
+    const auto previous = drain_deadline_.load();
+    if (!previous || deadline < previous)
+        drain_deadline_.store(deadline);
+    return borrowed_wakeup_ >= 0 ? notify_eventfd(borrowed_wakeup_) : std::error_code{};
+}
 std::variant<CompletionTarget, std::error_code> ProtocolSubReactor::completion_target() {
     const std::lock_guard<std::mutex> lock(mutex_);
     if (report_.state != ProtocolSubState::running || publishers_released_ || borrowed_wakeup_ < 0)
@@ -565,7 +642,8 @@ void ProtocolSubReactor::run() noexcept {
         if (auto *error = std::get_if<std::error_code>(&deadline))
             throw std::system_error(*error);
         timer = std::move(std::get<UniqueFd>(deadline));
-        sessions = std::make_unique<Sessions>(epoll.get(), timer.get(), config_, local);
+        sessions =
+            std::make_unique<Sessions>(epoll.get(), timer.get(), config_, local, drain_deadline_);
         if (const auto error = epoll_add(epoll.get(), wakeup.get(), EPOLLIN, 0))
             throw std::system_error(error);
         wakeup_registered = true;
@@ -583,11 +661,27 @@ void ProtocolSubReactor::run() noexcept {
             ready = true;
         }
         cv_.notify_one();
-        while (!stop_.load() && !queue_.status().closed && !completions_.status().closed) {
+        while (!stop_.load()) {
+            // Main::close会关闭handoff；排空请求须先发布，再关闭Main，不能把closed误作立即停止。
+            if (completions_.status().closed || (queue_.status().closed && !drain_deadline_.load()))
+                break;
+            if (drain_deadline_.load()) {
+                // 未注册的移交源也必须立即结束网络等待，不能等可能无限阻塞的worker join。
+                // 先关入口后有限清空（至多handoff_capacity），完整通知fd仍保留到发布者屏障。
+                queue_.close();
+                while (auto source = queue_.try_pop()) {
+                    ++local.discarded;
+                    first(local.cleanup_error, source->close());
+                }
+            }
+            if (sessions->drained())
+                break;
             const auto notification_result = drain_eventfd(wakeup.get());
             if (notification_result.state == EventFdDrainState::failed)
                 throw std::system_error(notification_result.error);
-            for (std::size_t n = 0; n < config_.handoff_budget && !stop_.load(); ++n) {
+            for (std::size_t n = 0;
+                 n < config_.handoff_budget && !stop_.load() && !drain_deadline_.load();
+                 ++n) {
                 auto source = queue_.try_pop();
                 if (!source)
                     break;
@@ -611,7 +705,7 @@ void ProtocolSubReactor::run() noexcept {
             if (stop_.load())
                 break;
             const bool continue_work =
-                queue_.status().size || completions_.status().size
+                (!drain_deadline_.load() && queue_.status().size) || completions_.status().size
                 || notification_result.state == EventFdDrainState::budget_exhausted;
             sessions->tick(continue_work ? 0 : stop_poll_interval_ms);
             const std::lock_guard<std::mutex> lock(mutex_);

@@ -101,12 +101,12 @@ eventfd。运行失败同样先撤销入口并协调生产者静止，再清理�
 5. 停止请求幂等，先关闭全局接入，再让 Main 停止 accept，关闭 fd 发布入口，阻止新请求
    和新业务任务；与提交并发的 fd 按上述提交点决定清理方。Main 确认已进入的 fd 发布与
    通知调用全部返回，控制者完成停止通知后也撤销该借用；Sub 清理前须取得生产者静止确认。
-6. 当前在线闭环沿用立即丢弃模式；完整发布者屏障见[在线服务](ONLINE_SEARCH.md)。Sub已停止提交且worker join后，Sub关闭待接入 fd 和连接，在所属线程移除并关闭
+6. 在线闭环的stop保留立即丢弃模式；正常shutdown沿[限时排空](GRACEFUL_SHUTDOWN.md)；完整发布者屏障见[在线服务](ONLINE_SEARCH.md)。Sub已停止提交且worker join后，Sub关闭待接入 fd 和连接，在所属线程移除并关闭
    wakeup/epoll，再退出；控制者 join 后才能销毁队列、通知端点和线程借用的配置。
-7. 现有在线控制者先等Sub停止提交，再由WorkerPool关闭排空并join；完整发布/通知返回后
+7. 立即stop流程先等Sub停止提交，再由WorkerPool关闭排空并join；完整发布/通知返回后
    撤销结果目标、release各Sub，最后由所属线程清理并join Reactor。worker可能回投时，
-   接收队列及通知端点保持有效。现有停止不取消任务、立即丢弃网络输出；截止时间与
-   响应优雅排空仍由后续模块实现，不承诺停止时交付响应。
+   接收队列及通知端点保持有效。stop不取消任务、立即丢弃网络输出；shutdown先关闭任务准入，向全部Sub发布同一截止点后关闭Main，
+   Sub只排空已pending响应或截止关闭，再完成相同发布者屏障；不承诺对端收到或线程join硬上限。
 
 跨线程停止必须有可验证的唤醒或有限等待后备路径，不允许无限 epoll_wait 配合仅写一个
 停止标志。eventfd 接入前可由生命周期模块采用有限等待过渡；eventfd 接入后的通知失败
@@ -134,6 +134,6 @@ M2.12 的验证仅为合同审读与文档检查；Sub生命周期验证见[组�
 独立fd队列的验证入口见[队列说明](FD_HANDOFF_QUEUE.md)。
 Main/Sub连接与协议组合验证见[多Sub集成](MULTI_REACTOR.md)，独立worker生命周期见
 [WorkerPool](WORKER_POOL.md)，业务接入见[在线服务](ONLINE_SEARCH.md)。吞吐、延迟、公平性
-及优雅退出仍未验证，不能以本文件存在或空Sub生命周期测试通过替代。
+仍无性能结论；优雅退出的实际验证入口见[关闭合同](GRACEFUL_SHUTDOWN.md)，不能以本文件存在或空Sub生命周期测试通过替代。
 
 独立eventfd唤醒协议的真实epoll验证与稳定借用停止门禁见[eventfd说明](EVENTFD_WAKEUP.md)。

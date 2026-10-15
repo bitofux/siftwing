@@ -4,7 +4,7 @@
 [sub_reactor.hpp](../include/siftwing/net/sub_reactor.hpp) 为准，依赖已有 epoll/UniqueFd
 及 CMake `Threads::Threads`。当前线程只拥有一个空 LT epoll，不接收客户端 fd，
 不监听端口。本文类型保持空生命周期基线；专用连接队列、eventfd与Main协议接入由独立
-[ProtocolSubReactor](MULTI_REACTOR.md)提供。worker接入与停止屏障已由[在线服务](ONLINE_SEARCH.md)组合；当前立即丢弃网络输出，优雅排空仍未实现。
+[ProtocolSubReactor](MULTI_REACTOR.md)提供。worker接入与停止屏障已由[在线服务](ONLINE_SEARCH.md)组合；旧stop仍立即丢弃；正式服务已有[优雅退出](GRACEFUL_SHUTDOWN.md)，独立空Sub不迁移。
 
 ## 调用与拥有关系
 

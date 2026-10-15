@@ -31,28 +31,32 @@ struct ProtocolSubConfig {
     RoutedRequestSubmitter *request_submitter =
         nullptr; ///< 可选稳定借用，start前配置到join后存活。
     OutputWatermarks output; ///< 可选输出水位/硬限；全0按max_body解析，非法组合在任何线程前拒绝。
-    std::int64_t idle_timeout_ms = 0; ///< [0,86400000]；0关闭；无pending时从接纳/排空起、recv正字节刷新。
-    std::int64_t request_timeout_ms = 0; ///< 同范围；完整受信帧交付起至输出排空，不因读写/结果刷新。
+    std::int64_t idle_timeout_ms =
+        0; ///< [0,86400000]；0关闭；无pending时从接纳/排空起、recv正字节刷新。
+    std::int64_t request_timeout_ms =
+        0; ///< 同范围；完整受信帧交付起至输出排空，不因读写/结果刷新。
     std::string server_info_body; ///< 可选拥有固定JSON；空为未接入，构造前验证，启动后不变。
 };
-/** @brief quiescing已停止业务但保留资源等发布者；stopped已清理，joined已回收线程。 */
+/** @brief draining只推进已在途；quiescing停止业务等发布者；stopped已清理，joined已回收线程。 */
 enum class ProtocolSubState {
     idle,
     starting,
     running,
     quiescing,
     stopped,
-    joined
+    joined,
+    draining
 };
 /** @brief 同一报告锁的按值观测，不授予连接借用，也不保证下一刻仍运行。 */
 struct ProtocolSubStatus {
     ProtocolSubState state = ProtocolSubState::idle; ///< 生命周期，禁止从quiescing推断可销毁。
-    bool stop_requested = false; ///< 停止请求，不等于线程退出或响应完成。
-    std::size_t received = 0;    ///< 正常调度从queue取得的条目，含注册前拒绝。
-    std::size_t admitted = 0;  ///< 曾成功构造并ADD的连接数，归属本Sub直到终止。
-    std::size_t rejected = 0;  ///< received中未注册的源，在Sub关闭。
-    std::size_t dropped = 0;   ///< 曾注册后释放的连接数，含停止时丢弃。
-    std::size_t discarded = 0; ///< 静止后清理尚在queue的条目，不计received。
+    bool stop_requested =
+        false; ///< 立即停止请求，不等于线程退出或响应完成；排空另见drain_started。
+    std::size_t received = 0; ///< 正常调度从queue取得的条目，含注册前拒绝。
+    std::size_t admitted = 0; ///< 曾成功构造并ADD的连接数，归属本Sub直到终止。
+    std::size_t rejected = 0; ///< received中未注册的源，在Sub关闭。
+    std::size_t dropped = 0;  ///< 曾注册后释放的连接数，含停止时丢弃。
+    std::size_t discarded = 0; ///< 排空停止接纳或发布者静止后关闭的queue残留，不计received。
     std::size_t active = 0;    ///< 最近发布的活跃连接数，最终为0。
     std::size_t requests = 0;  ///< 完整受信请求数，含Body拒绝或未接业务的类型。
     std::size_t responses = 0; ///< 输出排空且finish成功，不证明对端收到。
@@ -69,11 +73,14 @@ struct ProtocolSubStatus {
         0; ///< 硬限拒绝后固定RESOURCE_LIMIT也无法入队/构造的局部关闭。
     std::size_t idle_timeouts = 0; ///< 空闲期限到期而关闭的连接数；不含停止清理。
     std::size_t request_timeouts = 0; ///< 请求期限到期而关闭的连接数，包含输出未排空。
+    bool drain_started = false; ///< 所属线程已观察排空请求，此后不读取新请求。
+    std::size_t drain_responses = 0; ///< 排空阶段finish成功后关闭的连接数，不证明对端收到。
+    std::size_t drain_timeouts = 0; ///< 排空截止时仍pending而关闭的连接数，非服务运行错误。
 };
 /**
  * @brief 拥有专用queue与一个协议I/O线程，不监听，不accept，不访问其他Sub连接
  * @note 构造/start/target/release_publishers/join/析构由唯一外部控制者串行调用。
- *     request_stop/status可并发，但this须存活，析构前撤入口并等调用返回。不可copy/move。
+ *     request_stop/request_drain/status可并发，但this须存活，析构前撤入口并等调用返回。不可copy/move。
  *     默认只响应PING/PONG与受信ERROR；可选submitter交接SEARCH/SUGGEST并接收worker结果。
  *     每连接最多一个在途请求：从完整受信帧交付到响应排空保持门禁，PING和Body拒绝也串行。
  *     等结果时不订阅IN/RDHUP；有输出时只订阅OUT，不recv或交付下一帧，其他连接独立服务。
@@ -82,7 +89,7 @@ struct ProtocolSubStatus {
  *     request_id可在完成后复用；generation不是请求代次，每接纳任务须至多发布一个结果。
  *     输出达到高水位暂停读，降到低水位只解除输出原因，pending仍须等drained；绝不提前finish。
  *     响应超hard尝试同ID固定RESOURCE_LIMIT；仍不适配或构造异常只关该连接，不递归或截断。
- *     不执行真实查询，不拥有submitter/worker；停止立即丢弃，不保证响应排空。
+ *     不执行真实查询，不拥有submitter/worker；request_stop立即丢弃，request_drain仅排空已pending。
  *     每线程独占一个CLOCK_MONOTONIC timerfd，初始disarmed，与eventfd共用控制token0；
  *     可选空闲/请求期限默认关闭；同钟when<=now到期，关闭并撤销身份，不发送超时ERROR。
  *     空闲只在无pending时生效，正recv刷新；请求时限包括等待和输出排空，进展不延长。
@@ -129,7 +136,7 @@ public:
      *     running时目标，否则ECANCELED；release后禁止使用旧借用。
      * @note
      *     控制者须等Main、submitter、worker及全部完整发布/通知调用返回后才release。
-     *     停止期间入口会关闭，已提交结果保留到静止后的所属线程清理。
+     *     立即停止会关闭入口并保留残留到静止后清理；排空期间继续应用，到期/活跃归零才关闭。
      */
     [[nodiscard]] std::variant<CompletionTarget, std::error_code> completion_target();
     /**
@@ -139,6 +146,22 @@ public:
      * @note 同mutex串行内部通知与撤销，锁外close；mutex异常可抛，this仍须存活。
      */
     [[nodiscard]] std::error_code request_stop();
+    /**
+     * @brief 请求只推进已pending的结果/输出；重复只收紧绝对单调截止，不延长
+     * @param[in] deadline
+     *     正CLOCK_MONOTONIC纳秒时间点；已到期合法，0/负数EINVAL且状态保持。
+     *
+     * @return
+     *     running/draining时发布并有限通知；其他状态ECANCELED。通知失败不撤回请求。
+     * @note
+     *     可跨线程调用，this须存活；观察到drain_started后最后read/submit回调已返回。
+     *     调用返回本身不是提交静止屏障；控制者须先关闭任务准入并停止Main发布。
+     *     空闲/半包关闭，在途排空或截止关闭，不读取缓存后续帧、不新增STOPPING响应。
+     *     request_stop优先；结果与通知目标仍须存活到发布者静止后的release。
+     * @throws
+     *     控制mutex异常可抛；不拥有外部发布者，也不等待worker。
+     */
+    [[nodiscard]] std::error_code request_drain(std::int64_t deadline);
     /**
      * @brief 控制者承诺全部外部发布/通知已返回并撤销target，允许Sub最终清理，幂等
      * @note 必须先停止并等待Main、Sub提交回调、worker发布、最后控制通知与其他raw借用者返回。
@@ -163,6 +186,7 @@ private:
     concurrency::CompletionQueue completions_; ///< 固定owner邮箱，消费及残留销毁仅在Sub线程。
     std::thread thread_;            ///< 控制者串行拥有句柄，线程借用this。
     std::atomic<bool> stop_{false}; ///< 请求标志，不能代替发布者静止。
+    std::atomic<std::int64_t> drain_deadline_{0}; ///< 0未请求；正绝对期限只收紧，所属线程执行关闭。
     mutable std::mutex mutex_; ///< 保护报告/启动/屏障/内部通知镜像，不保护Connection。
     std::condition_variable cv_;       ///< ready与发布者静止谓词等待，不持锁join。
     bool ready_done_ = false;          ///< 独立启动报告已完成，受mutex保护。

@@ -22,7 +22,7 @@ Sub每轮先清通知，再按各自预算消费fd移交和结果队列。通知
 
 ## 停止与所有权
 
-结果队列、连接与epoll/eventfd分别由Sub对象及所属线程管理；submitter和worker池由外部控制者拥有。停止会关两个队列入口，不保证响应排空。控制者先停止Main和Sub，确认Sub已quiescing、不再提交任务，再等worker及所有完整发布/通知调用、最后控制通知返回并撤目标借用，才release发布者并join。Sub在屏障后先撤内部通知镜像，再清理连接、丢弃残留结果和fd条目、注销及关闭真实资源。closed/empty和pool统计都不能代替完整调用返回；析构要求已撤所有外部入口。此停止策略仍为立即丢弃，不是优雅退出。
+结果队列、连接与epoll/eventfd分别由Sub对象及所属线程管理；submitter和worker池由外部控制者拥有。停止会关两个队列入口，不保证响应排空。控制者先停止Main和Sub，确认Sub已quiescing、不再提交任务，再等worker及所有完整发布/通知调用、最后控制通知返回并撤目标借用，才release发布者并join。Sub在屏障后先撤内部通知镜像，再清理连接、丢弃残留结果和fd条目、注销及关闭真实资源。closed/empty和pool统计都不能代替完整调用返回；析构要求已撤所有外部入口。这是request_stop的立即丢弃策略；request_drain与正式shutdown的[限时网络排空](GRACEFUL_SHUTDOWN.md)继续使用相同完整发布者屏障，截止不缩短通知端生命期。
 
 ## 验证边界
 

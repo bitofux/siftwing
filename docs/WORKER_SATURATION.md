@@ -6,7 +6,7 @@
 
 错误响应继续服从[单在途门禁](SINGLE_INFLIGHT.md)和[输出硬限](OUTPUT_BACKPRESSURE.md)：完整排空后才finish并继续缓存请求，PING也沿同连接顺序。错误超硬限时尝试同ID固定RESOURCE_LIMIT一次，仍不适配或分配失败只关闭该连接。因此明确过载响应以能够构造、排队和发送为条件。其他连接独立推进；释放队列容量后，新请求重新尝试准入，没有永久拒绝状态或容量预留。客户端重试须自行决定，本服务不提供自动重试或幂等业务承诺。
 
-队列关闭使用STOPPING；业务工作预算使用RESOURCE_LIMIT，均与等待队列full有区别。completion结果队列满仍沿现有首因安全停止策略，见[在线闭环](ONLINE_SEARCH.md)；本合同没有把它改成OVERLOADED，全局字节准入、取消和优雅排空仍未提供。独立[可选期限](DEADLINES.md)覆盖已接纳请求的等待与发送。
+队列关闭使用STOPPING；业务工作预算使用RESOURCE_LIMIT，均与等待队列full有区别。completion结果队列满仍沿现有首因安全停止策略，见[在线闭环](ONLINE_SEARCH.md)；本合同没有把它改成OVERLOADED，全局字节准入和取消仍未提供；正常关闭已有[限时网络排空](GRACEFUL_SHUTDOWN.md)。独立[可选期限](DEADLINES.md)覆盖已接纳请求的等待与发送。
 
 两个真实CTest `net.worker_saturation_1`和`net.worker_saturation_2`分别运行1/2个Sub、1个worker、1个等待槽。测试经正式indexer生成原创公开输入的快照，启动真实OnlineServer/TCP；GNU静态链接包装暂停一次真实SearchService执行，观察真实try_submit。首任务执行中、次任务排队后，SEARCH与SUGGEST确定命中full，独立黄金线字节核同ID错误、缓存PING和SHUT_WR/EOF；两条健康连接各8个PING在worker放行前完成，并确认各Sub处理了流量。每轮7字节输出覆盖错误跨轮排空。释放后执行真实服务，确认原任务完成、新请求恢复准入，join后精确核三次执行、两次拒绝、无重投和fd回基线。
 

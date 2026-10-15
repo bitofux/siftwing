@@ -617,6 +617,34 @@ if(BUILD_TESTING)
             --native "$<TARGET_FILE:siftwing_online_deadlines_test>" --subs ${subs})
         set_tests_properties(net.online_deadlines_${subs} PROPERTIES TIMEOUT 60)
     endforeach()
+    add_executable(siftwing_graceful_sub_test tests/integration/graceful_sub_test.cc)
+    target_link_libraries(siftwing_graceful_sub_test PRIVATE siftwing_protocol_sub_reactor)
+    target_link_options(siftwing_graceful_sub_test PRIVATE
+        -Wl,--wrap=clock_gettime -Wl,--wrap=send -Wl,--wrap=write -Wl,--wrap=timerfd_settime -Wl,--wrap=epoll_wait)
+    foreach(suite IN ITEMS drain boundaries faults timer)
+        add_test(NAME net.graceful_sub_${suite} COMMAND siftwing_graceful_sub_test ${suite})
+        set_tests_properties(net.graceful_sub_${suite} PROPERTIES TIMEOUT 30)
+    endforeach()
+    add_executable(siftwing_graceful_server_test tests/integration/graceful_server_test.cc)
+    target_link_libraries(siftwing_graceful_server_test PRIVATE siftwing_online_server siftwing_json)
+    target_link_options(siftwing_graceful_server_test PRIVATE
+        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskE
+        -Wl,--wrap=_ZN8siftwing11concurrency10WorkerPool12request_stopEv
+        -Wl,--wrap=_ZN8siftwing3net11MainReactor5closeEv
+        -Wl,--wrap=_ZN8siftwing3net18ProtocolSubReactor13request_drainEl
+        -Wl,--wrap=write -Wl,--wrap=clock_gettime)
+    foreach(subs IN ITEMS 1 2)
+        add_test(NAME net.graceful_server_${subs} COMMAND Python3::Interpreter -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/worker_saturation_test.py"
+            --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
+            --native "$<TARGET_FILE:siftwing_graceful_server_test>" --subs ${subs})
+        set_tests_properties(net.graceful_server_${subs} PROPERTIES TIMEOUT 60)
+    endforeach()
+    add_test(NAME net.graceful_process COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/graceful_process_test.py"
+        --server "$<TARGET_FILE:siftwing_server>" --indexer "$<TARGET_FILE:siftwing_indexer>"
+        --writer "$<TARGET_FILE:siftwing_writer_probe>")
+    set_tests_properties(net.graceful_process PROPERTIES TIMEOUT 90)
     add_executable(siftwing_worker_saturation_test tests/integration/worker_saturation_test.cc)
     target_link_libraries(siftwing_worker_saturation_test PRIVATE siftwing_online_server siftwing_json)
     target_link_options(siftwing_worker_saturation_test PRIVATE

@@ -8,7 +8,7 @@ Main 不读取业务，Connection 从构造到释放始终归属同一个 Sub。
 
 原 [SubReactor](SUB_REACTOR.md)空生命周期和 [ProtocolLoop](PROTOCOL_LOOP.md)单线程基线保持。
 新类型提供独立接口；测试专用[组合控制者](../tests/support/multi_reactor_fixture.hpp)展示启动、
-运行错误汇总和停止顺序。已通过[在线搜索闭环](ONLINE_SEARCH.md)提供生产查询命令；响应优雅排空仍待后续。
+运行错误汇总和停止顺序。已通过[在线搜索闭环](ONLINE_SEARCH.md)提供生产查询命令；正式服务已有[优雅退出](GRACEFUL_SHUTDOWN.md)，旧测试fixture仍使用立即停止。
 默认只响应 PING/PONG 和受信 ERROR，其他合法业务请求返回 INVALID_REQUEST；可选请求提交器及worker结果应用见[回投说明](COMPLETION_WAKEUP.md)。
 
 ## 固定容量与职责
@@ -35,7 +35,8 @@ Connection 注册使用单调不复用 token，0 专供通知端，不按 fd 数
 | 构造、start、target、release_publishers、join、析构 | 唯一外部控制者串行调用，对象不可复制或移动 |
 | start | 等完整初始化报告，启动失败内部 join；成功只证明曾就绪，随后仍可能失败 |
 | target | running 时返回 queue 与 wakeup 的稳定借用，否则 ECANCELED；不保证之后仍健康 |
-| request_stop / status | 可并发，但调用者须保证 this 存活；内部通知借用与撤销同 mutex |
+| request_stop / request_drain / status | 可并发，但调用者须保证 this 存活；内部通知借用与撤销同 mutex |
+| draining | 只推进已pending的结果和输出，排空或公共截止后关闭，不读下一帧 |
 | quiescing | 接入 / 业务已停止，首因已发布，资源保留等待外部发布者静止；不是可销毁 |
 | release_publishers | 控制者承诺所有外部发布与通知已返回、旧 target 借用已撤销；同时置 stop，幂等 |
 | stopped / joined | 前者已在线程内清理，后者线程也已回收；ready 后 join 须先 release |
@@ -64,7 +65,7 @@ Main 创建失败也回滚全部已就绪 Sub。Sub 创建 / 连接构造或 ADD
 客户端坏头、EOF、读写失败、响应分配或 MOD 错误属于局部连接关闭，记录 first_connection_error。
 完整合法头的 Body 拒绝保留 ID 并返回 ERROR；不是全 Sub 失败。
 启动 / 运行首因和 cleanup_error 分开，Linux close 一次，不重试 EINTR。
-停止为立即丢弃，不承诺已提交请求或响应完成。
+request_stop仍立即丢弃；request_drain和正式shutdown提供[限时网络排空](GRACEFUL_SHUTDOWN.md)，不取消worker、不承诺对端收到。
 
 最终 queue drain 或同步设施不可恢复失效时，不能保证目标线程完成清理；noexcept 线程收口 / 析构
 可能 terminate，不能悄悄把残留 fd 留到控制者析构。此边界与正常可恢复 I/O 错误分开。

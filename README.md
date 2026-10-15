@@ -10,7 +10,7 @@ V2 的 [帧头与字节序合同](docs/PROTOCOL.md)定义 24 字节布局、消�
 [fd RAII与socket基线](docs/SOCKET_BASELINE.md)、[epoll创建与LT注册](docs/EPOLL_REGISTRATION.md)及
 [Listener与有界accept4接入](docs/LISTENER.md)、[Connection有界读取与请求准入](docs/CONNECTION_READ.md)
 及[有界响应输出、部分写与写事件意向](docs/CONNECTION_WRITE.md)。
-已有[单循环协议探针](docs/PROTOCOL_LOOP.md)接通 PING/PONG 与错误响应；生产业务搜索网络服务见[在线搜索闭环](docs/ONLINE_SEARCH.md)，Main-Sub协议组合见后文。
+已有[单循环协议探针](docs/PROTOCOL_LOOP.md)接通 PING/PONG 与错误响应；生产业务搜索网络服务见[在线搜索闭环](docs/ONLINE_SEARCH.md)，Main-Sub协议组合见后文。正式服务支持[优雅退出](docs/GRACEFUL_SHUTDOWN.md)：停止接入/任务准入，限时排空已在途响应，再完成worker与通知fd屏障；截止不取消任务或保证线程join时长。
 Main/Sub协作遵循[线程拓扑与所有权合同](docs/THREAD_TOPOLOGY.md)，明确 Main/Sub 职责、fd 转交和停止清理边界。
 已有独立[Sub Reactor生命周期基线](docs/SUB_REACTOR.md)：独立线程、线程内epoll资源、就绪报告、有限等待停止和外部join；该类型保持空生命周期，连接、队列和eventfd由[ProtocolSubReactor](docs/MULTI_REACTOR.md)组合。
 已有独立[fd有界移交队列](docs/FD_HANDOFF_QUEUE.md)：预分配FIFO、成功消费源、拒绝保持源、同步关闭入口与关闭后drain；专用Sub接入见多Sub协议集成。
