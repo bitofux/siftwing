@@ -617,6 +617,20 @@ if(BUILD_TESTING)
             --native "$<TARGET_FILE:siftwing_online_deadlines_test>" --subs ${subs})
         set_tests_properties(net.online_deadlines_${subs} PROPERTIES TIMEOUT 60)
     endforeach()
+    add_executable(siftwing_v2_fault_concurrency_test tests/integration/v2_fault_concurrency_test.cc)
+    target_link_libraries(siftwing_v2_fault_concurrency_test PRIVATE siftwing_online_server siftwing_json)
+    target_link_options(siftwing_v2_fault_concurrency_test PRIVATE
+        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskE
+        -Wl,--wrap=_ZN8siftwing11concurrency10WorkerPool10try_submitERSt10unique_ptrINS0_10WorkerTaskESt14default_deleteIS3_EE
+        -Wl,--wrap=_ZN8siftwing11concurrency16RoutedSearchTask6createENS_3net12ConnectionIdERNS0_10SearchTaskE
+        -Wl,--wrap=accept4 -Wl,--wrap=send -Wl,--wrap=recv -Wl,--wrap=epoll_ctl)
+    foreach(subs IN ITEMS 1 2)
+        add_test(NAME net.v2_fault_concurrency_${subs} COMMAND Python3::Interpreter -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/worker_saturation_test.py"
+            --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
+            --native "$<TARGET_FILE:siftwing_v2_fault_concurrency_test>" --subs ${subs})
+        set_tests_properties(net.v2_fault_concurrency_${subs} PROPERTIES TIMEOUT 60)
+    endforeach()
     add_executable(siftwing_graceful_sub_test tests/integration/graceful_sub_test.cc)
     target_link_libraries(siftwing_graceful_sub_test PRIVATE siftwing_protocol_sub_reactor)
     target_link_options(siftwing_graceful_sub_test PRIVATE
