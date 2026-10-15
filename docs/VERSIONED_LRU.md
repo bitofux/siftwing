@@ -1,6 +1,6 @@
 # 版本感知进程内LRU
 
-`SearchServiceConfig::cache`提供可选实例缓存，默认`capacity=0`关闭；当前CLI未提供缓存参数。
+`SearchServiceConfig::cache`提供可选实例缓存，默认`capacity=0`关闭；可由`--cache-capacity`、`--cache-bytes`、`--cache-max-value-bytes`或[启动配置](SERVER_CONFIG.md)显式启用。
 服务持有固定快照和分析资源，缓存只拥有成功的JSON Body，包含成功空结果，不保存错误、任务、
 连接、fd或完整响应帧。每次命中仍经worker构造当前request_id的Completion并回投所属Sub；
 既有超时、单在途、输出预算及停止屏障继续适用。索引热切换尚未实现。

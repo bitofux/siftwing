@@ -3,37 +3,36 @@
  * FILE    : main.cc
  * AUTHOR  : bitofux
  * DATE    : 2026-10-15
- * BRIEF   : 显式快照与固定资源的loopback在线SEARCH/SUGGEST入口
+ * BRIEF   : 严格配置准入与固定资源的在线SEARCH/SUGGEST入口
  */
-#include "siftwing/net/online_server.hpp"
-#include <charconv>
+#include "siftwing/config/server_settings.hpp"
 #include <chrono>
 #include <csignal>
 #include <iostream>
-#include <set>
 
 namespace {
 volatile std::sig_atomic_t interrupted = 0;
 void stop_signal(int) {
     interrupted = 1;
 }
-std::uint64_t number(const std::string &text, std::uint64_t cap, bool zero = false) {
-    std::uint64_t result = 0;
-    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), result);
-    if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size()
-        || std::to_string(result) != text || result > cap || (!zero && !result))
-        throw std::invalid_argument("invalid integer");
-    return result;
-}
+
 }
 int main(int argc, char **argv) {
     if (argc == 2 && std::string_view(argv[1]) == "--help") {
         std::cout
             << "用法：siftwing-server --snapshot <父目录> --version <uint64> [选项]\n"
-               "仅监听127.0.0.1，支持PING、SERVER_INFO及SEARCH/SUGGEST；固定快照，停止限时排空网络输出。\n"
-               "--port 0..65535（默认0） --subs 1..64（默认2） --workers 1..64（默认4）\n"
+               "默认监听127.0.0.1，可显式指定数值IPv4/IPv6；支持PING、SERVER_INFO及SEARCH/SUGGEST；固定快照，停止限时排空网络输出。\n"
+               "--config JSON文件（schema_version=1；默认值→文件→CLI；启动时读取）\n"
+               "--listen-address 数值IP --port 0..65535（默认0） --subs 1..64（默认2） --workers 1..64（默认4）\n"
                "--task-capacity 1..1024（默认128） --run-ms 0..86400000（默认0，等停止信号）\n"
                "--shutdown-ms 0..86400000（默认1000，网络排空期限；仍须安全等待worker退出）\n"
+               "--idle-timeout-ms 0..86400000 --request-timeout-ms 0..86400000（默认均0关闭）\n"
+               "--cache-capacity 0..4096（默认0关闭） --cache-bytes 1..67108864 --cache-max-value-bytes 1..1048576\n"
+               "--handoff-capacity/--completion-capacity/--max-connections 1..1024（每Sub）\n"
+               "--handoff-budget/--completion-budget/--io-attempt-budget/--accept-attempt-budget 1..1024\n"
+               "--read-byte-budget/--write-byte-budget 1..1048600 --max-body-bytes 2..1048576\n"
+               "--output-low-bytes/--output-high-bytes/--output-hard-bytes 0..1048600（全0自动）\n"
+               "--backlog 1..2147483647 --tcp-no-delay on|off --reuse-address on|off（默认off）\n"
                "--tokenizer english|cppjieba --stopwords 文件 --dictionary 文件 --model 文件\n"
                "--user-dictionary 文件 --hmm on|off（中文资源须与搜索建库相容）\n"
                "--max-query-bytes 1..65536 --max-top-k 1..100 --max-work 1..50000000\n"
@@ -41,77 +40,20 @@ int main(int argc, char **argv) {
         std::cout.flush();
         return std::cout ? 0 : 3;
     }
-    siftwing::query::SearchServiceConfig service;
-    siftwing::net::OnlineServerConfig config;
-    std::uint64_t duration = 0;
-    std::int64_t shutdown_ms = 1000;
     try {
-        std::set<std::string> seen;
-        for (int i = 1; i < argc; ++i) {
-            const std::string flag = argv[i];
-            if (!seen.insert(flag).second || ++i == argc)
-                throw std::invalid_argument("duplicate/missing option");
-            const std::string value = argv[i];
-            if (value.empty())
-                throw std::invalid_argument("empty option");
-            if (flag == "--snapshot")
-                service.parent = value;
-            else if (flag == "--version")
-                service.version = number(value, UINT64_MAX, true);
-            else if (flag == "--port")
-                config.listen.port = static_cast<std::uint16_t>(number(value, 65535, true));
-            else if (flag == "--subs")
-                config.sub_count = static_cast<std::size_t>(number(value, 64));
-            else if (flag == "--workers")
-                config.workers = static_cast<std::size_t>(number(value, 64));
-            else if (flag == "--task-capacity")
-                config.task_capacity = static_cast<std::size_t>(number(value, 1024));
-            else if (flag == "--run-ms")
-                duration = number(value, 86400000, true);
-            else if (flag == "--shutdown-ms")
-                shutdown_ms = static_cast<std::int64_t>(number(value, 86400000, true));
-            else if (flag == "--tokenizer")
-                service.tokenizer = value;
-            else if (flag == "--stopwords")
-                service.stopwords = value;
-            else if (flag == "--dictionary")
-                service.dictionary = value;
-            else if (flag == "--model")
-                service.model = value;
-            else if (flag == "--user-dictionary")
-                service.user = value;
-            else if (flag == "--hmm" && (value == "on" || value == "off"))
-                service.hmm = value == "on";
-            else if (flag == "--max-query-bytes")
-                service.query_bytes = number(value, 65536);
-            else if (flag == "--max-top-k")
-                service.max_k = number(value, 100);
-            else if (flag == "--max-work")
-                service.work = number(value, 50000000);
-            else if (flag == "--max-output-bytes")
-                service.output_bytes = number(value, 1048576);
-            else if (flag == "--max-snapshot-bytes")
-                service.snapshot_bytes = number(value, 536870912);
-            else if (flag == "--max-resource-bytes")
-                service.resource_bytes = number(value, 16777216);
-            else
-                throw std::invalid_argument("unknown option");
+        std::vector<std::string> arguments(argv + 1, argv + argc);
+        auto configured = siftwing::config::load_server_settings(arguments);
+        if (!configured) {
+            std::cerr << "配置加载失败，context=" << configured.error().context << "，"
+                      << configured.error().message << '\n';
+            return 2;
         }
-        if (!seen.count("--snapshot") || !seen.count("--version")
-            || (service.tokenizer != "english" && service.tokenizer != "cppjieba")
-            || (service.tokenizer == "english"
-                && (seen.count("--hmm") || !service.dictionary.empty() || !service.model.empty()
-                    || !service.user.empty()))
-            || (service.tokenizer == "cppjieba"
-                && (service.dictionary.empty() || service.model.empty())))
-            throw std::invalid_argument("required/incompatible option");
-    } catch (...) {
-        std::cerr << "服务参数非法，使用--help查看用法。\n";
-        return 2;
-    }
-    try {
+        auto settings = std::move(configured).value();
+        const auto config = siftwing::config::online_config(settings);
+        const auto duration = settings.run_ms;
+        const auto shutdown_ms = settings.shutdown_ms;
         // 只在进程入口装载；worker请求不携带路径，也不重新读取快照或资源。
-        auto loaded = siftwing::query::SearchService::create(std::move(service));
+        auto loaded = siftwing::query::SearchService::create(std::move(settings.service));
         if (!loaded) {
             std::cerr << "服务装载失败，context=" << loaded.error().context << '\n';
             return 1;

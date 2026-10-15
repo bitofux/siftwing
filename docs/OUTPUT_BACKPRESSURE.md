@@ -11,7 +11,7 @@ Connection 的输出表示尚未交给本机内核的完整线字节，包含24�
 以容纳最小PONG。三个值全0表示自动值：hard=`24+max_body_bytes`、high=`hard*3/4`、
 low=`hard/2`（整数取整）。其他组合必须完整有效；非法配置在接管fd或启动线程前拒绝。
 旧三参Connection构造保留，新增四参重载显式传入水位。Sub通过`config.output`选择，
-OnlineServer沿`config.sub.output`传递；生产命令当前使用自动值，没有新增命令行选项。
+OnlineServer沿`config.sub.output`传递；生产命令默认使用自动值，可用`--output-low-bytes`/`--output-high-bytes`/`--output-hard-bytes`或[启动配置](SERVER_CONFIG.md)设置。
 
 例如协议Body上限512，配置`{32,64,96}`：输出达到64字节进入暂停；发送后剩余63或33
 仍暂停；剩余32时解除输出暂停原因。`output_backpressured()`可查询滞回状态，

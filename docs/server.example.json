@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "snapshot": "./snapshots",
+  "version": "1",
+  "listen_address": "127.0.0.1",
+  "port": 9000,
+  "subs": 2,
+  "workers": 4,
+  "task_capacity": 128,
+  "cache_capacity": 256,
+  "cache_bytes": 8388608,
+  "cache_max_value_bytes": 262144,
+  "idle_timeout_ms": 30000,
+  "request_timeout_ms": 5000,
+  "shutdown_ms": 1000
+}

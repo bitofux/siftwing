@@ -5,6 +5,7 @@
 正式在线服务的每个`ProtocolSubReactor`在所属线程创建一个非阻塞、CLOEXEC的
 `CLOCK_MONOTONIC` timerfd，并在同线程注册、读取、注销和关闭。初始disarmed，
 可按固定配置启用空闲超时和请求deadline；两项默认关闭，旧立即停止策略保持；[优雅退出](GRACEFUL_SHUTDOWN.md)复用同一timerfd并取原期限与公共排空期限的最早值。
+生产入口可用`--idle-timeout-ms`/`--request-timeout-ms`或[启动配置](SERVER_CONFIG.md)启用，启动后固定。
 旧空`SubReactor`生命周期基线和单Loop probe保持原职责。
 
 期限是`CLOCK_MONOTONIC`纪元起的正`int64`纳秒，不是墙钟、Unix时间、相对时长或线上字段。
@@ -44,7 +45,7 @@ EAGAIN是正常情况。生产资源失败沿现有Sub首因停止/启动回滚�
 
 `ProtocolSubConfig`末尾新增`idle_timeout_ms`和`request_timeout_ms`，均为有符号毫秒，
 范围0..86400000（一天）；0关闭该策略，负数或超范围在任何线程启动前抛`invalid_argument`。
-`OnlineServerConfig::sub`原样传递；当前命令行程序沿默认关闭，未新增CLI参数。
+`OnlineServerConfig::sub`原样传递；命令行默认关闭，可用`--idle-timeout-ms`/`--request-timeout-ms`或[启动配置](SERVER_CONFIG.md)启用。
 时长转纳秒及与当前时钟相加均检查边界，溢出不截断或回绕。
 
 | 状态 | 起点和刷新条件 | 终点与到期行为 |

@@ -6,7 +6,7 @@
 build/release/siftwing-server --snapshot /absolute/snapshots --version 1 --port 9000
 ```
 
-生产目标`siftwing_server`生成`siftwing-server`；只监听127.0.0.1。默认2个Sub、4个worker、128等待任务槽，`--subs`与`--workers`可设1..64，`--task-capacity`1..1024，启动后固定。端口0选内核端口，完整就绪后stdout报告`PORT N`。SIGINT/SIGTERM请求[限时网络排空](GRACEFUL_SHUTDOWN.md)，`--shutdown-ms`为0..86400000、默认1000毫秒；`--run-ms N`可设有限运行时间（1..86400000），0为等信号。停止后输出接入/请求/响应/worker计数JSON；这些计数不证明对端收到。
+生产目标`siftwing_server`生成`siftwing-server`；默认监听127.0.0.1，可由[启动配置](SERVER_CONFIG.md)或`--listen-address`显式指定数值IPv4/IPv6。默认2个Sub、4个worker、128等待任务槽，`--subs`与`--workers`可设1..64，`--task-capacity`1..1024，启动后固定。端口0选内核端口，完整就绪后stdout报告`PORT N`。SIGINT/SIGTERM请求[限时网络排空](GRACEFUL_SHUTDOWN.md)，`--shutdown-ms`为0..86400000、默认1000毫秒；`--run-ms N`可设有限运行时间（1..86400000），0为等信号。停止后输出接入/请求/响应/worker计数JSON；这些计数不证明对端收到。
 
 启动先完整校验快照八文件/两支语义，显式装载资源，所有Sub及结果目标就绪后才开放监听。版本为规范uint64十进制（0和最大值合法），不解释CURRENT或自动找最新版本；启动失败不报告PORT。入口错误退出2、装载/启动/运行/停止失败1、stdout失败3、未知异常4、正常停止0。正常关闭排空已在途响应或到期关闭；故障仍立即丢弃。排空不证明对端收到，也不保证所有已接收字节都成为请求。
 
@@ -46,10 +46,10 @@ OnlineServer的create/run_once/port/report/stop/shutdown/析构由创建线程�
 
 真实CTest覆盖生产indexer→server→TCP查询/推荐、独立数学/Unicode参考、英文稀疏身份/中文共享只读资源、参数/预算/启动失败，以及部分启动分配故障、worker分配异常固定安全响应、真实结果full、accepted后通知失败和晚到通知停止屏障。插桩范围以实际日志为准；不证明任意调度、DSO内部、真实OOM、质量或性能。
 
-空闲/请求期限已由[Sub策略](DEADLINES.md)接入，默认关闭、可通过sub配置启用，到期关连接而不取消worker。正式SERVER_INFO已返回固定公开元信息，四命令[网络客户端](NETWORK_CLIENT.md)已提供；取消、全局字节准入、热切换和signalfd属于后续模块；当前优雅退出边界见[关闭合同](GRACEFUL_SHUTDOWN.md)。
+空闲/请求期限已由[Sub策略](DEADLINES.md)接入，默认关闭、可通过sub配置或`--idle-timeout-ms`/`--request-timeout-ms`启用，到期关连接而不取消worker。正式SERVER_INFO已返回固定公开元信息，四命令[网络客户端](NETWORK_CLIENT.md)已提供；取消、全局字节准入、热切换和signalfd属于后续模块；当前优雅退出边界见[关闭合同](GRACEFUL_SHUTDOWN.md)。
 
-每连接已有[输出水位与硬限策略](OUTPUT_BACKPRESSURE.md)，可由OnlineServerConfig.sub.output配置，
-命令当前使用自动默认值。输出过大时Sub尝试同ID固定RESOURCE_LIMIT，错误也无法容纳则局部关闭；
+每连接已有[输出水位与硬限策略](OUTPUT_BACKPRESSURE.md)，可由OnlineServerConfig.sub.output或[启动配置](SERVER_CONFIG.md)配置，
+命令默认使用自动值，可用`--output-low-bytes`/`--output-high-bytes`/`--output-hard-bytes`显式设置。输出过大时Sub尝试同ID固定RESOURCE_LIMIT，错误也无法容纳则局部关闭；
 worker和结果邮箱的拥有、发布与停止屏障保持。低位仍不允许在响应排空前接纳下一请求。
 
-版本感知LRU已由SearchService可选配置接入，默认关闭、当前CLI无缓存参数；实例缓存成功JSON Body（含空结果），错误不存，完整参数/有效Body预算隔离，详见[缓存合同](VERSIONED_LRU.md)。
+版本感知LRU已由SearchService可选配置接入，默认关闭、可通过`--cache-capacity`、`--cache-bytes`、`--cache-max-value-bytes`或[配置文件](SERVER_CONFIG.md)启用；实例缓存成功JSON Body（含空结果），错误不存，完整参数/有效Body预算隔离，详见[缓存合同](VERSIONED_LRU.md)。

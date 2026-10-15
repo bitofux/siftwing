@@ -310,9 +310,11 @@ target_link_libraries(siftwing_search_service PUBLIC siftwing_search_task
     siftwing_highlight siftwing_cppjieba_tokenizer siftwing_utf8cpp siftwing_json)
 add_library(siftwing_online_server STATIC src/net/online_server.cc)
 target_link_libraries(siftwing_online_server PUBLIC siftwing_protocol_sub_reactor siftwing_worker_pool siftwing_search_service)
+add_library(siftwing_server_settings STATIC src/config/server_settings.cc)
+target_link_libraries(siftwing_server_settings PUBLIC siftwing_online_server PRIVATE siftwing_json)
 add_executable(siftwing_server apps/server/main.cc)
 set_target_properties(siftwing_server PROPERTIES OUTPUT_NAME siftwing-server)
-target_link_libraries(siftwing_server PRIVATE siftwing_online_server)
+target_link_libraries(siftwing_server PRIVATE siftwing_server_settings)
 
 include(CTest)
 if(SIFTWING_BUILD_CODEC_FUZZER AND
@@ -676,6 +678,16 @@ if(BUILD_TESTING)
     target_link_options(siftwing_network_client_test PRIVATE -Wl,--wrap=send -Wl,--wrap=recv -Wl,--wrap=poll)
     add_test(NAME net.client_native COMMAND siftwing_network_client_test)
     set_tests_properties(net.client_native PROPERTIES TIMEOUT 30)
+    add_executable(siftwing_server_settings_test tests/unit/server_settings_test.cc)
+    target_link_libraries(siftwing_server_settings_test PRIVATE siftwing_server_settings)
+    target_link_options(siftwing_server_settings_test PRIVATE -Wl,--wrap=read)
+    add_test(NAME config.server_settings COMMAND siftwing_server_settings_test)
+    set_tests_properties(config.server_settings PROPERTIES TIMEOUT 30)
+    add_test(NAME config.server_process COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/server_config_test.py"
+        --server "$<TARGET_FILE:siftwing_server>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
+        --indexer "$<TARGET_FILE:siftwing_indexer>")
+    set_tests_properties(config.server_process PROPERTIES TIMEOUT 120)
     foreach(suite IN ITEMS integration protocol arguments)
         add_test(NAME net.client_${suite} COMMAND Python3::Interpreter -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/network_client_test.py"
