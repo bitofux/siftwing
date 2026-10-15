@@ -164,4 +164,4 @@ V1 的离线能力与限制仍见 [V1基线](V1.md)。本规范不改变其快�
 已有codec边界验证、socket资源/调用基线及Connection有界收发接线、单循环协议探针；
 Main-Sub Reactor和[在线服务](ONLINE_SEARCH.md)已有真实查询路径；
 每连接[输出背压](OUTPUT_BACKPRESSURE.md)已有水位/硬限及RESOURCE_LIMIT或局部关闭策略；
-deadline/全局过载/优雅退出仍按后续模块推进。
+[空闲/请求期限](DEADLINES.md)已有默认关闭的局部关闭策略；全局过载/优雅退出仍按后续模块推进。

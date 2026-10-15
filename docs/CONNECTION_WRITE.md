@@ -68,7 +68,7 @@ send/close，以真实前缀发送配合有限 errno/零进展注入验证偏移
 
 注入验证错误政策，不能证明真实OOM或任意错误时序。Connection自身不提供Loop、worker、业务字段、
 跨线程完成或连接generation；现有协作见[协议Loop](PROTOCOL_LOOP.md)、[结果回投](COMPLETION_WAKEUP.md)
-和[在线服务](ONLINE_SEARCH.md)。全局限额与超时仍待后续模块，不承诺任意线程安全、服务容量或性能。
+和[在线服务](ONLINE_SEARCH.md)。正式Sub已组合[可选期限](DEADLINES.md)，全局限额仍待后续模块，不承诺任意线程安全、服务容量或性能。
 
 输出水位配置、滞回查询、硬限拒绝及正式Sub替代/关闭策略见[输出背压](OUTPUT_BACKPRESSURE.md)。
 低位解除输出原因后仍必须遵守pending，排空才可finish。

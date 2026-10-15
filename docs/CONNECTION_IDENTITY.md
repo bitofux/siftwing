@@ -26,7 +26,7 @@ PING/PONG、受信错误响应、读写预算、缓存继续、停止与发布�
 
 包装不可复制、移动不抛，自移动保持；移空身份全零且载荷为空。route() 返回身份值；左值 payload() 仅借用到移动、赋值或析构，右值 getter 删除。移动不建立线程间同步，拥有载荷须经同步队列交接。响应在任务销毁后仍有效，但路由可能已经失效。
 
-独立[CompletionQueue](COMPLETION_QUEUE.md)已提供结果归属、容量和关闭排空；[eventfd通知与所属Sub结果应用](COMPLETION_WAKEUP.md)已有接入，校验身份、等待状态及既有Connection关联门禁；真实查询已由[在线服务](ONLINE_SEARCH.md)接入，deadline与优雅退出仍未实现。本组件测试中的apply仅示范身份门禁与既有Connection的组合，生产回投证据见上述组合文档。
+独立[CompletionQueue](COMPLETION_QUEUE.md)已提供结果归属、容量和关闭排空；[eventfd通知与所属Sub结果应用](COMPLETION_WAKEUP.md)已有接入，校验身份、等待状态及既有Connection关联门禁；真实查询已由[在线服务](ONLINE_SEARCH.md)接入，[期限策略](DEADLINES.md)在Sub检查，优雅退出仍未实现。本组件测试中的apply仅示范身份门禁与既有Connection的组合，生产回投证据见上述组合文档。
 
 ## 验证边界
 

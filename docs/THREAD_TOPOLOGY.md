@@ -11,7 +11,7 @@
 在线服务拓扑包含1个Main I/O线程、启动时配置的N个Sub I/O线程（N为正，默认2）和独立worker池。
 [有界业务线程池](WORKER_POOL.md)已提供固定1—64线程；真实业务已由[在线服务](ONLINE_SEARCH.md)接入，
 不把硬件并发数当作必然可用线程数。每个 Reactor 使用自己的 LT epoll 和 wakeup eventfd；
-正式协议Sub另独占一个[单调timerfd](DEADLINES.md)，当前disarmed，连接超时策略尚未接入。
+正式协议Sub另独占一个[单调timerfd](DEADLINES.md)，初始disarmed，可按配置启用空闲超时与请求deadline，默认关闭。
 ET、动态扩缩容、连接迁移和无锁队列留给有证据的后续扩展。
 
 | 角色 | 所属线程内的职责与资源 | 允许的跨线程入口 | 禁止的动作 |
@@ -74,7 +74,7 @@ Connection 从注册到终止固定归属一个 Sub，保持已有“不复制�
 合同；必要时用 unique_ptr 保持地址稳定。Main 不保留 Connection 引用，worker 只带拥有
 的输入和结果。当前 Loop 的单调 token 只是注册身份；跨线程结果的[ConnectionId/generation与路由包装](CONNECTION_IDENTITY.md)已提供独立组件并迁移Sub注册元数据；
 request_id、等待状态和陈旧结果门禁已由[Sub回投路径](COMPLETION_WAKEUP.md)实现，
-deadline仍未实现；连接generation不等于请求代次，不用fd数字代替。
+[期限门禁](DEADLINES.md)也在所属Sub实现；连接generation不等于请求代次，不用fd数字代替。
 
 队列状态、停止标志与错误报告是跨线程同步对象；Connection/Buffer/epoll 状态是所属
 线程对象。const、volatile、unique_ptr 或“只写一次”都不自动提供同步。队列锁内只做

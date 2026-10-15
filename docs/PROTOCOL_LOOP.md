@@ -86,7 +86,7 @@ stdout 的 `PORT <实际端口>` 可供独立客户端连接；结束输出 acce
 本Loop不组合Main-Sub、worker、eventfd、在线搜索或跨线程完成；相应实现见
 [多Sub集成](MULTI_REACTOR.md)和[在线服务](ONLINE_SEARCH.md)。底层Connection已有
 [输出水位](OUTPUT_BACKPRESSURE.md)，本Loop沿默认配置；本页测试不单独证明水位合同。
-deadline、优雅退出、正式网络客户端和性能结论仍未提供。
+本Loop未接入期限；正式Sub的[可选空闲/请求期限](DEADLINES.md)已实现。优雅退出、正式网络客户端和性能结论仍未提供。
 
 Main/Sub协作遵循[线程拓扑与所有权合同](THREAD_TOPOLOGY.md)。本 Loop 保持单线程
 基线，不直接共享到多个线程；Sub 的连接 I/O 与 Main 的监听接入分别组合既有组件。

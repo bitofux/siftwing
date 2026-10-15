@@ -45,7 +45,7 @@ OnlineServer的create/run_once/port/report/stop/析构由创建线程串行；Ma
 
 真实CTest覆盖生产indexer→server→TCP查询/推荐、独立数学/Unicode参考、英文稀疏身份/中文共享只读资源、参数/预算/启动失败，以及部分启动分配故障、worker分配异常固定安全响应、真实结果full、accepted后通知失败和晚到通知停止屏障。插桩范围以实际日志为准；不证明任意调度、DSO内部、真实OOM、质量或性能。
 
-SERVER_INFO仍保持未接入时的INVALID_REQUEST；正式客户端模式、请求deadline/取消、全局过载策略、版本缓存、热切换、signalfd和优雅排空属于后续模块。
+空闲/请求期限已由[Sub策略](DEADLINES.md)接入，默认关闭、可通过sub配置启用，到期关连接而不取消worker。SERVER_INFO仍保持未接入时的INVALID_REQUEST；正式客户端模式、取消、全局过载策略、版本缓存、热切换、signalfd和优雅排空属于后续模块。
 
 每连接已有[输出水位与硬限策略](OUTPUT_BACKPRESSURE.md)，可由OnlineServerConfig.sub.output配置，
 命令当前使用自动默认值。输出过大时Sub尝试同ID固定RESOURCE_LIMIT，错误也无法容纳则局部关闭；

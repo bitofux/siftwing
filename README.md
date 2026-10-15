@@ -2,7 +2,7 @@
 
 Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并以真实工程证据确认进度。
 
-已实现单机离线索引与本地查询，当前能力、验收入口及限制见 [V1基线](docs/V1.md)，两条调用链的调试、故障和修改练习见 [V1调试学习包](docs/V1_DEBUGGING.md)。Main-Sub Reactor 已接通正式网络搜索服务，当前采用[单连接一个在途请求](docs/SINGLE_INFLIGHT.md)，已有[输出高低水位与背压](docs/OUTPUT_BACKPRESSURE.md)和[worker队列饱和拒绝](docs/WORKER_SATURATION.md)；已提供[单调定时器与期限容器](docs/DEADLINES.md)基础，连接超时策略尚未接入。后续完善资源控制、可靠性、可观测性和性能；各阶段按独立门禁推进。
+已实现单机离线索引与本地查询，当前能力、验收入口及限制见 [V1基线](docs/V1.md)，两条调用链的调试、故障和修改练习见 [V1调试学习包](docs/V1_DEBUGGING.md)。Main-Sub Reactor 已接通正式网络搜索服务，当前采用[单连接一个在途请求](docs/SINGLE_INFLIGHT.md)，已有[输出高低水位与背压](docs/OUTPUT_BACKPRESSURE.md)和[worker队列饱和拒绝](docs/WORKER_SATURATION.md)；已接入[可选空闲超时与请求deadline](docs/DEADLINES.md)，默认关闭、到期局部关闭连接。后续完善资源控制、可靠性、可观测性和性能；各阶段按独立门禁推进。
 
 V2 的 [帧头与字节序合同](docs/PROTOCOL.md)定义 24 字节布局、消息编号、长度和错误边界，
 并提供黄金字节例子；已有[有界连续 Buffer](docs/BUFFER.md)和[增量帧解码](docs/FRAME_DECODER.md)，

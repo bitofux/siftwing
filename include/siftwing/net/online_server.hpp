@@ -34,7 +34,7 @@ struct OnlineServerReport {
  *     Main在调用线程接入，Sub独占Connection，worker共享稳定只读服务。
  *     worker等待队列full只拒绝本次任务：Sub返回同ID OVERLOADED；可等mutex，不等容量。
  *     错误输出仍服从Sub硬限/局部关闭，排空后可继续缓存请求；容量释放后允许新提交。
- *     停止立即丢弃网络输出，worker关闭排空；无期限、取消或优雅退出承诺。
+ *     可选期限沿sub配置，默认关闭；到期关连接但不取消worker。停止立即丢弃，无优雅退出承诺。
  */
 class OnlineServer final {
 public:

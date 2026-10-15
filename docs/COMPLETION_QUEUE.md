@@ -14,7 +14,7 @@ try_publish接受独占unique_ptr左值，同锁按closed、invalid_completion�
 
 try_pop非阻塞按FIFO交出拥有结果，空返回nullptr；FIFO指成功发布的锁内顺序，不保证业务完成顺序。身份和请求/响应字节随拥有者一起转交，内部不暴露借用。
 
-worker不访问Connection或身份表。旧generation可能在发布前或入队后失效；队列不扫描/自动驱逐，陈旧条目仍占容量。所属I/O线程取出后查询当前身份并核Connection和请求状态，陈旧结果在锁外丢弃，释放容量。request_id门禁与正式响应应用已由[Sub回投路径](COMPLETION_WAKEUP.md)实现，deadline仍未实现；拥有结果和accepted不证明响应已发送。
+worker不访问Connection或身份表。旧generation可能在发布前或入队后失效；队列不扫描/自动驱逐，陈旧条目仍占容量。所属I/O线程取出后查询当前身份并核Connection和请求状态，陈旧结果在锁外丢弃，释放容量。request_id门禁与正式响应应用已由[Sub回投路径](COMPLETION_WAKEUP.md)实现，[期限门禁](DEADLINES.md)在所属Sub检查；拥有结果和accepted不证明响应已发送。
 
 ## 关闭与生命周期
 
@@ -26,4 +26,4 @@ close同锁幂等关闭入口，保留已有条目继续取出，不创建或执
 
 三个真实CTest覆盖容量/环绕FIFO、拒绝保持及错误顺序、跨owner隔离和陈旧结果锁外门禁；真实WorkerPool多生产者向一个结果消费者交接，独立逐id/route/Body核恰一次；发布与close竞争按每次实际回执核所有结果。GNU静态new/mutex包装验证预分配失败、初次锁错误和操作零分配；不覆盖真实OOM、DSO内部new或任意同步设施损坏。
 
-Debug/Release全量及独立ASan/UBSan、TSan结果以验证日志为准。[eventfd通知及Sub应用](COMPLETION_WAKEUP.md)已实现；真实查询执行见[在线服务](ONLINE_SEARCH.md)，期限取消和优雅退出仍属于后续模块。本队列的独立测试不证明在线搜索已接通。
+Debug/Release全量及独立ASan/UBSan、TSan结果以验证日志为准。[eventfd通知及Sub应用](COMPLETION_WAKEUP.md)已实现；真实查询执行见[在线服务](ONLINE_SEARCH.md)，[连接期限](DEADLINES.md)已有可选策略，任务取消和优雅退出仍属于后续模块。本队列的独立测试不证明在线搜索已接通。

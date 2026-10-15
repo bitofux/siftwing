@@ -31,6 +31,8 @@ struct ProtocolSubConfig {
     RoutedRequestSubmitter *request_submitter =
         nullptr; ///< 可选稳定借用，start前配置到join后存活。
     OutputWatermarks output; ///< 可选输出水位/硬限；全0按max_body解析，非法组合在任何线程前拒绝。
+    std::int64_t idle_timeout_ms = 0; ///< [0,86400000]；0关闭；无pending时从接纳/排空起、recv正字节刷新。
+    std::int64_t request_timeout_ms = 0; ///< 同范围；完整受信帧交付起至输出排空，不因读写/结果刷新。
 };
 /** @brief quiescing已停止业务但保留资源等发布者；stopped已清理，joined已回收线程。 */
 enum class ProtocolSubState {
@@ -64,6 +66,8 @@ struct ProtocolSubStatus {
     std::size_t output_limit_rejections = 0; ///< 合法关联响应被输出硬限拒绝次数，含直接错误响应。
     std::size_t output_limit_closes =
         0; ///< 硬限拒绝后固定RESOURCE_LIMIT也无法入队/构造的局部关闭。
+    std::size_t idle_timeouts = 0; ///< 空闲期限到期而关闭的连接数；不含停止清理。
+    std::size_t request_timeouts = 0; ///< 请求期限到期而关闭的连接数，包含输出未排空。
 };
 /**
  * @brief 拥有专用queue与一个协议I/O线程，不监听，不accept，不访问其他Sub连接
@@ -79,7 +83,10 @@ struct ProtocolSubStatus {
  *     响应超hard尝试同ID固定RESOURCE_LIMIT；仍不适配或构造异常只关该连接，不递归或截断。
  *     不执行真实查询，不拥有submitter/worker；停止立即丢弃，不保证响应排空。
  *     每线程独占一个CLOCK_MONOTONIC timerfd，初始disarmed，与eventfd共用控制token0；
- *     当前无空闲/请求超时策略，不按内核计数推断到期连接，非零身份token空间保持。
+ *     可选空闲/请求期限默认关闭；同钟when<=now到期，关闭并撤销身份，不发送超时ERROR。
+ *     空闲只在无pending时生效，正recv刷新；请求时限包括等待和输出排空，进展不延长。
+ *     到期可能丢弃部分已发送响应；不取消worker，迟到结果由身份/期限门禁拒绝。
+ *     每轮至多处理max_connections个到期条目；不按内核计数推断数量，无硬实时保证。
  */
 class ProtocolSubReactor final {
 public:

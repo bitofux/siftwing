@@ -316,6 +316,12 @@ if(SIFTWING_BUILD_CODEC_FUZZER AND
     message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
 endif()
 if(BUILD_TESTING)
+    add_executable(siftwing_sub_deadlines_test tests/integration/sub_deadlines_test.cc)
+    target_link_libraries(siftwing_sub_deadlines_test PRIVATE siftwing_protocol_sub_reactor)
+    target_link_options(siftwing_sub_deadlines_test PRIVATE
+        -Wl,--wrap=clock_gettime -Wl,--wrap=timerfd_settime -Wl,--wrap=recv -Wl,--wrap=send -Wl,--wrap=epoll_wait)
+    add_test(NAME net.sub_deadlines COMMAND siftwing_sub_deadlines_test)
+    set_tests_properties(net.sub_deadlines PROPERTIES TIMEOUT 45)
     add_executable(siftwing_deadline_queue_test tests/unit/deadline_queue_test.cc)
     target_link_libraries(siftwing_deadline_queue_test PRIVATE siftwing_deadline)
     add_test(NAME net.deadline_queue COMMAND siftwing_deadline_queue_test)
@@ -580,6 +586,17 @@ if(BUILD_TESTING)
     add_executable(siftwing_online_server_failure_test tests/integration/online_server_failure_test.cc)
     target_link_libraries(siftwing_online_server_failure_test PRIVATE siftwing_online_server)
     target_link_options(siftwing_online_server_failure_test PRIVATE -Wl,--wrap=write -Wl,--wrap=_Znwm -Wl,--wrap=epoll_ctl -Wl,--wrap=epoll_wait -Wl,--wrap=send -Wl,--wrap=recv)
+    add_executable(siftwing_online_deadlines_test tests/integration/online_deadlines_test.cc)
+    target_link_libraries(siftwing_online_deadlines_test PRIVATE siftwing_online_server siftwing_json)
+    target_link_options(siftwing_online_deadlines_test PRIVATE
+        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskE)
+    foreach(subs IN ITEMS 1 2)
+        add_test(NAME net.online_deadlines_${subs} COMMAND Python3::Interpreter -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/worker_saturation_test.py"
+            --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
+            --native "$<TARGET_FILE:siftwing_online_deadlines_test>" --subs ${subs})
+        set_tests_properties(net.online_deadlines_${subs} PROPERTIES TIMEOUT 60)
+    endforeach()
     add_executable(siftwing_worker_saturation_test tests/integration/worker_saturation_test.cc)
     target_link_libraries(siftwing_worker_saturation_test PRIVATE siftwing_online_server siftwing_json)
     target_link_options(siftwing_worker_saturation_test PRIVATE
