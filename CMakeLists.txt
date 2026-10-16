@@ -209,6 +209,8 @@ target_link_libraries(siftwing_snapshot_reader PUBLIC siftwing_snapshot_manifest
 # Manager固定当前句柄并保存同步候选结果，不创建线程或发布候选。
 add_library(siftwing_snapshot_manager STATIC src/snapshot/manager.cc)
 target_link_libraries(siftwing_snapshot_manager PUBLIC siftwing_snapshot_reader)
+add_library(siftwing_snapshot_loader STATIC src/snapshot/loader.cc)
+target_link_libraries(siftwing_snapshot_loader PUBLIC siftwing_snapshot_manager Threads::Threads)
 
 # 建库与查询共享拥有型管线，生产目标只组合文本阶段，不耦合文档读取或具体中文实现。
 add_library(siftwing_text_pipeline STATIC src/text/text_pipeline.cc)
@@ -1038,6 +1040,14 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_manager_test.py"
         --native "$<TARGET_FILE:siftwing_snapshot_manager_test>" --parent "${CMAKE_CURRENT_BINARY_DIR}")
     set_tests_properties(snapshot.manager PROPERTIES TIMEOUT 180)
+    add_executable(siftwing_snapshot_loader_test tests/integration/snapshot_loader_test.cc)
+    target_link_libraries(siftwing_snapshot_loader_test PRIVATE siftwing_snapshot_loader)
+    target_link_options(siftwing_snapshot_loader_test PRIVATE "-Wl,--wrap=_Znwm"
+        "-Wl,--wrap=_ZN8siftwing8snapshot14SnapshotReader4openERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS_4base6detail8StrongIdINSB_18SnapshotVersionTagEEERKNS0_18SnapshotReadLimitsE")
+    add_test(NAME snapshot.loader COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_loader_test.py"
+        --native "$<TARGET_FILE:siftwing_snapshot_loader_test>" --parent "${CMAKE_CURRENT_BINARY_DIR}")
+    set_tests_properties(snapshot.loader PROPERTIES TIMEOUT 180)
     add_executable(siftwing_reader_test tests/unit/reader_test.cc)
     target_link_libraries(siftwing_reader_test PRIVATE siftwing_snapshot_reader siftwing_snapshot_writer)
     foreach(operation openat pread fstat fstatat close fdopendir readdir closedir)

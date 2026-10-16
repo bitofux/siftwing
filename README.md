@@ -387,7 +387,11 @@ DF 和文档/语料统计；该构建器不自行去重、不使用推荐累计�
 Query、候选集合与余弦排序见上文；正式离线建库已接通；本地查询见[CLI.md](docs/CLI.md)，在线热切换留给其模块。
 
 `siftwing_snapshot_manager`提供[当前快照与同步加载结果](docs/SNAPSHOT_MANAGER.md)，
-在线查询按次持有共享只读Reader；候选完整加载的成功/失败结果独立保存，尚不切换在线版本或后台加载。
+在线查询按次持有共享只读Reader；候选同步完整加载的成功/失败结果独立保存，管理器自身不创建线程或切换在线版本。
+
+`siftwing_snapshot_loader`提供[后台候选加载](docs/SNAPSHOT_LOADER.md)：显式构造的专用线程
+执行完整校验，单槽交接普通报告或异常，失败保持旧快照；停止后排空回收。
+正式服务尚无reload入口，默认线程数及在线固定版本保持，安全发布留给后续模块。
 
 [快照往返验收](docs/SNAPSHOT_ROUNDTRIP.md)通过真实Writer/Reader及独立Python参考，验证
 固定元数据下重复构建、输入排列变化和加载后再发布的八文件一致性；另有原创TXT/RSS经
