@@ -12,6 +12,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(SIFTWING_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(SIFTWING_BUILD_CODEC_FUZZER "Build the bounded Clang libFuzzer codec target" OFF)
+option(SIFTWING_BUILD_BENCHMARKS "构建独立TCP性能发生器" OFF)
 
 add_library(siftwing_build_options INTERFACE)
 target_compile_options(siftwing_build_options INTERFACE
@@ -340,6 +341,12 @@ set_target_properties(siftwing_server PROPERTIES OUTPUT_NAME siftwing-server)
 target_link_libraries(siftwing_server PRIVATE siftwing_server_settings)
 
 include(CTest)
+
+# 仅负载端使用原生线程；正式服务仍由siftwing-server提供，工具不链接替代业务实现。
+if(SIFTWING_BUILD_BENCHMARKS)
+    add_executable(siftwing_benchmark_loadgen tools/benchmark_loadgen.cc)
+    target_link_libraries(siftwing_benchmark_loadgen PRIVATE siftwing_base siftwing_json Threads::Threads)
+endif()
 if(SIFTWING_BUILD_CODEC_FUZZER AND
    (NOT BUILD_TESTING OR NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR
     NOT SIFTWING_ENABLE_SANITIZERS))
@@ -612,6 +619,12 @@ if(BUILD_TESTING)
     add_test(NAME net.buffer COMMAND siftwing_buffer_test)
     set_tests_properties(net.buffer PROPERTIES TIMEOUT 30)
     find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
+    if(SIFTWING_BUILD_BENCHMARKS)
+        add_test(NAME benchmark.loadgen_contract COMMAND Python3::Interpreter -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/benchmark_loadgen_test.py"
+            --native "$<TARGET_FILE:siftwing_benchmark_loadgen>")
+        set_tests_properties(benchmark.loadgen_contract PROPERTIES TIMEOUT 45)
+    endif()
     add_executable(siftwing_output_backpressure_test tests/integration/output_backpressure_test.cc)
     target_link_libraries(siftwing_output_backpressure_test PRIVATE siftwing_protocol_sub_reactor)
     target_link_options(siftwing_output_backpressure_test PRIVATE -Wl,--wrap=recv -Wl,--wrap=send -Wl,--wrap=epoll_ctl -Wl,--wrap=accept4)
