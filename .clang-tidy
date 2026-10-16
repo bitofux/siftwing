@@ -1,0 +1,4 @@
+# LLVM 18；仅启用当前可解释、可阻断的缺陷检查，不做命名或现代化重写。
+Checks: '-*,clang-analyzer-core.*,clang-analyzer-cplusplus.*,bugprone-sizeof-expression,bugprone-suspicious-memset-usage,bugprone-macro-parentheses'
+WarningsAsErrors: '*'
+FormatStyle: none

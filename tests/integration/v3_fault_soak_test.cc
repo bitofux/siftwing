@@ -169,6 +169,8 @@ Json faults(const std::string &root) {
     auto s = server(root, 2);
     auto c = attach(*s, 1);
     (void)load(*s, root + "/valid", 101); // 先建立Loader，耗尽窗口只验证文件打开失败。
+    // 先取得独立错误文本，让消毒器在fd充足时完成标准库类型检查；耗尽时仍走Reader原路径。
+    const auto emfile_message = std::error_code(EMFILE, std::generic_category()).message();
     const auto baseline = fd_count();
     const auto old = s->current_snapshot();
     std::uint64_t id = 1;
@@ -186,8 +188,7 @@ Json faults(const std::string &root) {
             pressure.fill();
             const auto done = load(*s, root + "/valid", 101);
             check(!done.report->outcome && done.report->outcome.error().context == "reader.open"
-                      && done.report->outcome.error().message
-                             == std::error_code(EMFILE, std::generic_category()).message(),
+                      && done.report->outcome.error().message == emfile_message,
                 "EMFILE reaches original Reader diagnostic");
             check(s->current_snapshot() == old, "fd pressure keeps current");
         }
@@ -206,6 +207,7 @@ Json faults(const std::string &root) {
 struct Readers {
     std::atomic<bool> finish{false};
     std::atomic<std::uint64_t> replies{0};
+    std::array<std::atomic<bool>, 2> ready{};
     std::array<std::exception_ptr, 2> errors{};
     std::vector<std::thread> jobs;
     void join() {
@@ -230,13 +232,20 @@ Json soak(const std::string &root, std::size_t subs, unsigned seconds) {
                 do {
                     query(i ? b.get() : a.get(), id++, i != 0);
                     ++readers.replies;
+                    readers.ready[i] = true;
                 } while (!readers.finish.load());
             } catch (...) {
                 readers.errors[i] = std::current_exception();
                 readers.finish = true;
             }
         });
+    // 两条流都完成首个完整响应后再取运行基线，不把线程构造返回当作业务已就绪。
+    await([&] {
+        check(!readers.finish.load(), "clients start without failure");
+        return readers.ready[0].load() && readers.ready[1].load();
+    });
     const auto running_fds = fd_count(), running_threads = threads();
+    Json resource_observations = Json::array();
     std::array<std::weak_ptr<const snapshot::SnapshotReader>, 64> retired;
     const auto start = std::chrono::steady_clock::now();
     const auto until = start + std::chrono::seconds(seconds);
@@ -253,6 +262,13 @@ Json soak(const std::string &root, std::size_t subs, unsigned seconds) {
         ++cycles;
         check(!readers.finish.load(), "both independent clients remain live");
         if (cycles % 32 == 0) {
+            const auto observed_fds = fd_count(), observed_threads = threads();
+            resource_observations.push_back(
+                {{"cycle", cycles}, {"fds", observed_fds}, {"threads", observed_threads}});
+            // 此处停止继续发布，允许已在途的旧请求释放Reader；有限等待不放宽精确数量。
+            await([&] {
+                return fd_count() == running_fds && threads() == running_threads;
+            });
             check(fd_count() == running_fds && threads() == running_threads,
                 "live fd/thread counts remain bounded");
         }
@@ -291,6 +307,7 @@ Json soak(const std::string &root, std::size_t subs, unsigned seconds) {
                 .count()},
         {"steady_fds", running_fds},
         {"steady_threads", running_threads},
+        {"resource_observations", std::move(resource_observations)},
         {"maxrss_kib", usage.ru_maxrss},
         {"termination_signal", signo}};
 }

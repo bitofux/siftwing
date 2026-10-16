@@ -1,0 +1,148 @@
+name: Linux 质量检查
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-test:
+    name: GCC ${{ matrix.config }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Debug, Release]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: 安装构建工具
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ python3
+      - name: 保存环境与源码身份
+        run: |
+          mkdir -p evidence
+          { git rev-parse HEAD; git status --short; uname -a; g++ --version; cmake --version; python3 --version; } | tee evidence/environment.log
+      - name: 配置
+        run: cmake -S . -B build/ci -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DSIFTWING_BUILD_BENCHMARKS=ON 2>&1 | tee evidence/configure.log
+      - name: 构建
+        run: cmake --build build/ci --parallel 2 2>&1 | tee evidence/build.log
+      - name: 完整CTest
+        run: ctest --test-dir build/ci --output-on-failure --no-tests=error --parallel 2 2>&1 | tee evidence/ctest.log
+      - name: 保存诊断
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gcc-${{ matrix.config }}
+          path: |
+            evidence/
+            build/ci/Testing/Temporary/
+            build/ci/compile_commands.json
+          retention-days: 7
+
+  sanitizers:
+    name: Clang ${{ matrix.mode }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [asan-ubsan, tsan]
+    env:
+      CC: clang-18
+      CXX: clang++-18
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      TSAN_OPTIONS: halt_on_error=1
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: 安装构建工具
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang-18 python3 util-linux
+      - name: 保存环境与源码身份
+        run: |
+          mkdir -p evidence
+          { git rev-parse HEAD; uname -a; clang++-18 --version; cmake --version; } | tee evidence/environment.log
+      - name: 配置独立插桩
+        run: |
+          flags=()
+          if [[ '${{ matrix.mode }}' == asan-ubsan ]]; then
+            flags+=(-DSIFTWING_ENABLE_SANITIZERS=ON)
+          else
+            flags+=('-DCMAKE_C_FLAGS=-fsanitize=thread -fno-omit-frame-pointer' '-DCMAKE_CXX_FLAGS=-fsanitize=thread -fno-omit-frame-pointer' '-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread')
+          fi
+          cmake -S . -B build/ci -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSIFTWING_BUILD_BENCHMARKS=ON "${flags[@]}" 2>&1 | tee evidence/configure.log
+      - name: 构建专项目标
+        run: |
+          cmake --build build/ci --parallel 2 --target siftwing_v3_fault_soak_test siftwing_snapshot_publication_test siftwing_snapshot_manager_test siftwing_snapshot_loader_test siftwing_worker_pool_concurrency_test siftwing_completion_queue_concurrency_test siftwing_versioned_lru_concurrency_test siftwing_benchmark_loadgen 2>&1 | tee evidence/build.log
+      - name: 运行明确的消毒器专项
+        run: |
+          selection='^(v3[.](fault_recovery|soak_[12]|shutdown_races)|snapshot[.](manager|loader|publication)|net[.]signalfd_online|concurrency[.](worker_pool_concurrency|completion_queue_concurrency)|cache[.]versioned_lru_concurrency_test|benchmark[.]loadgen_contract)$'
+          ctest --test-dir build/ci --show-only=json-v1 -R "$selection" > evidence/selected-tests.json
+          python3 -c 'import json; tests=json.load(open("evidence/selected-tests.json"))["tests"]; assert len(tests)==12, "消毒器专项必须发现12项测试"'
+          command=(ctest --test-dir build/ci --output-on-failure --no-tests=error --parallel 1 -R "$selection")
+          if [[ '${{ matrix.mode }}' == tsan ]]; then
+            setarch x86_64 -R "${command[@]}" 2>&1 | tee evidence/ctest.log
+          else
+            "${command[@]}" 2>&1 | tee evidence/ctest.log
+          fi
+      - name: 保存诊断
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.mode }}
+          path: |
+            evidence/
+            build/ci/Testing/Temporary/
+            build/ci/compile_commands.json
+          retention-days: 7
+
+  quality:
+    name: LLVM 18 静态质量
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: 安装质量工具
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ python3 clang-format-18 clang-tidy-18
+      - name: 保存环境与源码身份
+        run: |
+          mkdir -p evidence
+          { git rev-parse HEAD; clang-format-18 --version; clang-tidy-18 --version; } | tee evidence/environment.log
+      - name: 格式门禁
+        run: python3 -B tools/check_quality.py format 2>&1 | tee evidence/format.log
+      - name: 生成编译数据库
+        run: cmake -S . -B build/ci -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSIFTWING_BUILD_BENCHMARKS=ON 2>&1 | tee evidence/configure.log
+      - name: 有限范围静态分析
+        run: python3 -B tools/check_quality.py tidy --build-dir build/ci 2>&1 | tee evidence/tidy.log
+      - name: 保存诊断
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: static-quality
+          path: |
+            evidence/
+            build/ci/compile_commands.json
+          retention-days: 7
