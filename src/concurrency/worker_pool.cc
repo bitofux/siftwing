@@ -27,10 +27,14 @@ WorkerPool::WorkerPool(std::size_t workers, std::size_t capacity)
     try {
         threads_.reserve(workers);
         for (std::size_t i = 0; i < workers; ++i)
-            threads_.emplace_back([this] { worker_main(); });
+            threads_.emplace_back([this] {
+                worker_main();
+            });
         {
             std::unique_lock<std::mutex> lock(start_mutex_);
-            start_cv_.wait(lock, [this, workers] { return ready_ == workers; });
+            start_cv_.wait(lock, [this, workers] {
+                return ready_ == workers;
+            });
             start_ = true;
         }
         start_cv_.notify_all();
@@ -64,7 +68,9 @@ WorkerPool::~WorkerPool() noexcept {
 TaskSubmitResult WorkerPool::try_submit(std::unique_ptr<WorkerTask> &source) {
     return queue_.try_submit(source);
 }
-void WorkerPool::request_stop() { queue_.close(); }
+void WorkerPool::request_stop() {
+    queue_.close();
+}
 void WorkerPool::join() {
     // 必须在join锁前检查，避免控制者等待worker、worker反向等待join锁。
     if (current_ == this)
@@ -75,7 +81,9 @@ void WorkerPool::join() {
         if (thread.joinable())
             thread.join();
 }
-TaskQueueStatus WorkerPool::queue_status() const { return queue_.status(); }
+TaskQueueStatus WorkerPool::queue_status() const {
+    return queue_.status();
+}
 WorkerPoolReport WorkerPool::report() const {
     const std::lock_guard<std::mutex> lock(report_mutex_);
     return report_;
@@ -86,12 +94,18 @@ void WorkerPool::worker_main() noexcept {
             std::unique_lock<std::mutex> lock(start_mutex_);
             ++ready_;
             start_cv_.notify_all();
-            start_cv_.wait(lock, [this] { return start_; });
+            start_cv_.wait(lock, [this] {
+                return start_;
+            });
             if (abort_)
                 return;
         }
         current_ = this;
         while (auto task = queue_.wait_pop()) {
+            {
+                const std::lock_guard<std::mutex> lock(report_mutex_);
+                ++report_.busy; // 执行用户任务前发布，不持报告锁执行或析构任务。
+            }
             std::exception_ptr failure;
             try {
                 task->execute();
@@ -100,6 +114,7 @@ void WorkerPool::worker_main() noexcept {
             }
             {
                 const std::lock_guard<std::mutex> lock(report_mutex_);
+                --report_.busy;
                 if (failure) {
                     increment(report_.failed);
                     if (!report_.first_exception)

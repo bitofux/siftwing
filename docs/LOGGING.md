@@ -77,7 +77,7 @@ copytruncate存在竞争/丢失窗口；同一有效用户恶意修改文件族�
 
 ## schema_version=1
 
-每行固定包含以下键，没有任意message、查询、正文、凭据、路径或异常what()字段。
+普通事件每行固定包含以下17键；指标事件另加[最小指标](METRICS.md)定义的4键。没有任意message、查询、正文、凭据、路径或异常what()字段。
 
 | 字段 | 类型与含义 |
 |---|---|
@@ -101,13 +101,13 @@ copytruncate存在竞争/丢失窗口；同一有效用户恶意修改文件族�
 
 | 级别 | 事件 |
 |---|---|
-| info | server_starting/started/stopped，connection_opened及正常connection_closed |
+| info | server_starting/started/stopped，connection_opened及正常connection_closed，metrics_snapshot |
 | debug | request_received，task_submitted，cache_lookup，成功query_finished，completion_published/applied |
 | warn | 异常connection_closed（protocol_error/timeout/io_error），task_rejected，失败query_finished，completion_rejected/stale，output_limited，idle_expired/request_expired |
 | error | server_failed |
 
 队列提交成功可能在worker输出之后才打印，因为真正交接发生在打印前；不因此判定乱序交接。
-缓存状态来自每调用独占观察值，不用多线程共享计数器差猜命中。仅debug开启且实例健康时取查询计时、
+缓存状态来自每调用独占观察值，不用多线程共享计数器差猜命中。查询指标始终计时；仅debug开启且实例健康时导出逐请求耗时、
 缓存观察和成功结果数量；结果Body解析受1MiB/深度64限制，异常只停用日志，不改变查询结果。
 
 `query_finished`表示服务execute已返回；`completion_published`表示结果入队及通知成功，

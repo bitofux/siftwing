@@ -9,20 +9,22 @@
 #include "siftwing/concurrency/search_task.hpp"
 #include "siftwing/base/result.hpp"
 #include "siftwing/cache/versioned_lru.hpp"
+#include "siftwing/metrics/server_metrics.hpp"
 #include <memory>
 
 namespace siftwing::query {
 /** @brief 启动时取得拥有配置；预算仅可降低profile1上限，不是RSS/CPU硬限。 */
 struct SearchServiceConfig {
     std::string parent; ///< 完整快照父目录；启动期间稳定、只读，不解释CURRENT。
-    std::uint64_t version = 0; ///< 显式快照版本，完整uint64均合法。
+    std::uint64_t version = 0;         ///< 显式快照版本，完整uint64均合法。
     std::string tokenizer = "english"; ///< english或cppjieba；须与搜索建库相容。
     std::string stopwords, dictionary, model, user; ///< 可选停用词与显式中文资源路径；启动装载。
-    bool hmm = true; ///< cppjieba固定HMM选择，英文不使用。
+    bool hmm = true;                   ///< cppjieba固定HMM选择，英文不使用。
     std::uint64_t query_bytes = 65536; ///< 正上限<=65536；原查询/规范化文本分别核验。
     std::uint64_t max_k = 100; ///< 正上限<=100；默认请求10也必须合法，不自动缩小。
     std::uint64_t work = 50000000; ///< 正上限<=50000000；评分/显示/推荐各自计量。
-    std::uint64_t output_bytes = net::frame_max_body_bytes; ///< 正上限<=1MiB，实际再取task Body预算。
+    std::uint64_t output_bytes =
+        net::frame_max_body_bytes; ///< 正上限<=1MiB，实际再取task Body预算。
     std::uint64_t snapshot_bytes = 512U * 1024U * 1024U; ///< 正单payload/文档库预算<=512MiB。
     std::uint64_t resource_bytes = 16U * 1024U * 1024U; ///< 正单资源装载预算<=16MiB。
     cache::LruConfig cache; ///< 可选实例LRU，默认capacity=0关闭；固定快照/资源/预算不跨实例共享。
@@ -56,7 +58,8 @@ public:
      * @throws
      *     分配及未知初始化异常传播，局部RAII释放；文件SHA不是真实性认证。
      */
-    [[nodiscard]] static base::Result<std::unique_ptr<SearchService>> create(SearchServiceConfig config);
+    [[nodiscard]] static base::Result<std::unique_ptr<SearchService>> create(
+        SearchServiceConfig config);
     /** @brief 无在途调用时释放完整快照和固定资源。 */
     ~SearchService() noexcept;
     SearchService(const SearchService &) = delete;
@@ -80,13 +83,17 @@ public:
         const concurrency::SearchTask &task, CacheObservation *observation = nullptr) const;
     /** @brief 实际已装载快照身份，固定值、无分配，可与execute并发。 */
     [[nodiscard]] std::uint64_t index_version() const noexcept;
+    /** @brief 从已校验只读清单按值取版本/搜索文档与词项/推荐词项数，可并发，无分配。 */
+    [[nodiscard]] metrics::Index index_stats() const noexcept;
     /** @brief 可与execute并发取得缓存统计值快照；锁异常传播，无文件/socket操作。 */
     [[nodiscard]] cache::LruStats cache_stats() const;
     /** @brief 固定公开服务信息的拥有JSON，无路径/动态指标；可并发，分配异常传播。 */
     [[nodiscard]] std::string server_info() const;
+
 private:
     struct Impl;
     explicit SearchService(std::unique_ptr<Impl> state) noexcept;
-    std::unique_ptr<Impl> state_; ///< 独占固定只读查询资源与同步缓存，无客户端资源；覆盖全部execute。
+    std::unique_ptr<Impl>
+        state_; ///< 独占固定只读查询资源与同步缓存，无客户端资源；覆盖全部execute。
 };
 } // namespace siftwing::query

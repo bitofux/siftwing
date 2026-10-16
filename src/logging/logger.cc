@@ -347,6 +347,32 @@ Json cache_name(CacheState value) {
     }
     throw std::invalid_argument("invalid log cache state");
 }
+Json envelope(const Record &record) {
+    const auto time = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::system_clock::now().time_since_epoch())
+                          .count();
+    const auto id = record.connection;
+    Json out{{"schema_version", 1},
+        {"time_unix_us", std::to_string(time)},
+        {"level", level_name(record.level)},
+        {"thread_id", std::to_string(::syscall(SYS_gettid))},
+        {"module", module_name(record.module)},
+        {"event", event_name(record.event)},
+        {"code", code_name(record.code)},
+        {"reactor_id",
+            id                  ? Json(id->reactor_id)
+            : record.reactor_id ? Json(*record.reactor_id)
+                                : Json(nullptr)},
+        {"connection_id", id ? Json(id->slot_index) : Json(nullptr)},
+        {"generation", id ? Json(std::to_string(id->generation)) : Json(nullptr)},
+        {"request_id", decimal(record.request_id)},
+        {"index_version", decimal(record.index_version)},
+        {"elapsed_us", record.elapsed_us ? Json(*record.elapsed_us) : Json(nullptr)},
+        {"result_count", record.result_count ? Json(*record.result_count) : Json(nullptr)},
+        {"cache_state", cache_name(record.cache_state)},
+        {"native_error", record.native_error}};
+    return out;
+}
 } // namespace
 struct Logger::Impl {
     Level minimum;
@@ -396,33 +422,119 @@ void Logger::write(const Record &record) noexcept {
     if (!enabled(record.level))
         return;
     try {
-        const auto time = std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::system_clock::now().time_since_epoch())
-                              .count();
-        const auto id = record.connection;
-        Json out{{"schema_version", 1},
-            {"time_unix_us", std::to_string(time)},
-            {"level", level_name(record.level)},
-            {"thread_id", std::to_string(::syscall(SYS_gettid))},
-            {"module", module_name(record.module)},
-            {"event", event_name(record.event)},
-            {"code", code_name(record.code)},
-            {"reactor_id",
-                id                  ? Json(id->reactor_id)
-                : record.reactor_id ? Json(*record.reactor_id)
-                                    : Json(nullptr)},
-            {"connection_id", id ? Json(id->slot_index) : Json(nullptr)},
-            {"generation", id ? Json(std::to_string(id->generation)) : Json(nullptr)},
-            {"request_id", decimal(record.request_id)},
-            {"index_version", decimal(record.index_version)},
-            {"elapsed_us", record.elapsed_us ? Json(*record.elapsed_us) : Json(nullptr)},
-            {"result_count", record.result_count ? Json(*record.result_count) : Json(nullptr)},
-            {"cache_state", cache_name(record.cache_state)},
-            {"native_error", record.native_error}};
+        const auto out = envelope(record);
         const auto text = out.dump();
         if (text.size() + 1 > line_limit)
             throw std::length_error("bounded log record");
         state_->output->log(spd_level(record.level), "{}", text);
+    } catch (...) {
+        state_->failed.store(true, std::memory_order_relaxed);
+    }
+}
+void Logger::write_metrics(const metrics::Snapshot &snapshot, std::uint64_t sample_id) noexcept {
+    if (!enabled(Level::info))
+        return;
+    try {
+        Record record;
+        record.index_version = snapshot.index.version;
+        const auto number = [](std::uint64_t value) {
+            return std::to_string(value);
+        };
+        const auto array = [&number](const auto &values) {
+            Json result = Json::array();
+            for (const auto value : values)
+                result.push_back(number(value));
+            return result;
+        };
+        // 每族单独限长/写入，复用原sink锁与失败隔离；无多行事务或全局采样锁。
+        const auto emit = [&](const char *family, Json values) {
+            if (!enabled(Level::info))
+                return false;
+            auto out = envelope(record);
+            out["event"] = "metrics_snapshot";
+            out["metrics_schema_version"] = 1;
+            out["sample_id"] = number(sample_id);
+            out["metric_family"] = family;
+            out["values"] = std::move(values);
+            const auto text = out.dump();
+            if (text.size() + 1 > line_limit)
+                throw std::length_error("bounded metrics record");
+            state_->output->log(spd_level(Level::info), "{}", text);
+            return !failed();
+        };
+        const auto &c = snapshot.connections;
+        if (!emit("connections",
+                {{"accepted", number(c.accepted)},
+                    {"handed_off", number(c.handed_off)},
+                    {"rejected", number(c.rejected)},
+                    {"admitted", number(c.admitted)},
+                    {"closed", number(c.closed)},
+                    {"active", number(c.active)},
+                    {"discarded", number(c.discarded)}}))
+            return;
+        const auto &n = snapshot.network;
+        if (!emit("network",
+                {{"received_bytes", number(n.io.received_bytes)},
+                    {"sent_bytes", number(n.io.sent_bytes)},
+                    {"input_high_bytes", number(n.io.input_high_bytes)},
+                    {"output_high_bytes", number(n.io.output_high_bytes)},
+                    {"input_bytes", number(n.input_bytes)},
+                    {"output_bytes", number(n.output_bytes)},
+                    {"protocol_errors", number(n.protocol_errors)}}))
+            return;
+        if (!emit("requests",
+                {{"by_type", array(snapshot.requests.by_type)},
+                    {"responses", array(snapshot.requests.responses)},
+                    {"drained", number(snapshot.requests.drained)}}))
+            return;
+        const auto &q = snapshot.queues;
+        if (!emit("queues",
+                {{"tasks", number(q.tasks)},
+                    {"task_capacity", number(q.task_capacity)},
+                    {"handoff", number(q.handoff)},
+                    {"completions", number(q.completions)}}))
+            return;
+        const auto &w = snapshot.workers;
+        if (!emit("workers",
+                {{"count", number(w.count)},
+                    {"busy", number(w.busy)},
+                    {"succeeded", number(w.succeeded)},
+                    {"failed", number(w.failed)}}))
+            return;
+        const auto latency = [&](const metrics::Latency &value) {
+            return Json{{"count", number(value.count)},
+                {"failures", number(value.failures)},
+                {"sum_us", number(value.sum_us)},
+                {"max_us", number(value.max_us)},
+                {"buckets", array(value.buckets)},
+                {"collection_failed", snapshot.queries.collection_failed}};
+        };
+        if (!emit("search", latency(snapshot.queries.search)))
+            return;
+        if (!emit("suggest", latency(snapshot.queries.suggest)))
+            return;
+        const auto &cache = snapshot.cache;
+        if (!emit("cache",
+                {{"hits", number(cache.hits)},
+                    {"misses", number(cache.misses)},
+                    {"evictions", number(cache.evictions)},
+                    {"entries", number(cache.entries)},
+                    {"bytes", number(cache.bytes)}}))
+            return;
+        if (!emit("index",
+                {{"documents", number(snapshot.index.documents)},
+                    {"terms", number(snapshot.index.terms)},
+                    {"recommendation_terms", number(snapshot.index.recommendation_terms)}}))
+            return;
+        const auto &stop = snapshot.shutdown;
+        (void)emit("shutdown",
+            {{"started", stop.started},
+                {"finished", stop.finished},
+                {"elapsed_us", number(stop.elapsed_us)},
+                {"drain_timeouts", number(stop.drain_timeouts)},
+                {"drain_responses", number(stop.drain_responses)},
+                {"stale_completions", number(stop.stale_completions)},
+                {"discarded_completions", number(stop.discarded_completions)}});
     } catch (...) {
         state_->failed.store(true, std::memory_order_relaxed);
     }

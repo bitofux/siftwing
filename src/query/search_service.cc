@@ -615,5 +615,12 @@ std::string SearchService::server_info() const {
 std::uint64_t SearchService::index_version() const noexcept {
     return state_->reader.manifest()->snapshot.value();
 }
+metrics::Index SearchService::index_stats() const noexcept {
+    const auto &manifest = *state_->reader.manifest();
+    return {manifest.snapshot.value(),
+        manifest.search.documents,
+        manifest.search.terms,
+        manifest.recommendation.terms};
+}
 cache::LruStats SearchService::cache_stats() const { return state_->cache.stats(); }
 } // namespace siftwing::query

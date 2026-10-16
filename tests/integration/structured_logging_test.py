@@ -108,7 +108,8 @@ def run(root, parent, records, frequencies, mode):
                        "reactor_id", "connection_id", "generation", "request_id", "index_version",
                        "elapsed_us", "result_count", "cache_state", "native_error"}
     for row, raw in zip(rows, data.splitlines()):
-        check(set(row) == expected_fields and row["schema_version"] == 1 and len(raw) + 1 <= 2048,
+        fields = expected_fields | {"metrics_schema_version", "sample_id", "metric_family", "values"} if row["event"] == "metrics_snapshot" else expected_fields
+        check(set(row) == fields and row["schema_version"] == 1 and len(raw) + 1 <= 2048,
               "固定schema与行预算")
         check(row["time_unix_us"].isdigit() and row["thread_id"].isdigit(), "时间和实际线程")
     events = {row["event"] for row in rows}

@@ -167,6 +167,13 @@ void run(const std::string &parent, std::size_t subs) {
         });
         check(!released.load(), "each configured Sub handles traffic before capacity release");
         check(!server->run_once(0) && !server->report().first_error, "overload is local response");
+        // 确定门控下核真实execute与排队深度，不用睡眠猜测worker状态。
+        await([&] {
+            return server->metrics().requests.responses[2] == 2;
+        });
+        const auto busy = server->metrics();
+        check(busy.workers.busy == 1 && busy.queues.tasks == 1 && busy.queues.task_capacity == 1,
+            "metrics distinguish busy execute from waiting task");
         released.store(true);
         const auto first = nlohmann::json::parse(response(running.get(), 0x8003, 11));
         check(first.at("results").empty(), "real legal no-match SEARCH completes");
@@ -180,6 +187,14 @@ void run(const std::string &parent, std::size_t subs) {
         check(receive(newcomer.get(), 26) == wire(0x8001, 18), "recovered pipeline PING");
         eof(newcomer.get());
         check(!server->stop(), "ordinary production stop");
+        const auto stable = server->metrics();
+        check(stable.workers.busy == 0 && stable.workers.succeeded == 3 && stable.queues.tasks == 0
+                  && stable.queries.search.count == 2 && stable.queries.suggest.count == 1
+                  && stable.connections.accepted == connected
+                  && stable.connections.closed == connected && stable.connections.active == 0
+                  && stable.requests.responses[2] == 2 && stable.shutdown.started
+                  && stable.shutdown.finished,
+            "stable metrics after complete worker/Sub barriers");
         const auto final = server->report();
         check(final.stopped && !final.first_error && final.workers.succeeded == 3
                 && final.workers.failed == 0 && accepted.load() == 3 && full.load() == 2,

@@ -8,6 +8,7 @@
 #pragma once
 #include "siftwing/base/result.hpp"
 #include "siftwing/net/connection_identity.hpp"
+#include "siftwing/metrics/server_metrics.hpp"
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -144,6 +145,15 @@ public:
      *     [2,1MiB]、深度<=64的完整成功Body，仅同步借用；禁用时不解析，解析异常置failed但不传播。
      */
     void write_query(Record record, std::string_view body) noexcept;
+    /**
+     * @brief info级输出固定10族指标，普通事件schema保持；同步借用值，不保存引用
+     * @param[in] snapshot
+     *     调用期间稳定的拥有值，无动态标签；每族独立JSON行仍<=2048字节，uint64用十进制字符串。
+     * @param[in] sample_id
+     *     调用者提供本进程样本关联号；0/max合法，不是全局唯一或原子多行送达保证。
+     * @note 禁用时不序列化；分配/序列化/I/O异常只停用日志，可能已写部分族，不回滚。
+     */
+    void write_metrics(const metrics::Snapshot &snapshot, std::uint64_t sample_id) noexcept;
 
 private:
     struct Impl;

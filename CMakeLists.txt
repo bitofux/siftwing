@@ -110,8 +110,10 @@ FetchContent_Declare(spdlog
 FetchContent_MakeAvailable(spdlog)
 add_library(siftwing_spdlog INTERFACE)
 target_include_directories(siftwing_spdlog SYSTEM INTERFACE "${spdlog_SOURCE_DIR}/include")
+add_library(siftwing_metrics STATIC src/metrics/server_metrics.cc)
+target_link_libraries(siftwing_metrics PUBLIC siftwing_base Threads::Threads)
 add_library(siftwing_logging STATIC src/logging/logger.cc)
-target_link_libraries(siftwing_logging PUBLIC siftwing_base PRIVATE siftwing_socket siftwing_json siftwing_spdlog Threads::Threads)
+target_link_libraries(siftwing_logging PUBLIC siftwing_metrics PRIVATE siftwing_socket siftwing_json siftwing_spdlog Threads::Threads)
 
 add_library(siftwing_frame_codec STATIC src/net/frame_codec.cc)
 target_link_libraries(siftwing_frame_codec PUBLIC siftwing_frame_decoder
@@ -120,7 +122,7 @@ target_link_libraries(siftwing_frame_codec PUBLIC siftwing_frame_decoder
 add_library(siftwing_search_task STATIC src/concurrency/search_task.cc)
 target_link_libraries(siftwing_search_task PUBLIC siftwing_frame_codec)
 add_library(siftwing_connection STATIC src/net/connection.cc)
-target_link_libraries(siftwing_connection PUBLIC siftwing_socket siftwing_frame_codec)
+target_link_libraries(siftwing_connection PUBLIC siftwing_socket siftwing_frame_codec siftwing_metrics)
 
 add_library(siftwing_completion_queue STATIC src/concurrency/completion_queue.cc)
 target_link_libraries(siftwing_completion_queue PUBLIC siftwing_routed_payload Threads::Threads)
@@ -317,11 +319,11 @@ add_library(siftwing_versioned_lru STATIC src/cache/versioned_lru.cc)
 target_link_libraries(siftwing_versioned_lru PUBLIC siftwing_base Threads::Threads)
 add_library(siftwing_search_service STATIC src/query/search_service.cc)
 target_link_libraries(siftwing_search_service PUBLIC siftwing_search_task
-    siftwing_versioned_lru
+    siftwing_metrics siftwing_versioned_lru
     PRIVATE siftwing_snapshot_reader siftwing_top_k siftwing_recommendation siftwing_summary
     siftwing_highlight siftwing_cppjieba_tokenizer siftwing_utf8cpp siftwing_json)
 add_library(siftwing_online_server STATIC src/net/online_server.cc)
-target_link_libraries(siftwing_online_server PUBLIC siftwing_protocol_sub_reactor siftwing_worker_pool siftwing_search_service)
+target_link_libraries(siftwing_online_server PUBLIC siftwing_protocol_sub_reactor siftwing_worker_pool siftwing_search_service siftwing_metrics)
 add_library(siftwing_server_settings STATIC src/config/server_settings.cc)
 target_link_libraries(siftwing_server_settings PUBLIC siftwing_online_server PRIVATE siftwing_json)
 add_executable(siftwing_server apps/server/main.cc)
@@ -695,6 +697,17 @@ if(BUILD_TESTING)
         --server "$<TARGET_FILE:siftwing_server>" --indexer "$<TARGET_FILE:siftwing_indexer>"
         --writer "$<TARGET_FILE:siftwing_writer_probe>")
     set_tests_properties(logging.production PROPERTIES TIMEOUT 90)
+
+    add_executable(siftwing_server_metrics_test tests/unit/server_metrics_test.cc)
+    target_link_libraries(siftwing_server_metrics_test PRIVATE siftwing_metrics siftwing_logging siftwing_connection siftwing_json)
+    target_link_options(siftwing_server_metrics_test PRIVATE -Wl,--wrap=_Znwm -Wl,--wrap=pthread_mutex_lock)
+    add_test(NAME metrics.contract COMMAND siftwing_server_metrics_test)
+    set_tests_properties(metrics.contract PROPERTIES TIMEOUT 60)
+    add_test(NAME metrics.production COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/server_metrics_test.py"
+        --server "$<TARGET_FILE:siftwing_server>" --indexer "$<TARGET_FILE:siftwing_indexer>"
+        --writer "$<TARGET_FILE:siftwing_writer_probe>")
+    set_tests_properties(metrics.production PROPERTIES TIMEOUT 60)
 
     add_executable(siftwing_logging_test tests/unit/logging_test.cc)
     target_link_libraries(siftwing_logging_test PRIVATE siftwing_logging siftwing_json Threads::Threads)

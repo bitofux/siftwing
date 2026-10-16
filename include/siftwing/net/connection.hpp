@@ -9,6 +9,7 @@
 
 #include "siftwing/net/frame_codec.hpp"
 #include "siftwing/net/unique_fd.hpp"
+#include "siftwing/metrics/server_metrics.hpp"
 #include <system_error>
 
 namespace siftwing::net {
@@ -168,6 +169,10 @@ public:
     [[nodiscard]] std::size_t output_bytes() const noexcept {
         return output_.readable_bytes();
     }
+    /** @brief 所属线程按值读取累计真实I/O与缓冲峰值；关闭不清零，无跨线程同步。 */
+    [[nodiscard]] metrics::ConnectionIo io_stats() const noexcept {
+        return io_;
+    }
     /** @brief 返回构造后固定的已解析水位值，无内部借用。 */
     [[nodiscard]] OutputWatermarks output_watermarks() const noexcept {
         return output_watermarks_;
@@ -260,6 +265,7 @@ public:
     [[nodiscard]] std::error_code close() noexcept;
 
 private:
+    metrics::ConnectionIo io_; ///< 仅所属线程累计；连接清空/终止后仍保留已发生的I/O。
     // 声明顺序保证Buffer构造/配置失败时尚未移动调用方fd。
     const OutputWatermarks output_watermarks_; ///< 独立固定阈值，构造时解析，不跨线程共享可变状态。
     Buffer input_;    ///< 独占有界数组，终止清可读区，不缩容。

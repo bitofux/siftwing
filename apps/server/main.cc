@@ -105,7 +105,18 @@ int main(int argc, char **argv) {
         std::cout.flush();
         if (!std::cout)
             return 3;
+        std::uint64_t metric_sample = 0;
+        const auto emit_metrics = [&]() noexcept {
+            if (!logger->enabled(Level::info))
+                return;
+            metric_sample = siftwing::metrics::add(metric_sample, 1);
+            try {
+                logger->write_metrics(server->metrics(), metric_sample);
+            } catch (...) { /* 观察加锁等异常只丢本次样本，不能改变业务停止/响应结果。 */
+            }
+        };
         const auto begin = std::chrono::steady_clock::now();
+        auto last_metrics = begin;
         while (!interrupted) {
             if (duration
                 && std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -119,6 +130,11 @@ int main(int argc, char **argv) {
                 emit(Event::server_failed, Code::server_io, error.value());
                 return 1;
             }
+            const auto sampled = std::chrono::steady_clock::now();
+            if (sampled - last_metrics >= std::chrono::seconds(1)) {
+                last_metrics = sampled;
+                emit_metrics();
+            }
         }
         if (const auto error = server->shutdown(shutdown_ms)) {
             if (settings.log_level == Level::off)
@@ -126,6 +142,7 @@ int main(int argc, char **argv) {
             emit(Event::server_failed, Code::server_io, error.value());
             return 1;
         }
+        emit_metrics(); // 最终样本在全部worker/Sub/fd屏障后，仍不承诺日志送达。
         emit(Event::server_stopped);
         const auto report = server->report();
         std::size_t requests = 0, responses = 0, active = 0;

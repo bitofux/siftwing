@@ -153,8 +153,11 @@ ReadResult Connection::read_request(std::size_t byte_budget, std::size_t attempt
             ++result.attempts;
             if (io.state == IoState::progress) {
                 result.bytes += io.bytes;
+                io_.received_bytes = metrics::add(io_.received_bytes, io.bytes);
                 if (!input_.append(std::string_view(chunk.data(), io.bytes)))
                     throw std::logic_error("connection input invariant violated");
+                io_.input_high_bytes = std::max(
+                    io_.input_high_bytes, static_cast<std::uint64_t>(input_.readable_bytes()));
                 continue;
             }
             if (io.state == IoState::interrupted)
@@ -204,6 +207,8 @@ QueueResult Connection::queue_response(const Frame &response) {
     // Buffer的强保证使编码或复制失败可重试；本路径尚未send，无流字节需要回滚。
     if (!output_.append(std::get<std::string>(encoded)))
         throw std::logic_error("connection output capacity invariant violated");
+    io_.output_high_bytes =
+        std::max(io_.output_high_bytes, static_cast<std::uint64_t>(output_.readable_bytes()));
     response_queued_ = true;
     output_paused_ = output_.readable_bytes() >= output_watermarks_.high_bytes;
     return {QueueStop::queued};
@@ -235,6 +240,7 @@ WriteResult Connection::flush_output(std::size_t byte_budget, std::size_t attemp
         const auto io = send_some(socket_.get(), bytes);
         ++result.attempts;
         if (io.state == IoState::progress && io.bytes != 0 && io.bytes <= bytes.size()) {
+            io_.sent_bytes = metrics::add(io_.sent_bytes, io.bytes);
             (void)output_.consume(io.bytes); // bytes来源于当前可读区，边界已检查。
             if (output_paused_ && output_.readable_bytes() <= output_watermarks_.low_bytes)
                 output_paused_ = false;

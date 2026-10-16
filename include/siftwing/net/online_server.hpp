@@ -20,7 +20,7 @@ struct OnlineServerConfig {
     ProtocolSubConfig
         sub; ///< 复用Sub固定预算；reactor_id须0、submitter/logger/version须空；控制者覆盖server_info_body。
     logging::Logger *logger = nullptr; ///< 覆盖server销毁、最后worker/Sub返回的稳定可选借用。
-    MainReactorConfig main; ///< 复用Main有限接入预算。
+    MainReactorConfig main;            ///< 复用Main有限接入预算。
 };
 /** @brief 控制线程取得的报告；运行时是快照，停止后worker/Sub全部静止。 */
 struct OnlineServerReport {
@@ -99,6 +99,14 @@ public:
     [[nodiscard]] std::error_code shutdown(std::int64_t timeout_ms = 1000);
     /** @brief 创建线程汇总同步快照；mutex/复制分配异常传播，不延长任何借用。 */
     [[nodiscard]] OnlineServerReport report() const;
+    /**
+     * @brief 创建线程顺序采样组件指标，返回无借用值；旧report与SERVER_INFO语义保持
+     * @return
+     *     各组件锁下的值，跨组件非原子；busy不含任务析构，延迟不含排队/网络，计数饱和。
+     * @throws
+     *     组件观察加锁异常传播；日志导出入口捕获，不能因此改变业务结果。
+     */
+    [[nodiscard]] metrics::Snapshot metrics() const;
 
 private:
     struct Impl;

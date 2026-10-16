@@ -22,6 +22,7 @@ public:
     virtual ~WorkerTask() noexcept = default;
     /** @brief 由一个worker调用一次；成功/异常均不自动重试或生成业务响应。 */
     virtual void execute() = 0;
+
 protected:
     WorkerTask() = default;
     WorkerTask(const WorkerTask &) = delete;
@@ -32,6 +33,8 @@ struct WorkerPoolReport {
     std::uint64_t succeeded = 0; ///< 成功执行数，达到uint64_t最大值后饱和。
     std::uint64_t failed = 0; ///< execute抛出数，饱和计数；失败不停止其他任务。
     std::exception_ptr first_exception; ///< 首个记录的失败拥有引用；可重抛，销毁不必发生在worker。
+    std::uint64_t busy =
+        0; ///< 当前进入execute且尚未返回的worker数，同报告锁保护，最大为固定线程数。
 };
 /**
  * @brief 一次启动的固定线程池；复用有界TaskQueue，关闭后完成所有已接收任务再退出
@@ -80,6 +83,7 @@ public:
     [[nodiscard]] TaskQueueStatus queue_status() const;
     /** @brief 复制统计与首异常的同锁快照；join后为最终统计；锁失败可抛。 */
     [[nodiscard]] WorkerPoolReport report() const;
+
 private:
     void worker_main() noexcept;
     void rollback_start() noexcept;
@@ -87,9 +91,9 @@ private:
     std::vector<std::thread> threads_; ///< 构造者启动，join锁保护控制者回收；worker不访问vector。
     std::mutex start_mutex_; ///< 保护ready/start/abort，构造者与启动worker共享。
     std::condition_variable start_cv_; ///< 所有worker就绪后统一放行；失败统一放行退出。
-    std::size_t ready_ = 0; ///< 已进入门禁的worker数，仅构造阶段写入。
-    bool start_ = false; ///< 单向启动发布，构造者设置。
-    bool abort_ = false; ///< 启动失败退出，不允许消费任务。
+    std::size_t ready_ = 0;            ///< 已进入门禁的worker数，仅构造阶段写入。
+    bool start_ = false;               ///< 单向启动发布，构造者设置。
+    bool abort_ = false;               ///< 启动失败退出，不允许消费任务。
     std::mutex join_mutex_; ///< 串行化控制者join，绝不在持此锁时执行任务。
     mutable std::mutex report_mutex_; ///< 保护execute统计与首异常，不包围用户execute/析构。
     WorkerPoolReport report_; ///< 报告拥有首异常，后续异常不累积保存。

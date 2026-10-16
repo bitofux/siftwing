@@ -78,9 +78,18 @@ struct ProtocolSubStatus {
         0; ///< 硬限拒绝后固定RESOURCE_LIMIT也无法入队/构造的局部关闭。
     std::size_t idle_timeouts = 0; ///< 空闲期限到期而关闭的连接数；不含停止清理。
     std::size_t request_timeouts = 0; ///< 请求期限到期而关闭的连接数，包含输出未排空。
+    metrics::ConnectionIo io; ///< 已关闭与仍活跃连接累计I/O之和；高水位取所有曾存活连接的最大值。
+    std::uint64_t input_bytes = 0, output_bytes = 0; ///< 最近发布的活跃连接用户缓冲总可读字节。
+    std::uint64_t protocol_errors = 0; ///< 坏头/截帧各一次，完整坏Body逐请求一次，业务错误不计。
+    std::array<std::uint64_t, 4> request_types{}; ///< PING/INFO/SEARCH/SUGGEST交付数，包括坏Body。
+    std::array<std::uint64_t, 7> response_statuses{}; ///< 实际成功入队的status 0..6，非网络排空。
     bool drain_started = false; ///< 所属线程已观察排空请求，此后不读取新请求。
     std::size_t drain_responses = 0; ///< 排空阶段finish成功后关闭的连接数，不证明对端收到。
     std::size_t drain_timeouts = 0; ///< 排空截止时仍pending而关闭的连接数，非服务运行错误。
+};
+/** @brief 两个独立队列锁下取得的即时深度，不是同一时点，也不预留容量。 */
+struct SubQueueDepths {
+    std::size_t handoff = 0, completions = 0;
 };
 /**
  * @brief 拥有专用queue与一个协议I/O线程，不监听，不accept，不访问其他Sub连接
@@ -183,6 +192,8 @@ public:
     [[nodiscard]] std::error_code join();
     /** @brief 同步复制最近报告；quiescing首因在屏障前可见，mutex异常可抛。 */
     [[nodiscard]] ProtocolSubStatus status() const;
+    /** @brief 可与生产/消费并发读两个队列自己的锁内深度；锁异常传播，不借用条目。 */
+    [[nodiscard]] SubQueueDepths queue_depths() const;
 
 private:
     void run() noexcept;

@@ -10,6 +10,8 @@ build/release/siftwing-server --snapshot /absolute/snapshots --version 1 --port 
 
 启动先完整校验快照八文件/两支语义，显式装载资源，所有Sub及结果目标就绪后才开放监听。版本为规范uint64十进制（0和最大值合法），不解释CURRENT或自动找最新版本；启动失败不报告PORT。入口错误退出2、装载/启动/运行/停止失败1、stdout失败3、未知异常4、正常停止0。正常关闭排空已在途响应或到期关闭；故障仍立即丢弃。排空不证明对端收到，也不保证所有已接收字节都成为请求。
 
+控制线程可取[最小指标](METRICS.md)拥有值，info/debug日志导出周期与关闭样本；SERVER_INFO协议及固定内容保持。
+
 ## 业务Body
 
 等待队列满时，Sub不等空位，向本次请求返回同ID OVERLOADED；错误输出服从连接硬限，容量释放后新请求可重新准入。合同、确定满队列及健康连接验证见[worker队列饱和](WORKER_SATURATION.md)。

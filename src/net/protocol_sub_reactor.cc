@@ -41,6 +41,16 @@ std::error_code exception_code() noexcept {
         return code(EIO);
     }
 }
+void increment_counter(std::size_t &value) noexcept {
+    if (value != std::numeric_limits<std::size_t>::max())
+        ++value;
+}
+void merge_io(metrics::ConnectionIo &into, const metrics::ConnectionIo &from) noexcept {
+    into.received_bytes = metrics::add(into.received_bytes, from.received_bytes);
+    into.sent_bytes = metrics::add(into.sent_bytes, from.sent_bytes);
+    into.input_high_bytes = std::max(into.input_high_bytes, from.input_high_bytes);
+    into.output_high_bytes = std::max(into.output_high_bytes, from.output_high_bytes);
+}
 ProtocolSubConfig checked(ProtocolSubConfig config) {
     const auto limit = frame_header_bytes + frame_max_body_bytes;
     if (config.handoff_capacity == 0 || config.handoff_capacity > 1024
@@ -88,6 +98,7 @@ class Sessions final {
     int timer_; // 所属Sub栈拥有的timerfd借用，覆盖Sessions整个生命周期。
     const ProtocolSubConfig &config_;
     ProtocolSubStatus &report_;
+    metrics::ConnectionIo closed_io_; // 关闭前只合并一次，后续采样再加仍活跃连接，避免重复累计。
     const std::atomic<std::int64_t> &drain_requested_; // 控制者只发布期限，连接仍由此线程处理。
     DeadlineTime drain_deadline_ = 0;
     DeadlineQueue deadlines_; // key=slot下标+1；drop真实删除后才允许slot复用，无陈旧条目。
@@ -147,13 +158,14 @@ class Sessions final {
             first(diagnostic, slot.connection->close());
         }
         // Connection可自行终止；此时不DEL已失效且可能复用的旧数字。
+        merge_io(closed_io_, slot.connection->io_stats());
         slot.connection.reset();
         slot.registration = {};
         slot.mask = 0;
         slot.runnable = false;
         slot.awaiting_completion = false;
         --report_.active;
-        ++report_.dropped;
+        increment_counter(report_.dropped);
     }
     DeadlineTime deadline_after(std::int64_t duration) {
         if (!duration)
@@ -180,9 +192,9 @@ class Sessions final {
         if (!slot.deadline || slot.deadline > now())
             return false;
         if (slot.connection->request_pending())
-            ++report_.request_timeouts;
+            increment_counter(report_.request_timeouts);
         else
-            ++report_.idle_timeouts;
+            increment_counter(report_.idle_timeouts);
         log_timeout(slot);
         drop(slot, code(ETIMEDOUT));
         return true;
@@ -199,9 +211,9 @@ class Sessions final {
             auto &slot = slots_[static_cast<std::size_t>(due->key - 1)];
             if (slot.connection) {
                 if (slot.connection->request_pending())
-                    ++report_.request_timeouts;
+                    increment_counter(report_.request_timeouts);
                 else
-                    ++report_.idle_timeouts;
+                    increment_counter(report_.idle_timeouts);
                 log_timeout(slot);
                 drop(slot, code(ETIMEDOUT));
             }
@@ -222,9 +234,13 @@ class Sessions final {
     QueueStop queue_response(Slot &slot, const Frame &response) {
         auto &connection = *slot.connection;
         const auto result = connection.queue_response(response).stop;
-        if (result != QueueStop::output_limit)
+        if (result != QueueStop::output_limit) {
+            if (result == QueueStop::queued)
+                report_.response_statuses[response.status] =
+                    metrics::add(report_.response_statuses[response.status], 1);
             return result;
-        ++report_.output_limit_rejections;
+        }
+        increment_counter(report_.output_limit_rejections);
         log(logging::Event::output_limited,
             logging::Level::warn,
             slot.registration.identity,
@@ -234,13 +250,18 @@ class Sessions final {
             const auto fallback = make_error_response(
                 slot.request_metadata, ErrorStatus::resource_limit, config_.max_body_bytes);
             const auto *frame = std::get_if<Frame>(&fallback);
-            if (frame && connection.queue_response(*frame).stop == QueueStop::queued)
+            if (frame && connection.queue_response(*frame).stop == QueueStop::queued) {
+                auto &counter =
+                    report_
+                        .response_statuses[static_cast<std::size_t>(ErrorStatus::resource_limit)];
+                counter = metrics::add(counter, 1);
                 return QueueStop::queued;
+            }
         } catch (...) {
-            ++report_.output_limit_closes;
+            increment_counter(report_.output_limit_closes);
             throw; // 外层统一记录原异常并局部drop；不递归分配第二个错误。
         }
-        ++report_.output_limit_closes;
+        increment_counter(report_.output_limit_closes);
         return QueueStop::output_limit;
     }
     void service(Slot &slot) {
@@ -260,7 +281,13 @@ class Sessions final {
                     connection.read_request(config_.read_byte_budget, config_.io_attempt_budget);
                 if (read.stop == ReadStop::request) {
                     // 完整受信帧在此进入pending，替换idle期限；Body拒绝/PING也使用同一窗口。
-                    ++report_.requests;
+                    increment_counter(report_.requests);
+                    const auto kind = static_cast<std::size_t>(read.request->message_type);
+                    if (kind >= 1 && kind <= report_.request_types.size())
+                        report_.request_types[kind - 1] =
+                            metrics::add(report_.request_types[kind - 1], 1);
+                    if (read.body_error)
+                        report_.protocol_errors = metrics::add(report_.protocol_errors, 1);
                     reset_deadline(slot, true);
                     slot.request_metadata.message_type = read.request->message_type;
                     slot.request_metadata.request_id = read.request->request_id;
@@ -351,6 +378,8 @@ class Sessions final {
                 } else if (read.stop == ReadStop::budget_exhausted)
                     slot.runnable = true;
                 else if (read.stop != ReadStop::would_block) {
+                    if (read.stop == ReadStop::header_error || read.stop == ReadStop::truncated)
+                        report_.protocol_errors = metrics::add(report_.protocol_errors, 1);
                     drop(slot,
                         read.error,
                         false,
@@ -385,9 +414,9 @@ class Sessions final {
                         drop(slot, code(EIO));
                         return;
                     }
-                    ++report_.responses;
+                    increment_counter(report_.responses);
                     if (drain_deadline_) {
-                        ++report_.drain_responses;
+                        increment_counter(report_.drain_responses);
                         drop(slot);
                         return; // 不交付已缓冲的后续请求。
                     }
@@ -447,7 +476,7 @@ public:
             if (slot.connection
                 && (expired || (beginning && !slot.connection->request_pending()))) {
                 if (expired && slot.connection->request_pending())
-                    ++report_.drain_timeouts;
+                    increment_counter(report_.drain_timeouts);
                 drop(slot);
             }
     }
@@ -460,7 +489,7 @@ public:
             return !value.connection;
         });
         if (slot == slots_.end()) {
-            ++report_.rejected;
+            increment_counter(report_.rejected);
             first(report_.cleanup_error, source.close());
             return;
         }
@@ -489,8 +518,8 @@ public:
         slot->mask = mask;
         slot->runnable = false;
         slot->serviced = false;
-        ++report_.admitted;
-        ++report_.active;
+        increment_counter(report_.admitted);
+        increment_counter(report_.active);
         log(logging::Event::connection_opened, logging::Level::info, slot->registration.identity);
         slot->deadline = idle_deadline;
         if (idle_deadline
@@ -551,10 +580,10 @@ public:
     }
     void complete(const concurrency::RoutedCompletion &result) {
         observe_drain();
-        ++report_.completion_received;
+        increment_counter(report_.completion_received);
         const auto identity = result.route();
         if (!identities_.matches(identity)) {
-            ++report_.completion_stale;
+            increment_counter(report_.completion_stale);
             log(logging::Event::completion_stale,
                 logging::Level::warn,
                 identity,
@@ -565,32 +594,32 @@ public:
         auto &slot = slots_[identity.slot_index];
         if (!slot.connection || slot.registration.identity != identity || !slot.awaiting_completion
             || !slot.connection->request_pending()) {
-            ++report_.completion_rejected;
+            increment_counter(report_.completion_rejected);
             return;
         }
         try {
             // 即使completion先于timer事件被消费，也不能应用已到期请求。
             if (expire(slot)) {
-                ++report_.completion_rejected;
+                increment_counter(report_.completion_rejected);
                 return;
             }
             const auto queued = queue_response(slot, *result.payload()->frame());
             if (queued != QueueStop::queued) {
-                ++report_.completion_rejected;
+                increment_counter(report_.completion_rejected);
                 if (queued == QueueStop::output_limit)
                     drop(slot, code(EMSGSIZE));
                 return; // 错ID/类型或重复结果不解除正确请求门禁。
             }
         } catch (const DeadlineFailure &) {
-            ++report_.completion_rejected;
+            increment_counter(report_.completion_rejected);
             throw;
         } catch (...) {
-            ++report_.completion_rejected;
+            increment_counter(report_.completion_rejected);
             drop(slot, exception_code());
             return;
         }
         slot.awaiting_completion = false;
-        ++report_.completion_applied;
+        increment_counter(report_.completion_applied);
         log(logging::Event::completion_applied,
             logging::Level::debug,
             identity,
@@ -599,6 +628,19 @@ public:
         service(slot);
     }
 
+    /** @brief 所属线程发布前复制完整I/O累计和当前缓冲；峰值在Connection变化点记录。 */
+    void observe_metrics() noexcept {
+        report_.io = closed_io_;
+        report_.input_bytes = report_.output_bytes = 0;
+        for (const auto &slot : slots_)
+            if (slot.connection) {
+                merge_io(report_.io, slot.connection->io_stats());
+                report_.input_bytes =
+                    metrics::add(report_.input_bytes, slot.connection->buffered_bytes());
+                report_.output_bytes =
+                    metrics::add(report_.output_bytes, slot.connection->output_bytes());
+            }
+    }
     void close() noexcept {
         for (auto &slot : slots_)
             if (slot.connection)
@@ -702,6 +744,11 @@ ProtocolSubStatus ProtocolSubReactor::status() const {
     result.stop_requested = stop_.load();
     return result;
 }
+SubQueueDepths ProtocolSubReactor::queue_depths() const {
+    const auto handoff = queue_.status();
+    const auto completion = completions_.status();
+    return {handoff.size, completion.size};
+}
 void ProtocolSubReactor::run() noexcept {
     UniqueFd epoll, wakeup, timer;
     std::unique_ptr<Sessions> sessions;
@@ -750,7 +797,7 @@ void ProtocolSubReactor::run() noexcept {
                 // 先关入口后有限清空（至多handoff_capacity），完整通知fd仍保留到发布者屏障。
                 queue_.close();
                 while (auto source = queue_.try_pop()) {
-                    ++local.discarded;
+                    increment_counter(local.discarded);
                     first(local.cleanup_error, source->close());
                 }
             }
@@ -765,11 +812,11 @@ void ProtocolSubReactor::run() noexcept {
                 auto source = queue_.try_pop();
                 if (!source)
                     break;
-                ++local.received;
+                increment_counter(local.received);
                 try {
                     sessions->admit(*source);
                 } catch (...) {
-                    ++local.rejected;
+                    increment_counter(local.rejected);
                     first(local.cleanup_error, source->close());
                     throw;
                 }
@@ -788,12 +835,15 @@ void ProtocolSubReactor::run() noexcept {
                 (!drain_deadline_.load() && queue_.status().size) || completions_.status().size
                 || notification_result.state == EventFdDrainState::budget_exhausted;
             sessions->tick(continue_work ? 0 : stop_poll_interval_ms);
+            sessions->observe_metrics();
             const std::lock_guard<std::mutex> lock(mutex_);
             report_ = local;
         }
     } catch (...) {
         first(local.first_error, exception_code());
     }
+    if (sessions)
+        sessions->observe_metrics();
     // 运行首因先发布，通知端保持到外部生产者全部静止；closed/empty绝不是此屏障。
     stop_.store(true);
     {
@@ -816,15 +866,16 @@ void ProtocolSubReactor::run() noexcept {
     }
     if (sessions) {
         sessions->close();
+        sessions->observe_metrics();
         sessions.reset(); // 撤销timer/epoll借用后再关闭所属线程资源。
     }
     // 最终同步设施无法工作时不能悄悄把残留fd留到控制者析构；noexcept收口明确terminate。
     while (auto source = queue_.try_pop()) {
-        ++local.discarded;
+        increment_counter(local.discarded);
         first(local.cleanup_error, source->close());
     }
     while (auto result = completions_.try_pop())
-        ++local.completion_discarded; // 静止后只销毁，不应用停止期间的结果。
+        increment_counter(local.completion_discarded); // 静止后只销毁，不应用停止期间的结果。
     if (timer_registered)
         first(local.cleanup_error, epoll_remove(epoll.get(), timer.get()));
     first(local.cleanup_error, timer.close());
