@@ -37,14 +37,17 @@ def run(options, parent, extra, stop_signal=None):
         peer = socket.create_connection(("127.0.0.1", port), timeout=5)
         peers.append(peer)
         request = struct.pack("!4sBBHHHIQ", b"SFTW", 1, 24, 1, 0, 0, 2, 77) + b"{}"
-        peer.sendall(request)
         expected = struct.pack("!4sBBHHHIQ", b"SFTW", 1, 24, 0x8001, 0, 0, 2, 77) + b"{}"
-        actual = b""
-        while len(actual) < len(expected):
-            part = peer.recv(len(expected) - len(actual))
-            check(bool(part), "complete PONG before shutdown")
-            actual += part
-        check(actual == expected, "independent golden PONG")
+        # 第二次PONG证明Sub已完成第一请求及其计数，再检查最终responses至少为1。
+        # 收到第一份字节不保证发送方已记账，0ms关闭可先于该次send后的期限裁决。
+        for _ in range(2):
+            peer.sendall(request)
+            actual = b""
+            while len(actual) < len(expected):
+                part = peer.recv(len(expected) - len(actual))
+                check(bool(part), "complete PONG before shutdown")
+                actual += part
+            check(actual == expected, "independent golden PONG")
         partial = socket.create_connection(("127.0.0.1", port), timeout=5)
         peers.append(partial)
         partial.sendall(request[:10])
@@ -54,7 +57,7 @@ def run(options, parent, extra, stop_signal=None):
         check(process.returncode == 0 and not error, ("normal process shutdown", process.returncode, error))
         report = json.loads(output)
         check(report["active"] == 0 and report["workers_failed"] == 0 and report["responses"] >= 1,
-              "final network and worker report")
+              ("final network and worker report", report, extra, stop_signal))
         for connection in peers:
             try:
                 check(connection.recv(1) == b"", "shutdown closes idle/partial peer without response")

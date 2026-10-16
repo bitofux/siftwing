@@ -1083,6 +1083,23 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_publication_test.py"
         --native "$<TARGET_FILE:siftwing_snapshot_publication_test>" --parent "${CMAKE_CURRENT_BINARY_DIR}" --signals)
     set_tests_properties(snapshot.publication net.signalfd_online PROPERTIES TIMEOUT 180)
+    # V3连续故障/真实fd耗尽与有界持续运行；沿用生产接口，无测试hook。
+    add_executable(siftwing_v3_fault_soak_test tests/integration/v3_fault_soak_test.cc)
+    target_link_libraries(siftwing_v3_fault_soak_test PRIVATE siftwing_online_server siftwing_json)
+    add_test(NAME v3.fault_recovery COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/v3_fault_soak_test.py"
+        --native "$<TARGET_FILE:siftwing_v3_fault_soak_test>" --parent "${CMAKE_CURRENT_BINARY_DIR}" --suite faults)
+    foreach(subs IN ITEMS 1 2)
+        add_test(NAME v3.soak_${subs} COMMAND Python3::Interpreter -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/v3_fault_soak_test.py"
+            --native "$<TARGET_FILE:siftwing_v3_fault_soak_test>" --parent "${CMAKE_CURRENT_BINARY_DIR}"
+            --suite soak --subs ${subs} --seconds 2)
+        set_tests_properties(v3.soak_${subs} PROPERTIES TIMEOUT 120 LABELS "v3;soak")
+    endforeach()
+    add_test(NAME v3.shutdown_races COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_publication_test.py"
+        --native "$<TARGET_FILE:siftwing_snapshot_publication_test>" --parent "${CMAKE_CURRENT_BINARY_DIR}" --races)
+    set_tests_properties(v3.fault_recovery v3.shutdown_races PROPERTIES TIMEOUT 180 LABELS "v3;fault")
     add_executable(siftwing_reader_test tests/unit/reader_test.cc)
     target_link_libraries(siftwing_reader_test PRIVATE siftwing_snapshot_reader siftwing_snapshot_writer)
     foreach(operation openat pread fstat fstatat close fdopendir readdir closedir)

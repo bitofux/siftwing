@@ -356,7 +356,11 @@ void online(const std::string &parent, const std::string &log_path) {
     check(found == 2, "both actual execution logs found");
 }
 // 真实在途/排队查询及正在加载候选同时遇终止信号；门禁只控制时序，仍执行完整业务。
-void signaled_online(const std::string &parent, int signo, bool timeout) {
+void signaled_online(const std::string &parent,
+    int signo,
+    bool timeout,
+    const std::string &candidate_parent,
+    bool valid_candidate) {
     net::OnlineServerConfig config;
     config.workers = 1;
     config.sub_count = 2;
@@ -394,7 +398,7 @@ void signaled_online(const std::string &parent, int signo, bool timeout) {
     load_release = false;
     load_join = false;
     load_arm = true;
-    check(server->try_load_snapshot({parent, version(101), limits()})
+    check(server->try_load_snapshot({candidate_parent, version(101), limits()})
               == snapshot::SnapshotLoadSubmit::accepted,
         "real loader accepted before signal");
     await([] {
@@ -453,7 +457,7 @@ void signaled_online(const std::string &parent, int signo, bool timeout) {
     check(
         timeout ? timeouts == 2 : responses == 2, "normal drain or exact zero deadline preserved");
     auto done = server->take_loaded_snapshot();
-    check(done && done->report && done->report->outcome
+    check(done && done->report && done->report->outcome.has_value() == valid_candidate
               && server->current_snapshot()->manifest()->snapshot == version(100),
         "accepted load retained, never automatically published");
     check(server->shutdown_signal() == signo && !server->shutdown(-1) && !server->stop(),
@@ -562,8 +566,18 @@ int main(int argc, char **argv) {
         signal_suite = argc == 6;
         if (signal_suite) {
             check(!net::block_termination_signals(), "block before creating any test threads");
-            signaled_online(argv[1], SIGTERM, false);
-            signaled_online(argv[1], SIGINT, true);
+            const bool races = std::string(argv[5]) == "races";
+            check(races || std::string(argv[5]) == "signals", "known signal suite");
+            // 重复四种确定时序：合法/失败候选 × 正常排空/零网络期限；每次建服并回收。
+            for (unsigned round = 0; round < (races ? 8U : 1U); ++round) {
+                signaled_online(argv[1], SIGTERM, false, argv[1], true);
+                signaled_online(argv[1], SIGINT, true, argv[1], true);
+                if (races) {
+                    signaled_online(argv[1], SIGINT, false, argv[3], false);
+                    signaled_online(argv[1], SIGTERM, true, argv[3], false);
+                }
+                check(fd_count() == baseline, "each signal shutdown cycle reclaims all fds");
+            }
         } else {
             managers(argv[1]);
             queries(argv[1], argv[2], argv[3]);
