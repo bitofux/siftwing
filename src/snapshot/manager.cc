@@ -3,9 +3,10 @@
  * FILE    : manager.cc
  * AUTHOR  : bitofux
  * DATE    : 2026-10-16
- * BRIEF   : 在完整加载及拥有报告构造后提交最后结果，保持当前快照不变
+ * BRIEF   : 候选加载隔离于current，完整只读句柄经显式原子交换发布
  */
 #include "siftwing/snapshot/manager.hpp"
+#include <atomic>
 #include <utility>
 
 namespace siftwing::snapshot {
@@ -39,7 +40,19 @@ base::Result<std::unique_ptr<SnapshotManager>> SnapshotManager::open(const std::
 }
 
 SnapshotHandle SnapshotManager::current() const noexcept {
-    return current_;
+    return std::atomic_load_explicit(&current_, std::memory_order_acquire);
+}
+
+SnapshotPublishResult SnapshotManager::publish_candidate(SnapshotHandle candidate) noexcept {
+    if (!candidate || !candidate->manifest() || !candidate->search() || !candidate->recommendation()
+        || !candidate->documents())
+        return SnapshotPublishResult::invalid_candidate;
+    if (current() == candidate)
+        return SnapshotPublishResult::unchanged;
+    // 返回的旧所有权在原子设施内部锁已释放后析构，不在该锁下回收整库。
+    const auto previous =
+        std::atomic_exchange_explicit(&current_, std::move(candidate), std::memory_order_acq_rel);
+    return SnapshotPublishResult::published;
 }
 
 std::shared_ptr<const SnapshotLoadResult> SnapshotManager::last_load() const noexcept {

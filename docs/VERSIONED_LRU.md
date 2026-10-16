@@ -1,9 +1,9 @@
 # 版本感知进程内LRU
 
 `SearchServiceConfig::cache`提供可选实例缓存，默认`capacity=0`关闭；可由`--cache-capacity`、`--cache-bytes`、`--cache-max-value-bytes`或[启动配置](SERVER_CONFIG.md)显式启用。
-服务持有固定快照和分析资源，缓存只拥有成功的JSON Body，包含成功空结果，不保存错误、任务、
+服务按次持有只读快照和固定分析资源，缓存只拥有成功的JSON Body，包含成功空结果，不保存错误、任务、
 连接、fd或完整响应帧。每次命中仍经worker构造当前request_id的Completion并回投所属Sub；
-既有超时、单在途、输出预算及停止屏障继续适用。索引热切换尚未实现。
+既有超时、单在途、输出预算及停止屏障继续适用。显式切换及回滚见[安全发布](SNAPSHOT_PUBLICATION.md)。
 
 ```cpp
 siftwing::query::SearchServiceConfig config;
@@ -18,7 +18,8 @@ auto service = siftwing::query::SearchService::create(config);
 精确元组包含完整uint64索引版本、SEARCH/SUGGEST类型、有效查询文本和参数编码。
 SEARCH使用既有UTF-8规范化规则；SUGGEST只在normalize_key=true时规范化，标志也进入键。
 参数用JSON数组无歧义编码，SEARCH含top_k、AND/OR、摘要窗口、上下文及有效Body预算，
-SUGGEST含top_k、normalize_key及有效Body预算。解析后省略默认值与显式默认值等价。
+SUGGEST含top_k、normalize_key及有效Body预算。两者均追加完整规范manifest的SHA，
+隔离同一版本号的不同内容；回滚到同一成品仍可命中。旧查询迟到put归原内容身份，无需清空缓存。解析后省略默认值与显式默认值等价。
 不同字段不作字符串分隔符拼接；request_id和连接身份不进入键。
 
 严格业务schema和原始文本预算先于lookup；暖缓存不能绕过重复键、未知字段、非法参数或
@@ -53,5 +54,5 @@ CTest注册`cache.versioned_lru_test`、`cache.versioned_lru_concurrency_test`�
 空结果、错误不存、超大成功旁路、共享服务并发及1/2个Sub的TCP回包、半关闭、续读和关联号。
 
 小型计时仅输出当前小语料/当前进程的关闭缓存与暖缓存耗时，无速度门槛，不外推生产吞吐或最坏延迟。
-未实现TTL、Redis、热切换、分片或任务取消，不提供缓存命中绕过worker队列的旁路。
+未实现TTL、Redis、分片或任务取消，不提供缓存命中绕过worker队列的旁路。
 正式服务已有[优雅退出](GRACEFUL_SHUTDOWN.md)，缓存命中同样经过worker与Completion，并服从限时网络排空和发布者屏障。

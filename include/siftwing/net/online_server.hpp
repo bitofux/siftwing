@@ -18,7 +18,7 @@ struct OnlineServerConfig {
     std::size_t workers = 4;   ///< [1,64]固定worker，服务在所有线程退出后才销毁。
     std::size_t task_capacity = 128; ///< [1,1024]等待条目，不含执行中任务；full不等空位。
     ProtocolSubConfig
-        sub; ///< 复用Sub固定预算；reactor_id须0、submitter/logger/version须空；控制者覆盖server_info_body。
+        sub; ///< 复用Sub固定预算；reactor_id须0、submitter/logger/version/service_info须空；控制者覆盖元信息。
     logging::Logger *logger = nullptr; ///< 覆盖server销毁、最后worker/Sub返回的稳定可选借用。
     MainReactorConfig main;            ///< 复用Main有限接入预算。
 };
@@ -107,6 +107,24 @@ public:
      *     组件观察加锁异常传播；日志导出入口捕获，不能因此改变业务结果。
      */
     [[nodiscard]] metrics::Snapshot metrics() const;
+
+    /** @brief 创建线程提交拥有加载请求；停止后stopped，首次按需创建线程，分配/创建异常传播。 */
+    [[nodiscard]] snapshot::SnapshotLoadSubmit try_load_snapshot(
+        snapshot::SnapshotLoadRequest request);
+    /** @brief 创建线程取完成值，停止后仍可取；不自动发布，加载异常沿原完成值交付。 */
+    [[nodiscard]] std::optional<snapshot::SnapshotLoadCompletion> take_loaded_snapshot();
+    /** @brief 创建线程取当前拥有句柄，可保留为回滚目标；停止后仍可观察。 */
+    [[nodiscard]] snapshot::SnapshotHandle current_snapshot() const noexcept;
+    /**
+     * @brief 创建线程显式发布完整候选，沿服务/Manager合同，不分配或访问文件
+     * @param[in] candidate
+     *     按值共享只读Reader，固定分词/停用资源相容性由调用方保证。
+     *
+     * @return
+     *     Manager判定，或停止后ECANCELED；拒绝不改变current。run_once不隐式取结果或发布。
+     */
+    [[nodiscard]] std::variant<snapshot::SnapshotPublishResult, std::error_code> publish_snapshot(
+        snapshot::SnapshotHandle candidate) noexcept;
 
 private:
     struct Impl;

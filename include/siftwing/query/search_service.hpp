@@ -3,13 +3,15 @@
  * FILE    : search_service.hpp
  * AUTHOR  : bitofux
  * DATE    : 2026-10-15
- * BRIEF   : 固定只读快照与查询资源的在线SEARCH/SUGGEST服务
+ * BRIEF   : 按次持有可发布只读快照与固定查询资源的在线SEARCH/SUGGEST服务
  */
 #pragma once
 #include "siftwing/concurrency/search_task.hpp"
 #include "siftwing/base/result.hpp"
 #include "siftwing/cache/versioned_lru.hpp"
 #include "siftwing/metrics/server_metrics.hpp"
+#include "siftwing/net/service_info_source.hpp"
+#include "siftwing/snapshot/loader.hpp"
 #include <memory>
 
 namespace siftwing::query {
@@ -27,7 +29,7 @@ struct SearchServiceConfig {
         net::frame_max_body_bytes; ///< 正上限<=1MiB，实际再取task Body预算。
     std::uint64_t snapshot_bytes = 512U * 1024U * 1024U; ///< 正单payload/文档库预算<=512MiB。
     std::uint64_t resource_bytes = 16U * 1024U * 1024U; ///< 正单资源装载预算<=16MiB。
-    cache::LruConfig cache; ///< 可选实例LRU，默认capacity=0关闭；固定快照/资源/预算不跨实例共享。
+    cache::LruConfig cache; ///< 可选实例LRU，默认capacity=0关闭；固定资源/预算不跨实例共享。
 };
 /** @brief 每次execute的独立观察，不通过共享计数器差推断命中；未到lookup为not_checked。 */
 enum class CacheObservation {
@@ -40,14 +42,15 @@ enum class CacheObservation {
 /** @brief 成功拥有完整JSON对象Body（无LF），失败为六种线上安全状态之一，无部分结果。 */
 using SearchServiceResult = std::variant<std::string, net::ErrorStatus>;
 /**
- * @brief 通过Manager拥有固定完整Reader，并拥有分词/停用资源；查询只读内存，不访问socket或文件
- * @note 不可copy/move；同实例execute可并发，配置、当前Reader及初始化后的分词资源只读，
- *     每次execute保留同一份共享只读快照句柄用于响应版本、缓存键和计算；尚不切换版本，
+ * @brief 通过Manager发布完整Reader，并拥有固定分词/停用资源；查询只读内存，不访问socket或文件
+ * @note 不可copy/move；同实例execute可与发布并发，配置及初始化后的分词资源只读，
+ *     每次execute开始取得同一份共享只读快照句柄用于响应版本、缓存键和计算；排队未绑定，
  *     中间结果为调用局部，可选LRU独立mutex保护，业务计算不持缓存锁。
- *     调用者保证到最后调用/worker join返回才销毁；不认证建库资源相容、不热切换、不取消。
+ *     加载/取完成/停止/发布由同一控制者串行；调用者到最后调用/worker join返回才销毁。
+ *     不认证新快照与固定查询资源相容，不取消I/O或查询；加载器仅首次提交时创建。
  *     既有业务结果/错误和V1 CLI接口不变，缓存只拥有成功JSON Body，无任务/连接借用。
  */
-class SearchService final {
+class SearchService final : public net::ServiceInfoSource {
 public:
     /**
      * @brief 预检配置、完整装载快照及资源，发布前重核资源SHA
@@ -73,6 +76,8 @@ public:
      *     同步稳定借用已准入拥有请求；移空拒INVALID_REQUEST，不消费或保存其借用。
      * @param[out] observation
      *     可选独占输出，每次入口重置；不保存指针，不允许跨并发调用共用同一输出值。
+     * @param[out] snapshot_version
+     *     可选独占输出，入口先清空，取得句柄后写本次版本；异常后仍可观察已绑定身份。
      *
      * @return
      *     SEARCH/SUGGEST成功Body或INVALID_REQUEST/RESOURCE_LIMIT/INTERNAL_ERROR；空results成功。
@@ -80,16 +85,29 @@ public:
      * @throws
      *     分配与未知异常传播；worker负责固定安全错误或报告无法交付的服务首因。
      */
-    [[nodiscard]] SearchServiceResult execute(
-        const concurrency::SearchTask &task, CacheObservation *observation = nullptr) const;
-    /** @brief 实际已装载快照身份，固定值、无分配，可与execute并发。 */
-    [[nodiscard]] std::uint64_t index_version() const noexcept;
+    [[nodiscard]] SearchServiceResult execute(const concurrency::SearchTask &task,
+        CacheObservation *observation = nullptr,
+        std::optional<std::uint64_t> *snapshot_version = nullptr) const;
+    /** @brief 当前快照的拥有句柄，可保存为显式回滚目标；可与execute/发布并发。 */
+    [[nodiscard]] snapshot::SnapshotHandle current_snapshot() const noexcept;
+    /** @brief 单控制者显式发布；沿Manager判定，固定查询资源不随之替换。 */
+    [[nodiscard]] snapshot::SnapshotPublishResult publish_candidate(
+        snapshot::SnapshotHandle candidate) noexcept;
+    /** @brief 单控制者提交拥有路径/版本/预算；首次按需创建Loader，构造异常时未接受任务。 */
+    [[nodiscard]] snapshot::SnapshotLoadSubmit try_load_candidate(
+        snapshot::SnapshotLoadRequest request);
+    /** @brief 单控制者取完成值并释放单槽；成功也不自动发布，停止后仍可取。 */
+    [[nodiscard]] std::optional<snapshot::SnapshotLoadCompletion> take_loaded_candidate();
+    /** @brief 永久关闭加载入口并排空join，幂等；不可取消I/O，join/同步异常传播。 */
+    void stop_loading();
+    /** @brief 观察时点的当前版本，无分配，可与execute/发布并发。 */
+    [[nodiscard]] std::uint64_t index_version() const noexcept override;
     /** @brief 从已校验只读清单按值取版本/搜索文档与词项/推荐词项数，可并发，无分配。 */
     [[nodiscard]] metrics::Index index_stats() const noexcept;
     /** @brief 可与execute并发取得缓存统计值快照；锁异常传播，无文件/socket操作。 */
     [[nodiscard]] cache::LruStats cache_stats() const;
-    /** @brief 固定公开服务信息的拥有JSON，无路径/动态指标；可并发，分配异常传播。 */
-    [[nodiscard]] std::string server_info() const;
+    /** @brief 每次从同一句柄生成公开信息的拥有JSON，无路径；可并发，分配异常传播。 */
+    [[nodiscard]] std::string server_info() const override;
 
 private:
     struct Impl;

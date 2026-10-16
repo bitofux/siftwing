@@ -28,20 +28,20 @@ void check(bool ok, const char *why) {
 struct ReleaseGate { ~ReleaseGate() { released = true; } };
 }
 query::SearchServiceResult
-real_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *) __asm__(
-    "__real__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE");
+real_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *, std::optional<std::uint64_t> *) __asm__(
+    "__real__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE");
 query::SearchServiceResult
-wrapped_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *) __asm__(
-    "__wrap__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE");
+wrapped_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *, std::optional<std::uint64_t> *) __asm__(
+    "__wrap__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE");
 query::SearchServiceResult wrapped_execute(const query::SearchService *service,
     const SearchTask &task,
-    query::CacheObservation *observation) {
+    query::CacheObservation *observation, std::optional<std::uint64_t> *snapshot_version) {
     ++executions;
     if (first.exchange(false)) {
         entered = true;
         while (!released.load()) std::this_thread::yield();
     }
-    return real_execute(service, task, observation); // 仍执行正式查询，不伪造结果或更换生产worker。
+    return real_execute(service, task, observation, snapshot_version); // 仍执行正式查询，不伪造结果或更换生产worker。
 }
 namespace {
 void eof(int fd) {

@@ -6,7 +6,7 @@
 [监听接入](LISTENER.md)、[Connection读取与请求准入](CONNECTION_READ.md)
 及[有界响应写入](CONNECTION_WRITE.md)与[单循环协议探针](PROTOCOL_LOOP.md)。
 Main-Sub Reactor及SEARCH/SUGGEST业务网络服务已有接入，见[在线搜索闭环](ONLINE_SEARCH.md)。
-业务JSON采用该独立schema；[网络客户端与固定SERVER_INFO](NETWORK_CLIENT.md)已提供，V1本地CLI接口及输出合同保持。
+业务JSON采用该独立schema；[网络客户端与SERVER_INFO](NETWORK_CLIENT.md)已提供，V1本地CLI接口及输出合同保持。
 
 当前采用[单连接一个在途请求](SINGLE_INFLIGHT.md)：从完整帧交付到响应排空保持门禁，
 后续帧按流顺序保留，PING与错误响应也串行。响应排空后request_id可复用；连接generation
@@ -174,7 +174,7 @@ Main-Sub Reactor和[在线服务](ONLINE_SEARCH.md)已有真实查询路径；
 | 请求 | Body示例 | 成功响应 |
 |---|---|---|
 | PING | `{}`，恰为两字节 | PONG，Body恰为`{}` |
-| SERVER_INFO_REQUEST | `{}`；允许JSON对象空白 | SERVER_INFO_RESPONSE，固定公开元信息 |
+| SERVER_INFO_REQUEST | `{}`；允许JSON对象空白 | SERVER_INFO_RESPONSE，按次观察当前快照的公开元信息 |
 | SEARCH_REQUEST | `{"query":"lantern","mode":"or","top_k":5}` | SEARCH_RESPONSE；无命中也成功 |
 | SUGGEST_REQUEST | `{"key":"lantern","top_k":5,"normalize_key":false}` | SUGGEST_RESPONSE；无候选也成功 |
 

@@ -325,8 +325,8 @@ add_library(siftwing_versioned_lru STATIC src/cache/versioned_lru.cc)
 target_link_libraries(siftwing_versioned_lru PUBLIC siftwing_base Threads::Threads)
 add_library(siftwing_search_service STATIC src/query/search_service.cc)
 target_link_libraries(siftwing_search_service PUBLIC siftwing_search_task
-    siftwing_metrics siftwing_versioned_lru
-    PRIVATE siftwing_snapshot_manager siftwing_top_k siftwing_recommendation siftwing_summary
+    siftwing_metrics siftwing_versioned_lru siftwing_snapshot_loader
+    PRIVATE siftwing_top_k siftwing_recommendation siftwing_summary
     siftwing_highlight siftwing_cppjieba_tokenizer siftwing_utf8cpp siftwing_json)
 add_library(siftwing_online_server STATIC src/net/online_server.cc)
 target_link_libraries(siftwing_online_server PUBLIC siftwing_protocol_sub_reactor siftwing_worker_pool siftwing_search_service siftwing_metrics)
@@ -631,7 +631,7 @@ if(BUILD_TESTING)
     add_executable(siftwing_online_deadlines_test tests/integration/online_deadlines_test.cc)
     target_link_libraries(siftwing_online_deadlines_test PRIVATE siftwing_online_server siftwing_json)
     target_link_options(siftwing_online_deadlines_test PRIVATE
-        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE)
+        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE)
     foreach(subs IN ITEMS 1 2)
         add_test(NAME net.online_deadlines_${subs} COMMAND Python3::Interpreter -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/worker_saturation_test.py"
@@ -642,7 +642,7 @@ if(BUILD_TESTING)
     add_executable(siftwing_v2_fault_concurrency_test tests/integration/v2_fault_concurrency_test.cc)
     target_link_libraries(siftwing_v2_fault_concurrency_test PRIVATE siftwing_online_server siftwing_json)
     target_link_options(siftwing_v2_fault_concurrency_test PRIVATE
-        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE
+        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE
         -Wl,--wrap=_ZN8siftwing11concurrency10WorkerPool10try_submitERSt10unique_ptrINS0_10WorkerTaskESt14default_deleteIS3_EE
         -Wl,--wrap=_ZN8siftwing11concurrency16RoutedSearchTask6createENS_3net12ConnectionIdERNS0_10SearchTaskE
         -Wl,--wrap=accept4 -Wl,--wrap=send -Wl,--wrap=recv -Wl,--wrap=epoll_ctl)
@@ -664,7 +664,7 @@ if(BUILD_TESTING)
     add_executable(siftwing_graceful_server_test tests/integration/graceful_server_test.cc)
     target_link_libraries(siftwing_graceful_server_test PRIVATE siftwing_online_server siftwing_json)
     target_link_options(siftwing_graceful_server_test PRIVATE
-        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE
+        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE
         -Wl,--wrap=_ZN8siftwing11concurrency10WorkerPool12request_stopEv
         -Wl,--wrap=_ZN8siftwing3net11MainReactor5closeEv
         -Wl,--wrap=_ZN8siftwing3net18ProtocolSubReactor13request_drainEl
@@ -684,7 +684,7 @@ if(BUILD_TESTING)
     add_executable(siftwing_worker_saturation_test tests/integration/worker_saturation_test.cc)
     target_link_libraries(siftwing_worker_saturation_test PRIVATE siftwing_online_server siftwing_json)
     target_link_options(siftwing_worker_saturation_test PRIVATE
-        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE
+        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE
         -Wl,--wrap=_ZN8siftwing11concurrency10WorkerPool10try_submitERSt10unique_ptrINS0_10WorkerTaskESt14default_deleteIS3_EE)
     foreach(subs IN ITEMS 1 2)
         add_test(NAME net.worker_saturation_${subs} COMMAND Python3::Interpreter -B
@@ -1048,6 +1048,15 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_loader_test.py"
         --native "$<TARGET_FILE:siftwing_snapshot_loader_test>" --parent "${CMAKE_CURRENT_BINARY_DIR}")
     set_tests_properties(snapshot.loader PROPERTIES TIMEOUT 180)
+    add_executable(siftwing_snapshot_publication_test tests/integration/snapshot_publication_test.cc)
+    target_link_libraries(siftwing_snapshot_publication_test PRIVATE siftwing_online_server siftwing_json)
+    target_link_options(siftwing_snapshot_publication_test PRIVATE "-Wl,--wrap=_Znwm"
+        "-Wl,--wrap=_ZNK8siftwing8snapshot15SnapshotManager7currentEv"
+        "-Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE")
+    add_test(NAME snapshot.publication COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_publication_test.py"
+        --native "$<TARGET_FILE:siftwing_snapshot_publication_test>" --parent "${CMAKE_CURRENT_BINARY_DIR}")
+    set_tests_properties(snapshot.publication PROPERTIES TIMEOUT 180)
     add_executable(siftwing_reader_test tests/unit/reader_test.cc)
     target_link_libraries(siftwing_reader_test PRIVATE siftwing_snapshot_reader siftwing_snapshot_writer)
     foreach(operation openat pread fstat fstatat close fdopendir readdir closedir)

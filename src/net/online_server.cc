@@ -55,13 +55,13 @@ public:
             record.module = logging::Module::worker;
             record.connection = task->route();
             record.request_id = task->payload()->request()->request_id;
-            record.index_version = service_.index_version();
             query::CacheObservation cache = query::CacheObservation::not_checked;
             // 服务延迟始终采集，不依赖日志级别；等待队列与发布阶段在此窗口之外。
             const auto begin = std::chrono::steady_clock::now();
             query::SearchServiceResult result = ErrorStatus::internal_error;
             try {
-                result = service_.execute(*task->payload(), observe ? &cache : nullptr);
+                result = service_.execute(
+                    *task->payload(), observe ? &cache : nullptr, &record.index_version);
             } catch (...) {
                 result = ErrorStatus::internal_error;
             }
@@ -193,6 +193,7 @@ void validate(const OnlineServerConfig &config) {
     if (!config.sub_count || config.sub_count > 64 || !config.workers || config.workers > 64
         || !config.task_capacity || config.task_capacity > 1024 || config.sub.request_submitter
         || config.sub.reactor_id != 0 || config.sub.logger || config.sub.log_index_version
+        || config.sub.service_info
         || !config.main.accept_attempt_budget || config.main.accept_attempt_budget > 1024
         || l.backlog <= 0 || (l.family != IpFamily::v4 && l.family != IpFamily::v6)
         || l.address.empty() || l.address.size() >= INET6_ADDRSTRLEN
@@ -237,6 +238,7 @@ struct OnlineServer::Impl {
                 std::make_unique<Submitter>(*service, publication_error, config.logger, queries);
             auto selected = config.sub;
             selected.server_info_body = service->server_info();
+            selected.service_info = service.get();
             selected.logger = config.logger;
             selected.log_index_version = service->index_version();
             selected.reactor_id = static_cast<std::uint32_t>(i);
@@ -281,6 +283,8 @@ struct OnlineServer::Impl {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
         }
+        // 本控制线程已停止接入/提交；完整回收加载线程后才允许服务所有者释放。
+        service->stop_loading();
         if (pool)
             pool->join(); // 任务析构及完整发布/通知都已返回，统计不能代替join。
         if (const auto value = publication_error.load())
@@ -426,6 +430,23 @@ OnlineServerReport OnlineServer::report() const {
     if (!result.first_error && state_->publication_error.load())
         result.first_error = code(state_->publication_error.load());
     return result;
+}
+snapshot::SnapshotLoadSubmit OnlineServer::try_load_snapshot(snapshot::SnapshotLoadRequest request) {
+    if (state_->totals.stopped || state_->shutdown_started)
+        return snapshot::SnapshotLoadSubmit::stopped;
+    return state_->service->try_load_candidate(std::move(request));
+}
+std::optional<snapshot::SnapshotLoadCompletion> OnlineServer::take_loaded_snapshot() {
+    return state_->service->take_loaded_candidate();
+}
+snapshot::SnapshotHandle OnlineServer::current_snapshot() const noexcept {
+    return state_->service->current_snapshot();
+}
+std::variant<snapshot::SnapshotPublishResult, std::error_code> OnlineServer::publish_snapshot(
+    snapshot::SnapshotHandle candidate) noexcept {
+    if (state_->totals.stopped || state_->shutdown_started)
+        return code(ECANCELED);
+    return state_->service->publish_candidate(std::move(candidate));
 }
 metrics::Snapshot OnlineServer::metrics() const {
     metrics::Snapshot out;

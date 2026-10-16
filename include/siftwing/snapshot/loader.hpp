@@ -35,7 +35,7 @@ struct SnapshotLoadCompletion final {
 /**
  * @brief 专用线程串行完整加载候选；一个槽覆盖等待、执行和未消费结果，绝不发布
  * @note 构造前结束Manager的last_load/load_candidate操作；构造至join返回独占这两个入口。
- *     此期间外部只可并发读取Manager::current，不可另建Loader使用同一个Manager。
+ *     此期间外部可并发读取current，单控制者可显式publish_candidate；不可另建Loader共用Manager。
  *     Manager须稳定存活且晚于本对象销毁；已取走报告可跨两者析构独立存活。
  *     submit/take/stop可并发，均可短暂等待mutex，锁不包文件I/O，不承诺无锁/硬时限。
  *     join只由一个非加载线程控制者串行调用；销毁前撤销并等待全部外部调用。

@@ -10,7 +10,7 @@ build/release/siftwing-server --snapshot /absolute/snapshots --version 1 --port 
 
 启动先完整校验快照八文件/两支语义，显式装载资源，所有Sub及结果目标就绪后才开放监听。版本为规范uint64十进制（0和最大值合法），不解释CURRENT或自动找最新版本；启动失败不报告PORT。入口错误退出2、装载/启动/运行/停止失败1、stdout失败3、未知异常4、正常停止0。正常关闭排空已在途响应或到期关闭；故障仍立即丢弃。排空不证明对端收到，也不保证所有已接收字节都成为请求。
 
-控制线程可取[最小指标](METRICS.md)拥有值，info/debug日志导出周期与关闭样本；SERVER_INFO协议及固定内容保持。
+控制线程可取[最小指标](METRICS.md)拥有值，info/debug日志导出周期与关闭样本；SERVER_INFO schema保持，版本及构建身份按次观察当前快照。
 
 ## 业务Body
 
@@ -20,7 +20,7 @@ build/release/siftwing-server --snapshot /absolute/snapshots --version 1 --port 
 
 | 请求 | 必需字段 | 可选字段和默认值 |
 |---|---|---|
-| SERVER_INFO_REQUEST | 空对象 | 无；固定公开元信息见[客户端说明](NETWORK_CLIENT.md) |
+| SERVER_INFO_REQUEST | 空对象 | 无；公开元信息见[客户端说明](NETWORK_CLIENT.md) |
 | SEARCH_REQUEST | `query`字符串 | `mode`为`or`或`and`（默认or）；`top_k`默认10；`summary_window`默认160；`summary_context`默认40 |
 | SUGGEST_REQUEST | `key`字符串 | `top_k`默认10；`normalize_key`为bool（默认false） |
 
@@ -44,11 +44,11 @@ k为1..服务max_top_k；窗口1..4096，context为0..window-1。降低窗口须
 
 OnlineServer的create/run_once/port/report/stop/shutdown/析构由创建线程串行；Main在该线程只接入。各Sub提交拥有请求，每次execute持有同一份共享只读快照，贯穿响应版本、缓存键和计算；worker共享固定只读查询资源与独立mutex保护的[可选LRU](VERSIONED_LRU.md)，生成最多一个RoutedCompletion并[发布通知](COMPLETION_WAKEUP.md)，所属Sub校验完整连接身份/等待请求后复制输出并预算发送。服务及提交器生命覆盖全部worker/Sub join。
 
-立即stop先Main close/销毁返回，请求所有Sub停止并等quiescing（最后提交器调用已返回），随后WorkerPool close/drain/join，完整发布及通知都返回后撤目标、release各Sub，再join其连接/结果/fd清理。正常shutdown先关闭任务准入，向全部Sub发布同一绝对排空期限，再Main close；空闲/半包关闭，已pending响应排空或截止关闭，不读取下一帧。Sub quiescing后沿相同worker join/撤目标/release/Sub join屏障收口；网络截止不是整个退出的硬上限。quiescing报告不证明queue已经closed，closed/empty/worker统计不证明调用静止。部分启动失败按同顺序回滚；通知fd不能在晚到write前关闭。
+立即stop先Main close/销毁返回，请求所有Sub停止并等quiescing（最后提交器调用已返回），随后关闭加载准入并排空join Loader，再WorkerPool close/drain/join，完整发布及通知都返回后撤目标、release各Sub，再join其连接/结果/fd清理。正常shutdown先关闭任务准入，向全部Sub发布同一绝对排空期限，再Main close；空闲/半包关闭，已pending响应排空或截止关闭，不读取下一帧。Sub quiescing后沿相同worker join/撤目标/release/Sub join屏障收口；网络截止不是整个退出的硬上限。quiescing报告不证明queue已经closed，closed/empty/worker统计不证明调用静止。部分启动失败按同顺序回滚；通知fd不能在晚到write前关闭。
 
 真实CTest覆盖生产indexer→server→TCP查询/推荐、独立数学/Unicode参考、英文稀疏身份/中文共享只读资源、参数/预算/启动失败，以及部分启动分配故障、worker分配异常固定安全响应、真实结果full、accepted后通知失败和晚到通知停止屏障。插桩范围以实际日志为准；不证明任意调度、DSO内部、真实OOM、质量或性能。
 
-空闲/请求期限已由[Sub策略](DEADLINES.md)接入，默认关闭、可通过sub配置或`--idle-timeout-ms`/`--request-timeout-ms`启用，到期关连接而不取消worker。正式SERVER_INFO已返回固定公开元信息，四命令[网络客户端](NETWORK_CLIENT.md)已提供；取消、全局字节准入、热切换和signalfd属于后续模块；当前优雅退出边界见[关闭合同](GRACEFUL_SHUTDOWN.md)。
+空闲/请求期限已由[Sub策略](DEADLINES.md)接入，默认关闭、可通过sub配置或`--idle-timeout-ms`/`--request-timeout-ms`启用，到期关连接而不取消worker。正式SERVER_INFO按次返回当前快照公开元信息，四命令[网络客户端](NETWORK_CLIENT.md)已提供；已有显式[安全发布/回滚控制](SNAPSHOT_PUBLICATION.md)，正式CLI尚无reload入口；取消、全局字节准入和signalfd属于后续模块；当前优雅退出边界见[关闭合同](GRACEFUL_SHUTDOWN.md)。
 
 每连接已有[输出水位与硬限策略](OUTPUT_BACKPRESSURE.md)，可由OnlineServerConfig.sub.output或[启动配置](SERVER_CONFIG.md)配置，
 命令默认使用自动值，可用`--output-low-bytes`/`--output-high-bytes`/`--output-hard-bytes`显式设置。输出过大时Sub尝试同ID固定RESOURCE_LIMIT，错误也无法容纳则局部关闭；

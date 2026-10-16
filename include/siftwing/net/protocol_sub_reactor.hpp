@@ -9,6 +9,7 @@
 #include "siftwing/net/connection.hpp"
 #include "siftwing/net/main_reactor.hpp"
 #include "siftwing/net/completion_wakeup.hpp"
+#include "siftwing/net/service_info_source.hpp"
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -41,6 +42,8 @@ struct ProtocolSubConfig {
     logging::Logger *logger = nullptr; ///< 可选稳定借用，覆盖全部Sub调用和join；同步日志可能阻塞。
     std::optional<std::uint64_t> log_index_version; ///< 控制者提供实际服务版本；无服务时null。
     std::string server_info_body; ///< 可选拥有固定JSON；空为未接入，构造前验证，启动后不变。
+    const ServiceInfoSource *service_info =
+        nullptr; ///< 可选动态只读来源，优先于固定Body/日志版本；所有者覆盖start至join及最后调用。
 };
 /** @brief draining只推进已在途；quiescing停止业务等发布者；stopped已清理，joined已回收线程。 */
 enum class ProtocolSubState {

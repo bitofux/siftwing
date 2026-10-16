@@ -118,7 +118,10 @@ class Sessions final {
         record.code = reason;
         record.connection = identity;
         record.request_id = request;
-        record.index_version = config_.log_index_version;
+        // Sub事件记录观察时点；某次业务实际使用的版本由worker持有的句柄记录。
+        record.index_version = config_.service_info
+                                   ? std::optional<std::uint64_t>(config_.service_info->index_version())
+                                   : config_.log_index_version;
         record.native_error = native_error;
         config_.logger->write(record);
     }
@@ -355,13 +358,14 @@ class Sessions final {
                                           ? ErrorStatus::resource_limit
                                           : ErrorStatus::invalid_request,
                                       config_.max_body_bytes);
-                        // 固定公开元信息由控制者在启动前复制拥有；旧probe默认空仍拒绝。
+                        // 单个动态Body内部取同一句柄；旧probe的静态Body路径保持。
                         if (!read.body_error
                             && read.request->message_type == MessageType::server_info_request
-                            && !config_.server_info_body.empty()
+                            && (config_.service_info || !config_.server_info_body.empty())
                             && nlohmann::json::parse(read.request->body).empty()) {
-                            response = make_response(
-                                *read.request, config_.server_info_body, config_.max_body_bytes);
+                            const auto body = config_.service_info ? config_.service_info->server_info()
+                                                                  : config_.server_info_body;
+                            response = make_response(*read.request, body, config_.max_body_bytes);
                             if (std::holds_alternative<ProtocolError>(response))
                                 response = make_error_response(*read.request,
                                     ErrorStatus::resource_limit,

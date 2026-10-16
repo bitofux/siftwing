@@ -62,7 +62,7 @@ struct ConnectionIo final {
     std::uint64_t input_high_bytes = 0,
                   output_high_bytes = 0; ///< 单连接用户缓冲可读字节峰值，非capacity/RSS。
 };
-/** @brief 固定只读索引的真实元数据；版本不表示时间，搜索与推荐词项数分开。 */
+/** @brief 单次从同一只读索引清单取得的真实元数据；版本不表示时间，搜索与推荐词项数分开。 */
 struct Index final {
     std::uint64_t version = 0, documents = 0, terms = 0, recommendation_terms = 0;
 };

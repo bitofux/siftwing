@@ -37,21 +37,21 @@ struct ReleaseGate {
 
 // GNU静态链接包装只增加确定同步和观测；调用真实实现，不替换业务结果或队列判定。
 query::SearchServiceResult
-real_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *) __asm__(
-    "__real__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE");
+real_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *, std::optional<std::uint64_t> *) __asm__(
+    "__real__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE");
 query::SearchServiceResult
-wrapped_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *) __asm__(
-    "__wrap__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE");
+wrapped_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *, std::optional<std::uint64_t> *) __asm__(
+    "__wrap__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE");
 query::SearchServiceResult wrapped_execute(const query::SearchService *service,
     const SearchTask &task,
-    query::CacheObservation *observation) {
+    query::CacheObservation *observation, std::optional<std::uint64_t> *snapshot_version) {
     const auto id = task.request()->request_id;
     if (id < executions.size()) ++executions[static_cast<std::size_t>(id)];
     if (arm.exchange(false)) {
         entered.store(true);
         while (!released.load()) std::this_thread::yield();
     }
-    return real_execute(service, task, observation);
+    return real_execute(service, task, observation, snapshot_version);
 }
 TaskSubmitResult real_submit(
     WorkerPool *, std::unique_ptr<WorkerTask> &) __asm__("__real__ZN8siftwing11concurrency10WorkerPool10try_submitERSt10unique_ptrINS0_10WorkerTaskESt14default_deleteIS3_EE");

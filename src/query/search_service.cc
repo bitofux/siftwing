@@ -528,6 +528,8 @@ struct SearchService::Impl {
     std::unique_ptr<snapshot::SnapshotManager> snapshots;
     Pipeline pipeline;
     cache::VersionedLru cache;
+    bool loading_stopped = false; ///< 仅控制者访问；停止后不重新创建Loader。
+    std::unique_ptr<snapshot::SnapshotLoader> loader; ///< 最后声明，先join再销毁借用的Manager。
     Impl(Options selected, std::unique_ptr<snapshot::SnapshotManager> loaded, Pipeline resources)
         : options(std::move(selected)), snapshots(std::move(loaded)), pipeline(std::move(resources)),
           cache(options.cache) {}
@@ -553,17 +555,22 @@ base::Result<std::unique_ptr<SearchService>> SearchService::create(SearchService
     }
 }
 SearchServiceResult SearchService::execute(
-    const concurrency::SearchTask &task, CacheObservation *observation) const {
+    const concurrency::SearchTask &task, CacheObservation *observation,
+    std::optional<std::uint64_t> *snapshot_version) const {
     const auto observe = [observation](CacheObservation value) noexcept {
         if (observation)
             *observation = value;
     };
     observe(CacheObservation::not_checked);
+    if (snapshot_version)
+        snapshot_version->reset();
     if (!task.valid()) return Status::invalid_request;
     try {
         // 每次调用持有同一完整快照；响应头、版本缓存键和计算共享其生命期。
         const auto snapshot = state_->snapshots->current();
         const auto &reader = *snapshot;
+        if (snapshot_version)
+            *snapshot_version = reader.manifest()->snapshot.value();
         const auto o = parse_request(state_->options, task);
         Json out(o.output_bytes); header(out, o, *reader.manifest());
         std::optional<cache::CacheKey> key;
@@ -578,9 +585,16 @@ SearchServiceResult SearchService::execute(
             auto canonical = is_search || o.normalize_key
                 ? take(text::normalize_utf8(o.input, {cap, cap})) : o.input;
             // JSON数组按解析后的有效参数编码，键序/省略默认值等价，字符串不会有拼接歧义。
-            const auto params = is_search
+            auto params = is_search
                 ? nlohmann::json::array({o.top_k, o.mode == QueryMode::all, o.window, o.leading, o.output_bytes})
                 : nlohmann::json::array({o.top_k, o.normalize_key, o.output_bytes});
+            // 版本身份可回滚/复用；完整清单绑定六载荷与全部响应元数据，防止旧计算迟到写串库。
+            // 只读内存，无文件I/O；固定64字节身份纳入原LRU键/字节预算，不保存无界版本账本。
+            // Reader已验证全部内容；此处只编码固定结构元数据，不重套初始版本的载荷预算。
+            constexpr auto identity_limit = std::numeric_limits<std::uint64_t>::max();
+            const auto canonical_manifest = take(snapshot::serialize_manifest(
+                *reader.manifest(), {identity_limit, identity_limit, identity_limit}));
+            params.push_back(take(snapshot::sha256_bytes(canonical_manifest)));
             key = cache::CacheKey{reader.manifest()->snapshot.value(),
                 is_search ? cache::Operation::search : cache::Operation::suggest,
                 std::move(canonical), params.dump()};
@@ -604,6 +618,28 @@ SearchServiceResult SearchService::execute(
         return out.bytes();
     } catch (const Failure &error) { return error.status; }
     catch (const nlohmann::json::parse_error &) { return Status::invalid_request; }
+}
+snapshot::SnapshotHandle SearchService::current_snapshot() const noexcept {
+    return state_->snapshots->current();
+}
+snapshot::SnapshotPublishResult SearchService::publish_candidate(
+    snapshot::SnapshotHandle candidate) noexcept {
+    return state_->snapshots->publish_candidate(std::move(candidate));
+}
+snapshot::SnapshotLoadSubmit SearchService::try_load_candidate(snapshot::SnapshotLoadRequest request) {
+    if (state_->loading_stopped)
+        return snapshot::SnapshotLoadSubmit::stopped;
+    if (!state_->loader)
+        state_->loader = std::make_unique<snapshot::SnapshotLoader>(*state_->snapshots);
+    return state_->loader->try_submit(std::move(request));
+}
+std::optional<snapshot::SnapshotLoadCompletion> SearchService::take_loaded_candidate() {
+    return state_->loader ? state_->loader->take_completed() : std::nullopt;
+}
+void SearchService::stop_loading() {
+    state_->loading_stopped = true;
+    if (state_->loader)
+        state_->loader->join();
 }
 std::string SearchService::server_info() const {
     const auto &o = state_->options;

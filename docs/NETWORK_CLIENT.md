@@ -25,7 +25,7 @@ SEARCH必需`--query`，可选`--mode or|and`（默认or）、`--top-k`（默认
 
 ## SERVER_INFO
 
-正式服务仅接纳空JSON对象（允许JSON空白），所属Sub直接返回固定信息，继续服从单在途、输出硬限和请求期限。非空对象为INVALID_REQUEST；响应超Body预算或输出硬限沿RESOURCE_LIMIT替代／局部关闭。默认未配置元信息的独立Sub和旧协议探针仍拒绝该请求。
+正式服务仅接纳空JSON对象（允许JSON空白），所属Sub按次取得完整拥有信息，单响应内版本/构建字段一致，继续服从单在途、输出硬限和请求期限。非空对象为INVALID_REQUEST；响应超Body预算或输出硬限沿RESOURCE_LIMIT替代／局部关闭。默认未配置元信息的独立Sub和旧协议探针仍拒绝该请求。
 
 成功Body字段：
 

@@ -3,7 +3,7 @@
  * FILE    : manager.hpp
  * AUTHOR  : bitofux
  * DATE    : 2026-10-16
- * BRIEF   : 拥有当前只读快照及同步候选加载结果，尚不发布候选
+ * BRIEF   : 拥有当前只读快照、同步候选报告及显式原子发布入口
  */
 #pragma once
 #include "siftwing/snapshot/reader.hpp"
@@ -17,13 +17,20 @@ struct SnapshotLoadResult final {
     std::uint64_t requested_version; ///< 请求身份；失败时同样保留，不表示当前版本。
     base::Result<SnapshotHandle> outcome; ///< 拥有候选或原Reader诊断；异常不生成报告。
 };
+/** @brief 显式发布判定；不按版本数值排序，加载成功本身不触发发布。 */
+enum class SnapshotPublishResult {
+    published,        ///< 已替换current；已有读者/报告继续拥有旧Reader。
+    unchanged,        ///< 候选与current是同一Reader对象，没有替换。
+    invalid_candidate ///< 空句柄或移空Reader，current保持。
+};
 
 /**
- * @brief 管理固定当前快照及最后一次同步加载结果；候选成功也不替换当前快照
- * @note current可与current及load_candidate并发；last_load/load_candidate由控制者串行调用。
+ * @brief 管理当前快照及最后加载结果；仅显式发布才替换当前快照
+ * @note current可与current、publish_candidate及load_candidate并发；发布由单控制者串行调用。
+ *     last_load/load_candidate仍由控制者串行调用；Loader独占它们时也允许控制者发布。
  *     Manager在所有成员调用期间须稳定存活；析构不能与成员调用并发。
  *     已取得的句柄/报告可跨Manager析构独立只读；借用Reader部件须保留其句柄。
- *     没有后台线程、发布接口或进程内存硬上限，外部报告可延长旧候选生命期。
+ *     不创建线程或限制进程内存，外部报告也可延长旧快照生命期；不承诺无锁/硬时限。
  */
 class SnapshotManager final {
 public:
@@ -57,8 +64,21 @@ public:
         base::SnapshotVersion version,
         const SnapshotReadLimits &limits);
 
-    /** @brief 返回非空拥有句柄；不分配，不改变当前版本，可并发读取。 */
+    /** @brief 原子取得非空拥有句柄；不分配，跨发布仍拥有同一完整Reader。 */
     [[nodiscard]] SnapshotHandle current() const noexcept;
+
+    /**
+     * @brief 原子发布完整只读Reader；拒空/移空，不分配、不访问文件或修改last_load
+     * @param[in] candidate
+     *     按值取得共享所有权；须来自真实Reader成功加载，禁止通过可变别名移动或修改其对象。
+     *
+     * @return
+     *     published/unchanged/invalid_candidate；拒绝不改current。相同版本的不同Reader也可发布。
+     * @note
+     *     版本是不透明身份，允许0、max及回滚。发布后才取得句柄的读者见此或更后发布；
+     *     已取得句柄继续旧Reader。原子交换锁外释放旧份额，最后拥有者决定实际回收时点。
+     */
+    [[nodiscard]] SnapshotPublishResult publish_candidate(SnapshotHandle candidate) noexcept;
 
     /** @brief 返回非空拥有报告；与load_candidate串行，后续替换不使已有报告失效。 */
     [[nodiscard]] std::shared_ptr<const SnapshotLoadResult> last_load() const noexcept;
@@ -87,7 +107,7 @@ public:
 private:
     SnapshotManager(
         SnapshotHandle current, std::shared_ptr<const SnapshotLoadResult> report) noexcept;
-    const SnapshotHandle current_; ///< 初始完整Reader；构造后不再写，支持并发复制句柄。
+    SnapshotHandle current_; ///< 完整Reader；构造后仅通过shared_ptr原子自由函数访问。
     std::shared_ptr<const SnapshotLoadResult> last_load_; ///< 控制者串行替换，报告自身只读拥有。
 };
 } // namespace siftwing::snapshot

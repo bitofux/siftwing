@@ -41,14 +41,14 @@ struct ReleaseGate {
 };
 }
 query::SearchServiceResult
-real_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *) __asm__(
-    "__real__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE");
+real_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *, std::optional<std::uint64_t> *) __asm__(
+    "__real__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE");
 query::SearchServiceResult
-wrapped_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *) __asm__(
-    "__wrap__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationE");
+wrapped_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *, std::optional<std::uint64_t> *) __asm__(
+    "__wrap__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE");
 query::SearchServiceResult wrapped_execute(const query::SearchService *service,
     const SearchTask &task,
-    query::CacheObservation *observation) {
+    query::CacheObservation *observation, std::optional<std::uint64_t> *snapshot_version) {
     worker = true;
     const auto id = task.request()->request_id;
     if (id < executions.size())
@@ -58,7 +58,7 @@ query::SearchServiceResult wrapped_execute(const query::SearchService *service,
         while (!release_job.load())
             std::this_thread::yield();
     }
-    return real_execute(service, task, observation);
+    return real_execute(service, task, observation, snapshot_version);
 }
 void real_pool_stop(WorkerPool *) __asm__(
     "__real__ZN8siftwing11concurrency10WorkerPool12request_stopEv");
