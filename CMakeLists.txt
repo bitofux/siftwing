@@ -206,6 +206,10 @@ add_library(siftwing_snapshot_reader STATIC src/snapshot/reader.cc)
 target_link_libraries(siftwing_snapshot_reader PUBLIC siftwing_snapshot_manifest
     siftwing_document_store siftwing_weights)
 
+# Manager固定当前句柄并保存同步候选结果，不创建线程或发布候选。
+add_library(siftwing_snapshot_manager STATIC src/snapshot/manager.cc)
+target_link_libraries(siftwing_snapshot_manager PUBLIC siftwing_snapshot_reader)
+
 # 建库与查询共享拥有型管线，生产目标只组合文本阶段，不耦合文档读取或具体中文实现。
 add_library(siftwing_text_pipeline STATIC src/text/text_pipeline.cc)
 target_link_libraries(siftwing_text_pipeline PUBLIC siftwing_text_normalization siftwing_term_frequency)
@@ -320,7 +324,7 @@ target_link_libraries(siftwing_versioned_lru PUBLIC siftwing_base Threads::Threa
 add_library(siftwing_search_service STATIC src/query/search_service.cc)
 target_link_libraries(siftwing_search_service PUBLIC siftwing_search_task
     siftwing_metrics siftwing_versioned_lru
-    PRIVATE siftwing_snapshot_reader siftwing_top_k siftwing_recommendation siftwing_summary
+    PRIVATE siftwing_snapshot_manager siftwing_top_k siftwing_recommendation siftwing_summary
     siftwing_highlight siftwing_cppjieba_tokenizer siftwing_utf8cpp siftwing_json)
 add_library(siftwing_online_server STATIC src/net/online_server.cc)
 target_link_libraries(siftwing_online_server PUBLIC siftwing_protocol_sub_reactor siftwing_worker_pool siftwing_search_service siftwing_metrics)
@@ -1026,6 +1030,14 @@ if(BUILD_TESTING)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/writer_compile_contract.cmake")
     set_tests_properties(snapshot.writer snapshot.writer_reference snapshot.writer_race
         snapshot.writer_ingestion snapshot.writer_compile_contract PROPERTIES TIMEOUT 60)
+    add_executable(siftwing_snapshot_manager_test tests/integration/snapshot_manager_test.cc)
+    target_link_libraries(siftwing_snapshot_manager_test PRIVATE siftwing_snapshot_manager Threads::Threads)
+    target_link_options(siftwing_snapshot_manager_test PRIVATE "-Wl,--wrap=_Znwm"
+        "-Wl,--wrap=_ZN8siftwing8snapshot14SnapshotReader4openERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS_4base6detail8StrongIdINSB_18SnapshotVersionTagEEERKNS0_18SnapshotReadLimitsE")
+    add_test(NAME snapshot.manager COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_manager_test.py"
+        --native "$<TARGET_FILE:siftwing_snapshot_manager_test>" --parent "${CMAKE_CURRENT_BINARY_DIR}")
+    set_tests_properties(snapshot.manager PROPERTIES TIMEOUT 180)
     add_executable(siftwing_reader_test tests/unit/reader_test.cc)
     target_link_libraries(siftwing_reader_test PRIVATE siftwing_snapshot_reader siftwing_snapshot_writer)
     foreach(operation openat pread fstat fstatat close fdopendir readdir closedir)

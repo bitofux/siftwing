@@ -8,7 +8,7 @@
  */
 #include "siftwing/query/search_service.hpp"
 #include <nlohmann/json.hpp>
-#include "siftwing/snapshot/reader.hpp"
+#include "siftwing/snapshot/manager.hpp"
 #include "siftwing/query/top_k.hpp"
 #include "siftwing/query/recommendation.hpp"
 #include "siftwing/query/summary.hpp"
@@ -525,11 +525,11 @@ void validate_config(const SearchServiceConfig &o) {
 } // namespace
 struct SearchService::Impl {
     Options options;
-    snapshot::SnapshotReader reader;
+    std::unique_ptr<snapshot::SnapshotManager> snapshots;
     Pipeline pipeline;
     cache::VersionedLru cache;
-    Impl(Options selected, snapshot::SnapshotReader loaded, Pipeline resources)
-        : options(std::move(selected)), reader(std::move(loaded)), pipeline(std::move(resources)),
+    Impl(Options selected, std::unique_ptr<snapshot::SnapshotManager> loaded, Pipeline resources)
+        : options(std::move(selected)), snapshots(std::move(loaded)), pipeline(std::move(resources)),
           cache(options.cache) {}
 };
 SearchService::SearchService(std::unique_ptr<Impl> state) noexcept : state_(std::move(state)) {}
@@ -539,14 +539,14 @@ base::Result<std::unique_ptr<SearchService>> SearchService::create(SearchService
     try {
         validate_config(config);
         Options o; static_cast<SearchServiceConfig &>(o) = std::move(config);
-        auto reader = take(snapshot::SnapshotReader::open(o.parent,
+        auto snapshots = take(snapshot::SnapshotManager::open(o.parent,
             take(base::SnapshotVersion::from_integer(o.version)), read_limits(o)));
         auto p = pipeline(o);
         // cppjieba工厂独立读取已验证文件；重核SHA后才发布组合，不将路径共享给worker。
         for (const auto &resource : p.resources)
             if (take(snapshot::sha256_bytes(load(resource.path, o.resource_bytes))) != resource.sha)
                 throw Failure("service.changed", "初始化期间资源变化");
-        auto state = std::make_unique<Impl>(std::move(o), std::move(reader), std::move(p));
+        auto state = std::make_unique<Impl>(std::move(o), std::move(snapshots), std::move(p));
         return Output::success(std::unique_ptr<SearchService>(new SearchService(std::move(state))));
     } catch (const Failure &error) {
         return Output::failure({error.what(), error.context});
@@ -561,8 +561,11 @@ SearchServiceResult SearchService::execute(
     observe(CacheObservation::not_checked);
     if (!task.valid()) return Status::invalid_request;
     try {
+        // 每次调用持有同一完整快照；响应头、版本缓存键和计算共享其生命期。
+        const auto snapshot = state_->snapshots->current();
+        const auto &reader = *snapshot;
         const auto o = parse_request(state_->options, task);
-        Json out(o.output_bytes); header(out, o, *state_->reader.manifest());
+        Json out(o.output_bytes); header(out, o, *reader.manifest());
         std::optional<cache::CacheKey> key;
         if (o.cache.capacity == 0)
             observe(CacheObservation::disabled);
@@ -578,7 +581,7 @@ SearchServiceResult SearchService::execute(
             const auto params = is_search
                 ? nlohmann::json::array({o.top_k, o.mode == QueryMode::all, o.window, o.leading, o.output_bytes})
                 : nlohmann::json::array({o.top_k, o.normalize_key, o.output_bytes});
-            key = cache::CacheKey{state_->reader.manifest()->snapshot.value(),
+            key = cache::CacheKey{reader.manifest()->snapshot.value(),
                 is_search ? cache::Operation::search : cache::Operation::suggest,
                 std::move(canonical), params.dump()};
             observe(CacheObservation::miss);
@@ -591,8 +594,8 @@ SearchServiceResult SearchService::execute(
                 observe(CacheObservation::unavailable);
             }
         }
-        if (o.command == "SEARCH") search(out, o, state_->reader, state_->pipeline);
-        else suggest(out, o, state_->reader);
+        if (o.command == "SEARCH") search(out, o, reader, state_->pipeline);
+        else suggest(out, o, reader);
         out.raw("}");
         if (key) {
             try { (void)state_->cache.put(*key, out.bytes()); }
@@ -604,7 +607,8 @@ SearchServiceResult SearchService::execute(
 }
 std::string SearchService::server_info() const {
     const auto &o = state_->options;
-    const auto &m = *state_->reader.manifest();
+    const auto snapshot = state_->snapshots->current();
+    const auto &m = *snapshot->manifest();
     return nlohmann::json{{"schema_version", 1}, {"command", "SERVER_INFO"},
         {"protocol_version", 1}, {"snapshot_version", std::to_string(m.snapshot.value())},
         {"build_version", m.build_version},
@@ -613,10 +617,11 @@ std::string SearchService::server_info() const {
         {"cache_enabled", o.cache.capacity != 0}}.dump();
 }
 std::uint64_t SearchService::index_version() const noexcept {
-    return state_->reader.manifest()->snapshot.value();
+    return state_->snapshots->current()->manifest()->snapshot.value();
 }
 metrics::Index SearchService::index_stats() const noexcept {
-    const auto &manifest = *state_->reader.manifest();
+    const auto snapshot = state_->snapshots->current();
+    const auto &manifest = *snapshot->manifest();
     return {manifest.snapshot.value(),
         manifest.search.documents,
         manifest.search.terms,

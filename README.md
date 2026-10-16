@@ -386,6 +386,9 @@ DF 和文档/语料统计；该构建器不自行去重、不使用推荐累计�
 成功后只读拥有全部数据且不保留fd。数值运行环境须复现保存的规范权重字节；
 Query、候选集合与余弦排序见上文；正式离线建库已接通；本地查询见[CLI.md](docs/CLI.md)，在线热切换留给其模块。
 
+`siftwing_snapshot_manager`提供[当前快照与同步加载结果](docs/SNAPSHOT_MANAGER.md)，
+在线查询按次持有共享只读Reader；候选完整加载的成功/失败结果独立保存，尚不切换在线版本或后台加载。
+
 [快照往返验收](docs/SNAPSHOT_ROUNDTRIP.md)通过真实Writer/Reader及独立Python参考，验证
 固定元数据下重复构建、输入排列变化和加载后再发布的八文件一致性；另有原创TXT/RSS经
 英文文本管线、SimHash去重及独立推荐累计到快照加载的完整测试链路。

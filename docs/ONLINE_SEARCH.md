@@ -1,6 +1,6 @@
 # 在线搜索闭环
 
-`SearchService`拥有完整只读Reader和固定分词/停用资源，`OnlineServer`组合Main、固定ProtocolSubReactor及WorkerPool。查询/推荐复用V1核心，worker不持Connection、socket或身份表。公共合同见[服务](../include/siftwing/query/search_service.hpp)与[控制者](../include/siftwing/net/online_server.hpp)。
+`SearchService`通过[SnapshotManager](SNAPSHOT_MANAGER.md)拥有完整只读Reader，并拥有固定分词/停用资源，`OnlineServer`组合Main、固定ProtocolSubReactor及WorkerPool。查询/推荐复用V1核心，worker不持Connection、socket或身份表。公共合同见[服务](../include/siftwing/query/search_service.hpp)与[控制者](../include/siftwing/net/online_server.hpp)。
 
 ```sh
 build/release/siftwing-server --snapshot /absolute/snapshots --version 1 --port 9000
@@ -42,7 +42,7 @@ k为1..服务max_top_k；窗口1..4096，context为0..window-1。降低窗口须
 拒绝响应；等待worker或部分输出时不交付下一帧。SHUT_WR保留完整请求，排空后主动继续
 缓存帧，不要求客户端另发字节；排空不表示对端收到。不同连接仍可独立推进。
 
-OnlineServer的create/run_once/port/report/stop/shutdown/析构由创建线程串行；Main在该线程只接入。各Sub提交拥有请求，worker共享固定只读查询资源与独立mutex保护的[可选LRU](VERSIONED_LRU.md)，生成最多一个RoutedCompletion并[发布通知](COMPLETION_WAKEUP.md)，所属Sub校验完整连接身份/等待请求后复制输出并预算发送。服务及提交器生命覆盖全部worker/Sub join。
+OnlineServer的create/run_once/port/report/stop/shutdown/析构由创建线程串行；Main在该线程只接入。各Sub提交拥有请求，每次execute持有同一份共享只读快照，贯穿响应版本、缓存键和计算；worker共享固定只读查询资源与独立mutex保护的[可选LRU](VERSIONED_LRU.md)，生成最多一个RoutedCompletion并[发布通知](COMPLETION_WAKEUP.md)，所属Sub校验完整连接身份/等待请求后复制输出并预算发送。服务及提交器生命覆盖全部worker/Sub join。
 
 立即stop先Main close/销毁返回，请求所有Sub停止并等quiescing（最后提交器调用已返回），随后WorkerPool close/drain/join，完整发布及通知都返回后撤目标、release各Sub，再join其连接/结果/fd清理。正常shutdown先关闭任务准入，向全部Sub发布同一绝对排空期限，再Main close；空闲/半包关闭，已pending响应排空或截止关闭，不读取下一帧。Sub quiescing后沿相同worker join/撤目标/release/Sub join屏障收口；网络截止不是整个退出的硬上限。quiescing报告不证明queue已经closed，closed/empty/worker统计不证明调用静止。部分启动失败按同顺序回滚；通知fd不能在晚到write前关闭。
 

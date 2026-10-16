@@ -40,8 +40,9 @@ enum class CacheObservation {
 /** @brief 成功拥有完整JSON对象Body（无LF），失败为六种线上安全状态之一，无部分结果。 */
 using SearchServiceResult = std::variant<std::string, net::ErrorStatus>;
 /**
- * @brief 完整Reader与固定分词/停用资源的拥有者；查询只读内存，不访问socket或文件
- * @note 不可copy/move；同实例execute可并发，配置、Reader及初始化后的分词资源只读，
+ * @brief 通过Manager拥有固定完整Reader，并拥有分词/停用资源；查询只读内存，不访问socket或文件
+ * @note 不可copy/move；同实例execute可并发，配置、当前Reader及初始化后的分词资源只读，
+ *     每次execute保留同一份共享只读快照句柄用于响应版本、缓存键和计算；尚不切换版本，
  *     中间结果为调用局部，可选LRU独立mutex保护，业务计算不持缓存锁。
  *     调用者保证到最后调用/worker join返回才销毁；不认证建库资源相容、不热切换、不取消。
  *     既有业务结果/错误和V1 CLI接口不变，缓存只拥有成功JSON Body，无任务/连接借用。
