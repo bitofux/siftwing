@@ -45,6 +45,7 @@ build/release/siftwing-cli SEARCH --snapshot "$siftwing_demo" --version 1 \
 | 调整启动行为与观察运行 | [配置](docs/SERVER_CONFIG.md)、[日志](docs/LOGGING.md)、[指标](docs/METRICS.md)、[信号](docs/SIGNALS.md) |
 | 理解加载、发布、缓存与旧请求 | [后台加载](docs/SNAPSHOT_LOADER.md)、[安全发布](docs/SNAPSHOT_PUBLICATION.md)、[版本缓存](docs/VERSIONED_LRU.md) |
 | 复跑测试、故障、性能与自动检查 | [TESTING](docs/TESTING.md)、[可靠性](docs/V3_RELIABILITY.md)、[性能](docs/PERFORMANCE.md)、[CI](docs/CI.md) |
+| 沿六条调用链观察字段、线程和故障 | [全项目调试回放](docs/DEBUGGING.md) |
 | 查细粒度接口与历史基线 | [组件参考](docs/COMPONENTS.md)、[V1](docs/V1.md)、[V2](docs/V2.md)、[V1 调试入口](docs/V1_DEBUGGING.md) |
 
 ## 当前边界
