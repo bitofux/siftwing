@@ -48,7 +48,7 @@ OnlineServer的create/run_once/port/report/stop/shutdown/析构由创建线程�
 
 真实CTest覆盖生产indexer→server→TCP查询/推荐、独立数学/Unicode参考、英文稀疏身份/中文共享只读资源、参数/预算/启动失败，以及部分启动分配故障、worker分配异常固定安全响应、真实结果full、accepted后通知失败和晚到通知停止屏障。插桩范围以实际日志为准；不证明任意调度、DSO内部、真实OOM、质量或性能。
 
-空闲/请求期限已由[Sub策略](DEADLINES.md)接入，默认关闭、可通过sub配置或`--idle-timeout-ms`/`--request-timeout-ms`启用，到期关连接而不取消worker。正式SERVER_INFO按次返回当前快照公开元信息，四命令[网络客户端](NETWORK_CLIENT.md)已提供；已有显式[安全发布/回滚控制](SNAPSHOT_PUBLICATION.md)，正式CLI尚无reload入口；取消、全局字节准入和signalfd属于后续模块；当前优雅退出边界见[关闭合同](GRACEFUL_SHUTDOWN.md)。
+空闲/请求期限已由[Sub策略](DEADLINES.md)接入，默认关闭、可通过sub配置或`--idle-timeout-ms`/`--request-timeout-ms`启用，到期关连接而不取消worker。正式SERVER_INFO按次返回当前快照公开元信息，四命令[网络客户端](NETWORK_CLIENT.md)已提供；已有显式[安全发布/回滚控制](SNAPSHOT_PUBLICATION.md)，正式CLI尚无reload入口；[signalfd终止控制](SIGNALS.md)已接入Main；取消和全局字节准入仍属后续扩展；当前优雅退出边界见[关闭合同](GRACEFUL_SHUTDOWN.md)。
 
 每连接已有[输出水位与硬限策略](OUTPUT_BACKPRESSURE.md)，可由OnlineServerConfig.sub.output或[启动配置](SERVER_CONFIG.md)配置，
 命令默认使用自动值，可用`--output-low-bytes`/`--output-high-bytes`/`--output-hard-bytes`显式设置。输出过大时Sub尝试同ID固定RESOURCE_LIMIT，错误也无法容纳则局部关闭；

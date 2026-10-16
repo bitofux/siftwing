@@ -12,7 +12,7 @@ build/release/siftwing-server --snapshot /absolute/snapshots --version 1 --shutd
 
 SIGINT、SIGTERM 和 `--run-ms` 到期使用新流程。`--shutdown-ms` 是规范十进制
 0..86400000 毫秒，默认1000；0也建立截止点并立即截止。空闲连接不等待整个窗口。
-当前仍使用进程入口信号处理标志，没有接入 signalfd。故障路径不等待正常排空。
+[终止信号](SIGNALS.md)由线程创建前屏蔽、Main signalfd/epoll观察并请求原关闭流程；故障路径不等待正常排空。
 
 ## 准入与排空边界
 

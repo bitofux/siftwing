@@ -68,11 +68,20 @@ public:
      *     [0,100]；非法EINVAL且状态保持，已经停止优先返回首因。
      *
      * @return
-     *     空为仍可运行；业务INVALID_REQUEST/RESOURCE_LIMIT只是响应，不终止服务。
+     *     空为无故障；启用signalfd后须观察shutdown_signal()并由调用者选择shutdown期限。
+     *     业务INVALID_REQUEST/RESOURCE_LIMIT只是响应，不终止服务。
      * @throws
      *     控制线程同步/join异常可传播；析构仍须撤销全部调用入口。
      */
     [[nodiscard]] std::error_code run_once(int timeout_ms);
+    /**
+     * @brief 创建线程串行观察Main已消费的首个正常终止信号，关闭后仍保留
+     * @return
+     *     0表示尚未观察，其他为SIGINT/SIGTERM；不自动shutdown、不覆盖运行故障。
+     * @note 启用config.main.termination_signals前须在线程创建前屏蔽两信号，所有相关线程保持。
+     *     本组件不设置或恢复mask；默认禁用，库调用者自行编排进程信号策略。
+     */
+    [[nodiscard]] int shutdown_signal() const noexcept;
     /**
      * @brief Main关闭返回→Sub静止提交→worker完整join→撤目标/release→Sub join，幂等
      * @return

@@ -217,6 +217,7 @@ struct OnlineServer::Impl {
     std::atomic<int> publication_error{0};
     OnlineServerReport totals;
     std::size_t worker_count = 0;
+    int shutdown_signal = 0; // 创建线程保存Main首个正常终止信号，不替代故障首因。
     std::chrono::steady_clock::time_point shutdown_begin{};
     std::uint64_t shutdown_us = 0;
     bool shutdown_started = false;
@@ -357,7 +358,12 @@ std::error_code OnlineServer::run_once(int timeout_ms) {
         state_->record(step.error);
         return state_->stop();
     }
+    if (step.stop == MainReactorStop::shutdown_requested && state_->shutdown_signal == 0)
+        state_->shutdown_signal = step.signal_number;
     return {};
+}
+int OnlineServer::shutdown_signal() const noexcept {
+    return state_->shutdown_signal;
 }
 std::error_code OnlineServer::stop() {
     return state_->stop();

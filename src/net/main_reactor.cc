@@ -30,9 +30,9 @@ std::error_code current_exception() noexcept {
 }
 } // namespace
 MainReactor::MainReactor(std::vector<MainReactorTarget> &&targets, Listener &&listener,
-    UniqueFd &&epoll, UniqueFd &&wakeup, MainReactorConfig config) noexcept
+    UniqueFd &&epoll, UniqueFd &&wakeup, UniqueFd &&termination, MainReactorConfig config) noexcept
     : targets_(std::move(targets)), listener_(std::move(listener)), epoll_(std::move(epoll)),
-      wakeup_(std::move(wakeup)), config_(config) {}
+      wakeup_(std::move(wakeup)), termination_(std::move(termination)), config_(config) {}
 MainReactor::~MainReactor() noexcept {
     try { (void)close(); } catch (...) { std::terminate(); }
 }
@@ -48,6 +48,12 @@ std::variant<std::unique_ptr<MainReactor>, std::error_code> MainReactor::create(
                 return code(EINVAL);
     }
     for (const auto &target : targets) if (target.queue->status().closed) return code(ECANCELED);
+    UniqueFd termination;
+    if (config.termination_signals) {
+        auto source = create_termination_signalfd();
+        if (auto *error = std::get_if<std::error_code>(&source)) return *error;
+        termination = std::move(std::get<UniqueFd>(source));
+    }
     auto table = targets;
     auto listening = Listener::create(listen);
     if (auto *error = std::get_if<std::error_code>(&listening)) return *error;
@@ -60,8 +66,10 @@ std::variant<std::unique_ptr<MainReactor>, std::error_code> MainReactor::create(
     auto &wakeup = std::get<UniqueFd>(notification);
     if (const auto error = epoll_add(epoll.get(), listener.get(), EPOLLIN, 1)) return error;
     if (const auto error = epoll_add(epoll.get(), wakeup.get(), EPOLLIN, 2)) return error;
+    if (termination)
+        if (const auto error = epoll_add(epoll.get(), termination.get(), EPOLLIN, 3)) return error;
     return std::unique_ptr<MainReactor>(new MainReactor(
-        std::move(table), std::move(listener), std::move(epoll), std::move(wakeup), config));
+        std::move(table), std::move(listener), std::move(epoll), std::move(wakeup), std::move(termination), config));
 }
 std::error_code MainReactor::request_stop() {
     stop_.store(true);
@@ -82,6 +90,8 @@ std::error_code MainReactor::close() {
     }
     if (listener_.get() >= 0) first(cleanup_error_, epoll_remove(epoll_.get(), listener_.get()));
     if (notification) first(cleanup_error_, epoll_remove(epoll_.get(), notification.get()));
+    if (termination_) first(cleanup_error_, epoll_remove(epoll_.get(), termination_.get()));
+    first(cleanup_error_, termination_.close());
     first(cleanup_error_, listener_.close());
     first(cleanup_error_, notification.close());
     first(cleanup_error_, epoll_.close());
@@ -108,7 +118,10 @@ MainReactorStep MainReactor::run_once(int timeout_ms) {
         }
     } catch (...) { fail(step, current_exception()); return step; }
     if (target_closed) { fail(step, code(ECANCELED)); return step; }
-    std::array<epoll_event, 2> events{};
+    if (shutdown_signal_ != 0) {
+        step.stop = MainReactorStop::shutdown_requested; step.signal_number = shutdown_signal_; return step;
+    }
+    std::array<epoll_event, 3> events{};
     const int count = ::epoll_wait(epoll_.get(), events.data(), static_cast<int>(events.size()), timeout_ms);
     // wait后的stop优先；即使通知失败或EINTR也不会继续接入。
     if (stop_.load()) { step.stop = MainReactorStop::closed; step.cleanup_error = close(); return step; }
@@ -129,6 +142,16 @@ MainReactorStep MainReactor::run_once(int timeout_ms) {
             const auto result = drain_eventfd(wakeup_.get());
             if (result.state == EventFdDrainState::failed) { fail(step, result.error); return step; }
         }
+        if (event.data.u64 == 3) {
+            const auto result = drain_termination_signalfd(termination_.get());
+            if (result.state == SignalFdDrainState::failed) { fail(step, result.error); return step; }
+            if (shutdown_signal_ == 0) shutdown_signal_ = result.signal_number;
+        }
+    }
+    // 整批控制来源均处理成功才报告正常终止；同批监听就绪也不得再accept。
+    if (stop_.load()) { step.stop = MainReactorStop::closed; step.cleanup_error = close(); return step; }
+    if (shutdown_signal_ != 0) {
+        step.stop = MainReactorStop::shutdown_requested; step.signal_number = shutdown_signal_; return step;
     }
     if (!accept_ready) return step;
     while (step.accept_attempts < config_.accept_attempt_budget && !stop_.load()) {

@@ -57,8 +57,11 @@ target_link_libraries(siftwing_eventfd_wakeup PUBLIC siftwing_fd_handoff_queue)
 add_library(siftwing_deadline STATIC src/net/deadline_queue.cc src/net/deadline_timer.cc)
 target_link_libraries(siftwing_deadline PUBLIC siftwing_socket)
 
+add_library(siftwing_signalfd STATIC src/net/signalfd_source.cc)
+target_link_libraries(siftwing_signalfd PUBLIC siftwing_socket Threads::Threads)
+
 add_library(siftwing_main_reactor STATIC src/net/main_reactor.cc)
-target_link_libraries(siftwing_main_reactor PUBLIC siftwing_listener siftwing_epoll siftwing_eventfd_wakeup)
+target_link_libraries(siftwing_main_reactor PUBLIC siftwing_listener siftwing_epoll siftwing_eventfd_wakeup siftwing_signalfd)
 
 add_library(siftwing_buffer STATIC src/net/buffer.cc)
 target_link_libraries(siftwing_buffer PUBLIC siftwing_base)
@@ -457,6 +460,13 @@ if(BUILD_TESTING)
         -Wl,--wrap=epoll_ctl -Wl,--wrap=epoll_wait -Wl,--wrap=write -Wl,--wrap=recv -Wl,--wrap=close -Wl,--wrap=_Znwm)
     add_test(NAME net.multi_reactor_failures COMMAND siftwing_multi_reactor_failure_test)
     set_tests_properties(net.multi_reactor net.multi_reactor_concurrency net.multi_reactor_failures PROPERTIES TIMEOUT 45)
+    add_executable(siftwing_signalfd_test tests/unit/signalfd_test.cc)
+    target_link_libraries(siftwing_signalfd_test PRIVATE siftwing_main_reactor)
+    target_link_options(siftwing_signalfd_test PRIVATE -Wl,--wrap=pthread_sigmask -Wl,--wrap=signalfd
+        -Wl,--wrap=read -Wl,--wrap=epoll_ctl -Wl,--wrap=epoll_wait -Wl,--wrap=close)
+    add_test(NAME net.signalfd COMMAND siftwing_signalfd_test)
+    set_tests_properties(net.signalfd PROPERTIES TIMEOUT 30)
+
     add_executable(siftwing_main_reactor_test tests/unit/main_reactor_test.cc)
     target_link_libraries(siftwing_main_reactor_test PRIVATE siftwing_main_reactor)
     add_test(NAME net.main_reactor COMMAND siftwing_main_reactor_test)
@@ -676,6 +686,15 @@ if(BUILD_TESTING)
             --native "$<TARGET_FILE:siftwing_graceful_server_test>" --subs ${subs})
         set_tests_properties(net.graceful_server_${subs} PROPERTIES TIMEOUT 60)
     endforeach()
+    add_executable(siftwing_signalfd_server_probe apps/server/main.cc tests/support/signalfd_server_probe.cc)
+    target_link_libraries(siftwing_signalfd_server_probe PRIVATE siftwing_server_settings)
+    target_link_options(siftwing_signalfd_server_probe PRIVATE -Wl,--wrap=pthread_sigmask
+        -Wl,--wrap=pthread_create -Wl,--wrap=signalfd -Wl,--wrap=epoll_ctl -Wl,--wrap=close)
+    add_test(NAME net.signalfd_process COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/signalfd_process_test.py"
+        --server "$<TARGET_FILE:siftwing_server>" --probe "$<TARGET_FILE:siftwing_signalfd_server_probe>"
+        --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>")
+    set_tests_properties(net.signalfd_process PROPERTIES TIMEOUT 90)
     add_test(NAME net.graceful_process COMMAND Python3::Interpreter -B
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/graceful_process_test.py"
         --server "$<TARGET_FILE:siftwing_server>" --indexer "$<TARGET_FILE:siftwing_indexer>"
@@ -1056,7 +1075,14 @@ if(BUILD_TESTING)
     add_test(NAME snapshot.publication COMMAND Python3::Interpreter -B
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_publication_test.py"
         --native "$<TARGET_FILE:siftwing_snapshot_publication_test>" --parent "${CMAKE_CURRENT_BINARY_DIR}")
-    set_tests_properties(snapshot.publication PROPERTIES TIMEOUT 180)
+    target_link_options(siftwing_snapshot_publication_test PRIVATE
+        "-Wl,--wrap=_ZN8siftwing8snapshot15SnapshotManager14load_candidateERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS_4base6detail8StrongIdINSB_18SnapshotVersionTagEEERKNS0_18SnapshotReadLimitsE"
+        "-Wl,--wrap=_ZN8siftwing8snapshot14SnapshotLoader4joinEv"
+        "-Wl,--wrap=_ZN8siftwing3net18ProtocolSubReactor13request_drainEl")
+    add_test(NAME net.signalfd_online COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_publication_test.py"
+        --native "$<TARGET_FILE:siftwing_snapshot_publication_test>" --parent "${CMAKE_CURRENT_BINARY_DIR}" --signals)
+    set_tests_properties(snapshot.publication net.signalfd_online PROPERTIES TIMEOUT 180)
     add_executable(siftwing_reader_test tests/unit/reader_test.cc)
     target_link_libraries(siftwing_reader_test PRIVATE siftwing_snapshot_reader siftwing_snapshot_writer)
     foreach(operation openat pread fstat fstatat close fdopendir readdir closedir)

@@ -6,17 +6,10 @@
  * BRIEF   : 严格配置准入与固定资源的在线SEARCH/SUGGEST入口
  */
 #include "siftwing/config/server_settings.hpp"
+#include "siftwing/net/signalfd_source.hpp"
 #include <chrono>
-#include <csignal>
 #include <iostream>
 
-namespace {
-volatile std::sig_atomic_t interrupted = 0;
-void stop_signal(int) {
-    interrupted = 1;
-}
-
-}
 int main(int argc, char **argv) {
     if (argc == 2 && std::string_view(argv[1]) == "--help") {
         std::cout
@@ -67,6 +60,11 @@ int main(int argc, char **argv) {
             return 2;
         }
         auto settings = std::move(configured).value();
+        // 在任何资源/线程创建前建立继承策略；直到进程退出保持，避免pending信号恢复默认动作。
+        if (const auto error = siftwing::net::block_termination_signals()) {
+            std::cerr << "终止信号屏蔽失败，errno=" << error.value() << '\n';
+            return 1;
+        }
         logging_requested = settings.log_level != Level::off;
         auto initialized =
             Logger::create(settings.log_level, settings.log_file, settings.log_rotation);
@@ -78,6 +76,7 @@ int main(int argc, char **argv) {
         emit(Event::server_starting);
         auto config = siftwing::config::online_config(settings);
         config.logger = logger.get();
+        config.main.termination_signals = true;
         const auto duration = settings.run_ms;
         const auto shutdown_ms = settings.shutdown_ms;
         // 只在进程入口装载；worker请求不携带路径，也不重新读取快照或资源。
@@ -97,9 +96,6 @@ int main(int argc, char **argv) {
             return 1;
         }
         auto server = std::move(std::get<std::unique_ptr<siftwing::net::OnlineServer>>(created));
-        if (std::signal(SIGINT, stop_signal) == SIG_ERR
-            || std::signal(SIGTERM, stop_signal) == SIG_ERR)
-            throw std::runtime_error("signal setup failed");
         emit(Event::server_started);
         std::cout << "PORT " << server->port() << '\n';
         std::cout.flush();
@@ -117,7 +113,7 @@ int main(int argc, char **argv) {
         };
         const auto begin = std::chrono::steady_clock::now();
         auto last_metrics = begin;
-        while (!interrupted) {
+        while (true) {
             if (duration
                 && std::chrono::duration_cast<std::chrono::milliseconds>(
                        std::chrono::steady_clock::now() - begin)
@@ -130,6 +126,8 @@ int main(int argc, char **argv) {
                 emit(Event::server_failed, Code::server_io, error.value());
                 return 1;
             }
+            if (server->shutdown_signal() != 0)
+                break;
             const auto sampled = std::chrono::steady_clock::now();
             if (sampled - last_metrics >= std::chrono::seconds(1)) {
                 last_metrics = sampled;

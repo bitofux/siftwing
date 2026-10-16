@@ -31,6 +31,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--native", required=True)
     parser.add_argument("--parent", required=True)
+    parser.add_argument("--signals", action="store_true")
     args = parser.parse_args()
     root = Path(tempfile.mkdtemp(prefix="snapshot-publication-", dir=args.parent))
     try:
@@ -46,7 +47,7 @@ def main():
         sample(broken, 101, "bad", 66)
         (broken / "101" / "COMPLETE").unlink()
         before = {str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*") if p.is_file()}
-        proc = subprocess.run([args.native, str(valid), str(alias), str(broken), str(root / "events")],
+        proc = subprocess.run([args.native, str(valid), str(alias), str(broken), str(root / "events"), *(["signals"] if args.signals else [])],
                               capture_output=True, text=True, timeout=110)
         print(proc.stdout, end="", flush=True)
         if proc.returncode:

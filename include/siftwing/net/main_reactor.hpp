@@ -9,6 +9,7 @@
 
 #include "siftwing/net/eventfd_wakeup.hpp"
 #include "siftwing/net/listener.hpp"
+#include "siftwing/net/signalfd_source.hpp"
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -28,13 +29,14 @@ struct MainReactorTarget {
 struct MainReactorConfig {
     std::size_t accept_attempt_budget = 16; ///< [1,1024]，含EINTR/可重试网络错误，不是CPU硬预算。
     bool tcp_no_delay = false; ///< 为true时对每个新socket单次设置TCP_NODELAY；失败关闭并停止接入。
+    bool termination_signals = false; ///< 启用INT/TERM signalfd；调用者须在线程创建前屏蔽并保持。
 };
 /** @brief 调度结果；终止后保持首因，重复查询零I/O。 */
-enum class MainReactorStop { progress, idle, interrupted, invalid_timeout, failed, closed };
+enum class MainReactorStop { progress, idle, interrupted, invalid_timeout, failed, closed, shutdown_requested };
 /** @brief 一轮统计，accepted=handed_off+rejected；通知失败仍计handed_off。 */
 struct MainReactorStep {
     MainReactorStop stop = MainReactorStop::progress; ///< idle不证明未来无工作。
-    std::size_t events = 0;          ///< 单次epoll_wait返回数，最多2。
+    std::size_t events = 0;          ///< 单次epoll_wait返回数，最多3。
     std::size_t accept_attempts = 0; ///< 实际accept4次数，包括失败和重试。
     std::size_t accepted = 0;        ///< 内核已交付socket数量。
     std::size_t handed_off = 0;      ///< 队列已消费源，目标或其消费者拥有。
@@ -42,12 +44,15 @@ struct MainReactorStep {
     bool accept_budget_exhausted = false; ///< 本轮预算耗尽，不证明监听队列为空，LT下后续继续。
     std::error_code error;          ///< failed首因、interrupted EINTR或invalid_timeout EINVAL。
     std::error_code cleanup_error;  ///< 首个清理诊断，不覆盖error；Linux close不重试。
+    int signal_number = 0;          ///< shutdown_requested的首个INT/TERM；0表示无正常终止请求。
 };
 /**
  * @brief 独占Listener/LT epoll/停止eventfd；只接入和移交，不创建线程、不读写客户端业务
  * @note create/run_once/port/close/析构由所属I/O线程串行调用；request_stop可并发，但对象须存活，
  *     析构前撤销stop入口并等调用者返回。对象不可copy/move，不拥有目标线程或目标资源。
  *     全部目标创建时就绪且开放；运行时发现目标关闭，停止整个Main，不能静默缩容。
+ *     可选signalfd由Main独占；默认不改mask。启用时只能预检本线程，调用者保证其他相关线程
+ *     也已屏蔽INT/TERM并保持。正常信号仅请求关闭，不关闭目标；外层随后选择shutdown期限。
  */
 class MainReactor final {
 public:
@@ -62,7 +67,7 @@ public:
      * @param[in] listen
      *     数值地址仅创建时借用，合同同Listener::create。
      * @param[in] config
-     *     固定合法预算与TCP_NODELAY选择。
+     *     固定合法预算、TCP_NODELAY与可选终止信号；启用时未屏蔽两信号返回EINVAL。
      *
      * @return
      *     完整unique_ptr或generic errno；非法配置EINVAL，已关闭目标ECANCELED，预检不创建I/O。
@@ -104,6 +109,8 @@ public:
      *     每次移交尝试后前进一次；满队列关闭源、不重选、不失败；关闭目标、配置/接入/通知
      *     或移交异常停止接入，保留已提交事实。目标开放性每轮检查，发现关闭不静默缩容。
      *     系统资源错误立即停止，重复run不忙重试。失败映射system_error.code/bad_alloc ENOMEM/其他EIO。
+     *     同批先处理控制事件再接入；首个INT/TERM返回shutdown_requested，保留目标开放，
+     *     后续合法run不再wait/read/accept，返回同信号。立即stop、目标关闭及故障仍优先。
      *
      * @throws
      *     自身通知端撤销mutex的同步异常可抛；目标queue异常在调度边界吸收，源仍由Main关闭。
@@ -124,12 +131,14 @@ public:
     [[nodiscard]] std::error_code close();
 private:
     MainReactor(std::vector<MainReactorTarget> &&targets, Listener &&listener,
-        UniqueFd &&epoll, UniqueFd &&wakeup, MainReactorConfig config) noexcept;
+        UniqueFd &&epoll, UniqueFd &&wakeup, UniqueFd &&termination, MainReactorConfig config) noexcept;
     void fail(MainReactorStep &step, std::error_code error);
     std::vector<MainReactorTarget> targets_; ///< 固定借用表，顺序即轮询顺序，Main不拥有目标。
     Listener listener_;      ///< 所属线程拥有，只用于accept，不读业务。
-    UniqueFd epoll_;         ///< 所属线程拥有，仅监听listener与自己的停止端。
+    UniqueFd epoll_;         ///< 所属线程拥有，监听listener、自己的停止端及可选信号端。
     UniqueFd wakeup_;        ///< mutex保护借用/撤销，先在锁内转交局部拥有者，再锁外close。
+    UniqueFd termination_;   ///< 所属线程独占signalfd，DEL后close；不恢复mask或清除pending。
+    int shutdown_signal_ = 0; ///< 所属线程单调记录首次终止信号；不代表关闭已完成。
     std::mutex wakeup_mutex_; ///< 串行有限notify与拥有者撤销，不在锁内close/queue操作/join。
     std::atomic<bool> stop_{false}; ///< 跨线程单调请求，不表示清理完成。
     MainReactorConfig config_; ///< 创建后不变。

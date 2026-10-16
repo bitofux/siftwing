@@ -12,6 +12,8 @@
 #include <fstream>
 #include <limits>
 #include <new>
+#include <csignal>
+#include <pthread.h>
 
 using namespace siftwing;
 using namespace siftwing::test;
@@ -19,6 +21,15 @@ namespace {
 using Json = nlohmann::json;
 using Published = snapshot::SnapshotPublishResult;
 std::atomic<bool> pin_arm{false}, pin_entered{false}, pin_release{true};
+std::atomic<bool> load_arm{false}, load_entered{false}, load_release{true}, load_join{false};
+std::atomic<unsigned> signal_drains{0};
+std::atomic<bool> query_mask_valid{true}, loader_mask_valid{true};
+bool termination_blocked() {
+    sigset_t set;
+    return ::pthread_sigmask(SIG_BLOCK, nullptr, &set) == 0 && ::sigismember(&set, SIGINT) == 1
+           && ::sigismember(&set, SIGTERM) == 1;
+}
+bool signal_suite = false; // main在线程创建前固定，所有join之后才结束。
 thread_local bool in_query = false;
 thread_local int fail_new = -1;
 unsigned checks = 0;
@@ -31,12 +42,14 @@ void check(bool ok, const char *label) {
 struct Release {
     ~Release() {
         pin_release = true;
+        load_release = true;
     }
 };
 struct Join {
     std::thread &thread;
     ~Join() {
         pin_release = true;
+        load_release = true;
         if (thread.joinable())
             thread.join();
     }
@@ -342,6 +355,111 @@ void online(const std::string &parent, const std::string &log_path) {
     }
     check(found == 2, "both actual execution logs found");
 }
+// 真实在途/排队查询及正在加载候选同时遇终止信号；门禁只控制时序，仍执行完整业务。
+void signaled_online(const std::string &parent, int signo, bool timeout) {
+    net::OnlineServerConfig config;
+    config.workers = 1;
+    config.sub_count = 2;
+    config.main.termination_signals = true;
+    auto created = net::OnlineServer::create(service(parent), config);
+    if (auto *error = std::get_if<std::error_code>(&created))
+        throw std::system_error(*error);
+    auto server = std::move(std::get<std::unique_ptr<net::OnlineServer>>(created));
+    Release release;
+    check(server->shutdown_signal() == 0, "no signal observed before run");
+    unsigned connected = 0;
+    const auto attach = [&] {
+        auto fd = client(server->port());
+        ++connected;
+        await([&] {
+            if (const auto error = server->run_once(0))
+                throw std::system_error(error);
+            return server->report().handed_off == connected;
+        });
+        return fd;
+    };
+    auto running = attach(), queued = attach();
+    pin_entered = false;
+    pin_release = false;
+    pin_arm = true;
+    send_all(running.get(), wire(3, 91, R"({"query":"shared"})"));
+    await([] {
+        return pin_entered.load();
+    });
+    send_all(queued.get(), wire(4, 92, R"({"key":"shared"})"));
+    await([&] {
+        return server->metrics().queues.tasks == 1;
+    });
+    load_entered = false;
+    load_release = false;
+    load_join = false;
+    load_arm = true;
+    check(server->try_load_snapshot({parent, version(101), limits()})
+              == snapshot::SnapshotLoadSubmit::accepted,
+        "real loader accepted before signal");
+    await([] {
+        return load_entered.load();
+    });
+    check(::kill(::getpid(), signo) == 0, "send termination to isolated integration process");
+    check(!server->run_once(100) && server->shutdown_signal() == signo && !server->report().stopped,
+        "signal is successful control request, no premature shutdown");
+    check(!server->run_once(0) && server->shutdown_signal() == signo
+              && server->report().accepted == 2,
+        "repeat control observation does not accept again");
+    signal_drains = 0;
+    std::exception_ptr observer_error;
+    std::thread observer([&] {
+        Release always_release;
+        try {
+            await([] {
+                return signal_drains.load() == 2;
+            });
+            if (!timeout) {
+                pin_release = true;
+                const auto search = response(running.get(), 0x8003, 91);
+                const auto suggest = response(queued.get(), 0x8004, 92);
+                if (search["snapshot_version"] != "100" || search["results"][0]["title"] != "old"
+                    || suggest["snapshot_version"] != "100"
+                    || suggest["results"][0]["term"] != "shared-old")
+                    throw std::runtime_error("signal drain changed real query results");
+            }
+            // 确认控制者已走到加载器join；加载未释放前shutdown不能完成。
+            await([] {
+                return load_join.load();
+            });
+            load_release = true;
+            pin_release = true;
+        } catch (...) {
+            observer_error = std::current_exception();
+        }
+    });
+    Join join{observer};
+    const auto error = server->shutdown(timeout ? 0 : 5000);
+    observer.join();
+    if (observer_error)
+        std::rethrow_exception(observer_error);
+    check(!error && load_join.load() && query_mask_valid.load() && loader_mask_valid.load(),
+        "shutdown drains loader and workers with inherited mask");
+    const auto report = server->report();
+    check(report.stopped && report.workers.succeeded == 2 && !report.workers.failed
+              && !report.first_error,
+        "running and queued jobs finish once, no signal failure");
+    std::size_t responses = 0, timeouts = 0;
+    for (const auto &sub : report.subs) {
+        check(sub.state == net::ProtocolSubState::joined && sub.active == 0, "Sub owner joined");
+        responses += sub.drain_responses;
+        timeouts += sub.drain_timeouts;
+    }
+    check(
+        timeout ? timeouts == 2 : responses == 2, "normal drain or exact zero deadline preserved");
+    auto done = server->take_loaded_snapshot();
+    check(done && done->report && done->report->outcome
+              && server->current_snapshot()->manifest()->snapshot == version(100),
+        "accepted load retained, never automatically published");
+    check(server->shutdown_signal() == signo && !server->shutdown(-1) && !server->stop(),
+        "signal remains observable after idempotent close");
+}
+
 } // namespace
 
 // GNU ld门禁仍调用真实实现；current在真实原子load之后暂停，execute不伪造业务结果。
@@ -372,6 +490,8 @@ query::SearchServiceResult wrapped_execute(const query::SearchService *s,
     const concurrency::SearchTask &t,
     query::CacheObservation *o,
     std::optional<std::uint64_t> *v) {
+    if (signal_suite && !termination_blocked())
+        query_mask_valid = false;
     struct InQuery {
         InQuery() {
             in_query = true;
@@ -393,15 +513,62 @@ extern "C" void *wrapped_new(std::size_t n) {
         --fail_new;
     return real_new(n);
 }
+std::shared_ptr<const snapshot::SnapshotLoadResult> real_load(snapshot::SnapshotManager *,
+    const std::string &,
+    base::SnapshotVersion,
+    const snapshot::SnapshotReadLimits
+        &) __asm__("__real__ZN8siftwing8snapshot15SnapshotManager14load_candidateERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS_4base6detail8StrongIdINSB_18SnapshotVersionTagEEERKNS0_18SnapshotReadLimitsE");
+std::shared_ptr<const snapshot::SnapshotLoadResult> wrapped_load(snapshot::SnapshotManager *,
+    const std::string &,
+    base::SnapshotVersion,
+    const snapshot::SnapshotReadLimits
+        &) __asm__("__wrap__ZN8siftwing8snapshot15SnapshotManager14load_candidateERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS_4base6detail8StrongIdINSB_18SnapshotVersionTagEEERKNS0_18SnapshotReadLimitsE");
+std::shared_ptr<const snapshot::SnapshotLoadResult> wrapped_load(snapshot::SnapshotManager *m,
+    const std::string &parent,
+    base::SnapshotVersion v,
+    const snapshot::SnapshotReadLimits &l) {
+    if (load_arm.exchange(false)) {
+        if (!termination_blocked())
+            loader_mask_valid = false;
+        load_entered = true;
+        while (!load_release.load())
+            std::this_thread::yield();
+    }
+    return real_load(m, parent, v, l);
+}
+void real_loader_join(snapshot::SnapshotLoader *) __asm__(
+    "__real__ZN8siftwing8snapshot14SnapshotLoader4joinEv");
+void wrapped_loader_join(snapshot::SnapshotLoader *) __asm__(
+    "__wrap__ZN8siftwing8snapshot14SnapshotLoader4joinEv");
+void wrapped_loader_join(snapshot::SnapshotLoader *loader) {
+    load_join = true;
+    real_loader_join(loader);
+}
+std::error_code real_signal_drain(net::ProtocolSubReactor *, std::int64_t) __asm__(
+    "__real__ZN8siftwing3net18ProtocolSubReactor13request_drainEl");
+std::error_code wrapped_signal_drain(net::ProtocolSubReactor *, std::int64_t) __asm__(
+    "__wrap__ZN8siftwing3net18ProtocolSubReactor13request_drainEl");
+std::error_code wrapped_signal_drain(net::ProtocolSubReactor *sub, std::int64_t deadline) {
+    auto error = real_signal_drain(sub, deadline);
+    ++signal_drains;
+    return error;
+}
 int main(int argc, char **argv) {
-    if (argc != 5)
+    if (argc != 5 && argc != 6)
         return 2;
     Release release;
     try {
         const auto baseline = fd_count();
-        managers(argv[1]);
-        queries(argv[1], argv[2], argv[3]);
-        online(argv[1], argv[4]);
+        signal_suite = argc == 6;
+        if (signal_suite) {
+            check(!net::block_termination_signals(), "block before creating any test threads");
+            signaled_online(argv[1], SIGTERM, false);
+            signaled_online(argv[1], SIGINT, true);
+        } else {
+            managers(argv[1]);
+            queries(argv[1], argv[2], argv[3]);
+            online(argv[1], argv[4]);
+        }
         check(fd_count() == baseline, "all input/network/notification fds reclaimed");
         std::cout << "snapshot publication checks=" << checks << '\n';
     } catch (const std::exception &e) {
