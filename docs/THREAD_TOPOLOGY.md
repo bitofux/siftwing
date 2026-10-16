@@ -87,7 +87,10 @@ eventfd。运行失败同样先撤销入口并协调生产者静止，再清理�
 只读索引可以由任务保留共同生命期，但 shared_ptr 只保护拥有关系，不保护可变对象。
 现有worker共享[SearchService](ONLINE_SEARCH.md)拥有的固定只读索引、分析器资源，
 查询与JSON结果在每次调用中独立持有。该具体并发合同不扩大为任意const API线程安全；
-[可选版本缓存](VERSIONED_LRU.md)由同一服务独占，单mutex保护LRU/get副本/统计，业务计算在锁外；索引热切换仍未实现。其他新增可变辅助对象仍须另证同步。
+[可选版本缓存](VERSIONED_LRU.md)由同一服务独占，单mutex保护LRU/get副本/统计，业务计算在锁外。
+[安全发布](SNAPSHOT_PUBLICATION.md)已提供显式C++控制接口，execute按次持有同一完整快照句柄；
+正式命令行没有reload入口。可选Loader占用独立线程，不属于查询WorkerPool；默认服务不创建它。
+其他新增可变辅助对象仍须另证同步。
 
 ## 启动、失败与停止
 

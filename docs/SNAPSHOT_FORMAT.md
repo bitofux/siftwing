@@ -1,5 +1,9 @@
 # 快照目录与 manifest v1
 
+这是离线索引的持久化成品格式，供[indexer](INDEXER.md)、本地CLI与在线服务共享；
+与运行时共享句柄、校验基线或备份清单的用途不同。整体流向见[设计](DESIGN.md)，
+完整生成/读取命令见[公开演示](DEMO.md)。协议版本、manifest版本、payload格式版本和快照身份独立。
+
 本模块已提供 `siftwing_snapshot_manifest` 的内存 manifest 编解码、SHA-256、payload
 字节校验和完成标记。公共 API 合同见 [manifest.hpp](../include/siftwing/snapshot/manifest.hpp)。
 以下目录/payload布局是本版本冻结的合同。[Writer](SNAPSHOT_WRITER.md)已实现规范编码、
@@ -8,8 +12,8 @@
 调用方配置输出父目录，每个正式快照使用不透明 `SnapshotVersion` 的规范无前导零
 十进制叶子目录。0及UINT64_MAX合法，数值大小不代表时间次序；发布者负责唯一性。
 Writer明确临时目录命名与原子发布，不从原始语料目录派生或写回输入。
-正式目录恰包含以下八个普通文件，不含其他文件、子目录或符号链接；本模块不访问目录，
-因此内存校验成功尚不能证明这一文件系统条件。
+正式目录恰包含以下八个普通文件，不含其他文件、子目录或符号链接；manifest内存组件不访问目录，
+因此内存校验成功尚不能证明这一文件系统条件，真实目录检查由Writer/Reader完成。
 
 | 文件 | 格式 | 含义 |
 |---|---|---|
@@ -114,3 +118,20 @@ SHA-256实现使用固定栈状态处理内存完整字节，长度须<=UINT64_M
 Python hashlib。校验检测意外损坏，不提供签名、认证或敌对写者下的不可变保障；重新计算
 所有哈希的改写者仍能伪造合法清单。新文件角色或破坏性编码变化需显式版本迁移，
 同环境权重数值的确定性与M1.22一致，不扩大为跨libm/CPU版本逐位保证。
+
+## 载荷、装载与兼容导航
+
+| 需要核对的合同 | 精确入口 |
+|---|---|
+| 文档记录字段、长度、CRC与UTF-8 | [记录格式](RECORD_FORMAT.md) |
+| DocId到记录偏移/长度、完整覆盖 | [文档库与偏移表](DOCUMENT_STORE.md) |
+| 原TF/DF/N、IDF/L2与规范数值 | [权重格式](WEIGHTS.md) |
+| 临时目录、无覆盖发布、持久性结果 | [Writer](SNAPSHOT_WRITER.md) |
+| 八文件/摘要/跨文件语义、目录稳定要求 | [Reader](SNAPSHOT_READER.md) |
+| 确定性与损坏拒绝的真实验证 | [往返验收](SNAPSHOT_ROUNDTRIP.md)、[V1黄金集](V1_TESTS.md) |
+| 内存候选到在线current、旧查询寿命 | [后台加载](SNAPSHOT_LOADER.md)、[安全发布](SNAPSHOT_PUBLICATION.md) |
+
+Reader全内存装载，成功后不持文件fd；不按需mmap、不自动修复或迁移旧格式。
+未知版本、额外文件、坏摘要和跨文件不一致均须拒绝，不靠更新COMPLETE绕过检查。
+查询资源由调用方显式提供；配置摘要不能恢复词典/停用内容或自动证明候选与查询配置相容。
+版本目录不解释CURRENT，也不扫描“最大版本”；Loader成功不等于在线current已切换。

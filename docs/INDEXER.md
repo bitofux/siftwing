@@ -47,7 +47,7 @@ build/release/siftwing-indexer \
 `tokenizer`只接纳 `english|cppjieba`。cppjieba须明确提供该支dictionary/model，
 可提供user-dictionary，HMM默认on、可off；英文分词拒绝这些中文资源选项。
 停用词可选，缺席表示明确空集合；提供空文件合法，空路径值拒绝。
-资源语法见[README中的中文分词与词频说明](../README.md)。
+资源语法见[组件参考中的规范化、分词与词频](COMPONENTS.md)。
 程序仅分析正文，标题、URL、作者、日期保存为文档元数据，不拼入词频。
 推荐支只保留TF与交付计数，整批在局部词表中累计，不逐篇复制已有词表。
 搜索保留记录用于快照；丢弃记录及已消费的临时TF在后续构建前释放。

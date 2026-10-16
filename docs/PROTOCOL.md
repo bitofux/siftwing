@@ -1,4 +1,8 @@
-# V2 帧头与字节序合同
+# TCP协议版本1：帧头与Body合同
+
+本线格式由V2引入，现有配置、日志、指标和快照发布扩展沿用协议版本1；
+协议版本、业务Body的schema_version和快照身份分别维护，不从项目阶段推断升级。
+首次实际交换见[公开演示](DEMO.md)，整体数据流见[设计](DESIGN.md)。
 
 本文是 V2 协议版本 1 的线格式合同，供客户端、服务端及内存 codec 使用。当前仓库有
 本规范、黄金字节例子、[有界连续 Buffer](BUFFER.md)及[增量帧解码](FRAME_DECODER.md)；
@@ -186,3 +190,15 @@ Main-Sub Reactor和[在线服务](ONLINE_SEARCH.md)已有真实查询路径；
 关联半包、慢写、满队列、fd复用、期限和关闭证据。SIGINT/SIGTERM触发正常排空属于
 [服务退出策略](GRACEFUL_SHUTDOWN.md)，不新增线消息；请求deadline策略到期局部关闭，
 不能仅凭定义了DEADLINE_EXCEEDED状态就声称每次超时都会发送该ERROR。
+
+## 源码、测试与演进
+
+头字段/枚举见[frame_decoder.hpp](../include/siftwing/net/frame_decoder.hpp)，增量字节准入见
+[frame_decoder.cc](../src/net/frame_decoder.cc)，JSON对象和响应构造见
+[frame_codec.cc](../src/net/frame_codec.cc)，实际客户端见[client.cc](../src/net/client.cc)。
+独立黄金字节、损坏输入、短I/O和真实四命令入口分别见[codec测试](CODEC_TESTING.md)、
+[网络客户端验证](NETWORK_CLIENT.md)与[测试指南](TESTING.md)。
+
+变更消息编号、线布局或字段含义必须显式维护协议版本；业务schema与支持命令须同步调用者。
+快照加载/发布只改变查询采用的成品身份，不添加reload网络命令；SERVER_INFO观察当前句柄，
+不保证其观察版本等于前后独立查询采用的版本。当前传输没有认证、TLS或压缩。
