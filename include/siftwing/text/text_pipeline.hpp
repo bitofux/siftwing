@@ -75,7 +75,7 @@ public:
      * @note normalize只作用于分词输入，不对派生Tokenizer输出二次规范化；派生实现须遵守
      *     Tokenizer合同，产生合法词键由analyze_tokens再校验。失败立即返回、不调用后续阶段。
      *     同文本、同规范化规则/分词资源/停用集合及充分预算才保证建库与查询一致；对象身份
-     *     不替代未来快照的资源兼容信息。线程安全取决于所拥有Tokenizer的实际const调用合同，
+     *     不自动认证快照与查询资源的兼容性。线程安全取决于所拥有Tokenizer的实际const调用合同，
      *     不由const或unique_ptr自动保证；调用方不得通过遗留指针并发修改其资源。
      *
      * @throws

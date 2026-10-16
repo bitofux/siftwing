@@ -12,7 +12,7 @@ namespace siftwing::concurrency {
 /**
  * @brief 拥有已通过帧准入的SEARCH/SUGGEST请求，独立于Buffer、Connection和生产者输入
  * @note 只定义跨线程载荷，不继承WorkerTask、不执行查询、不保存回调/连接指针/fd/索引借用。
- *     request_id只关联请求，不是路由身份；连接身份/generation及过期策略由后续模块提供。
+ *     request_id只关联请求，不是路由身份；RoutedSearchTask拥有连接身份/generation，所属Sub核验身份与期限。
  *     move-only且移动不抛；移空对象仅能观测、重新移动赋值或析构，request返回nullptr。
  *     不同拥有者经队列同步交接；const/unique_ptr本身不允许同一对象并发修改。
  */

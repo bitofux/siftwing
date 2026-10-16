@@ -15,7 +15,7 @@ namespace siftwing::concurrency {
 /**
  * @brief 独占的可执行任务基类；具体任务负责拥有其输入与依赖的有效生命周期
  * @note execute可以抛异常，由pool隔离；析构不得抛，accepted后在执行worker销毁。
- *     不允许携带借用Connection或用fd数字代表连接；具体业务数据合同由后续模块提供。
+ *     不允许携带借用Connection或用fd数字代表连接；SearchTask/Completion定义请求与响应载荷，业务服务执行查询。
  */
 class WorkerTask {
 public:

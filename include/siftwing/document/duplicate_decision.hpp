@@ -66,7 +66,7 @@ struct DuplicateCounts final {
 
 /** @brief 成功交付的完整拥有型报告；所有成员可修改，修改后的报告不由函数重新验证。 */
 struct DuplicateReport final {
-    DuplicatePolicy policy; ///< 实际使用的策略副本；未来manifest序列化仍属后续合同。
+    DuplicatePolicy policy; ///< 实际使用的策略副本；本报告不负责快照清单序列化。
     std::vector<DuplicateDecision>
         decisions;          ///< 来源名std::string字典序、序号升序，与输入排列无关。
     DuplicateCounts counts; ///< 对全部成功决策计数，无提前停止或隐藏的部分结果。

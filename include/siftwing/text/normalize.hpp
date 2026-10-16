@@ -43,7 +43,7 @@ struct NormalizationLimits final {
  *     空白集合，所有位置都保留；文件BOM处理仍属于输入适配器。不按locale分类，不做
  *     完整Unicode case folding、NFC/NFKC、实体/HTML解析、分词或停用词过滤。
  * @note 相同输入和规则输出确定；在两次调用预算均足够时normalize(normalize(x))不变。
- *     原DocumentRecord/显示文本不修改；此函数是后续索引和查询的共享入口，尚不组装管线。
+ *     原DocumentRecord/显示文本不修改；建库与查询经TextPipeline复用此函数，函数本身只负责规范化。
  *     不读取文件或联网，无共享可变状态，独立调用可并发；输入/limits的并发写由调用方同步。
  *     两次码点遍历，按最终大小reserve后填充；字节限额不是整个进程内存/CPU硬上限。
  *

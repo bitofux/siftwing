@@ -17,9 +17,9 @@
 
 namespace siftwing::document {
 
-/** @brief 磁盘记录版本；与 DocumentId、指纹版本和未来快照版本独立。 */
+/** @brief 磁盘记录格式版本；与 DocumentId、指纹版本及快照格式版本独立。 */
 inline constexpr std::uint16_t record_format_version = 1;
-/** @brief 固定头的字节数；全部长度和未来偏移均以字节计。 */
+/** @brief 固定头的字节数；全部长度和文档库偏移均以字节计。 */
 inline constexpr std::uint16_t record_header_bytes = 40;
 
 /** @brief 调用方显式提供的两个正预算；不是进程内存硬限制。 */
@@ -70,7 +70,7 @@ struct RecordFormatInfo final {
  *
  * @throws
  *     诊断分配及未知异常上传。
- * @note 不验证文本语义或多记录一致性；不替代后续偏移表与随机读取层。
+ * @note 不验证文本语义或多记录一致性；偏移表与随机读取由document_store层提供。
  */
 [[nodiscard]] base::Result<RecordFormatInfo> validate_record(
     std::string_view bytes, const RecordFormatLimits &limits);

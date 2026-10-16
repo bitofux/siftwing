@@ -4,7 +4,7 @@ Siftwing 是一个 C++17/Linux 文档搜索服务项目，按阶段推进，并�
 
 [V2工程基线](docs/V2.md)汇总公开输入的四命令运行、协议与验收矩阵、小型loopback基准和交接限制。
 
-已实现单机离线索引与本地查询，当前能力、验收入口及限制见 [V1基线](docs/V1.md)，两条调用链的调试、故障和修改练习见 [V1调试学习包](docs/V1_DEBUGGING.md)。Main-Sub Reactor 已接通正式网络搜索服务，当前采用[单连接一个在途请求](docs/SINGLE_INFLIGHT.md)，已有[输出高低水位与背压](docs/OUTPUT_BACKPRESSURE.md)和[worker队列饱和拒绝](docs/WORKER_SATURATION.md)；已接入[可选空闲超时与请求deadline](docs/DEADLINES.md)，默认关闭、到期局部关闭连接；业务层支持[可选版本感知LRU](docs/VERSIONED_LRU.md)，默认关闭，成功Body有界缓存并隔离全部结果参数。已有[网络客户端](docs/NETWORK_CLIENT.md)支持PING、SERVER_INFO、SEARCH、SUGGEST，连接/发送/接收共用固定总期限。现有[严格JSON启动配置](docs/SERVER_CONFIG.md)可配置监听地址、线程/队列、路径、缓存、期限与关闭预算，按默认值→文件→CLI合并。另有可选[结构化日志](docs/LOGGING.md)关联线程、连接代次、请求与查询阶段，默认关闭。后续完善资源控制、可靠性、可观测性和性能；各阶段按独立门禁推进。
+已实现单机离线索引与本地查询，当前能力、验收入口及限制见 [V1基线](docs/V1.md)，两条调用链的调试、故障和修改练习见 [V1调试学习包](docs/V1_DEBUGGING.md)。Main-Sub Reactor 已接通正式网络搜索服务，当前采用[单连接一个在途请求](docs/SINGLE_INFLIGHT.md)，已有[输出高低水位与背压](docs/OUTPUT_BACKPRESSURE.md)和[worker队列饱和拒绝](docs/WORKER_SATURATION.md)；已接入[可选空闲超时与请求deadline](docs/DEADLINES.md)，默认关闭、到期局部关闭连接；业务层支持[可选版本感知LRU](docs/VERSIONED_LRU.md)，默认关闭，成功Body有界缓存并隔离全部结果参数。已有[网络客户端](docs/NETWORK_CLIENT.md)支持PING、SERVER_INFO、SEARCH、SUGGEST，连接/发送/接收共用固定总期限。现有[严格JSON启动配置](docs/SERVER_CONFIG.md)可配置监听地址、线程/队列、路径、缓存、期限与关闭预算，按默认值→文件→CLI合并。[结构化日志](docs/LOGGING.md)关联线程、连接代次、请求与查询阶段，默认以`info`写入stderr，可显式关闭；指定日志文件后自动按大小轮转，默认10MiB、3份归档加当前文件。后续完善资源控制、可靠性、可观测性和性能；各阶段按独立门禁推进。
 
 V2 的 [帧头与字节序合同](docs/PROTOCOL.md)定义 24 字节布局、消息编号、长度和错误边界，
 并提供黄金字节例子；已有[有界连续 Buffer](docs/BUFFER.md)和[增量帧解码](docs/FRAME_DECODER.md)，
@@ -194,7 +194,7 @@ UTF-8/NUL校验，最后预计算最终输出大小并分配；失败不含部�
 
 公开单元验证规则/临界/拥有性，Python独立参考覆盖除NUL外全部合法Unicode标量及原创混合
 文本；接入测试用实际TXT/RSS适配器生成记录后显式调用同一helper。该接线测试只验证规范化，
-英文分词与统一文本管线见下文；正式离线建库见[INDEXER.md](docs/INDEXER.md)，本地查询程序留给其模块。启用测试时的`siftwing_normalize_probe`支持
+英文分词与统一文本管线见下文；正式离线建库见[INDEXER.md](docs/INDEXER.md)，已实现的本地查询见[CLI.md](docs/CLI.md)。启用测试时的`siftwing_normalize_probe`支持
 `INPUT_BYTES OUTPUT_BYTES < text`，stdout为版本加hex字符串JSON；退出0表示成功，失败或
 装载超限1、配置错误2，仅为验收工具，不是生产装载/持久化接口。utfcpp来源/版本/许可仍见
 [DEPENDENCIES.md](docs/DEPENDENCIES.md)，本模块没有新增第三方库。

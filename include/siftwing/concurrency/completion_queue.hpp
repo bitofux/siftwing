@@ -33,7 +33,7 @@ struct CompletionQueueStatus {
  *     预期多个worker发布、所属I/O线程消费；队列不验证调用线程身份，只核路由编号。
  *     worker无法知道generation是否过期。取出后所属线程须核当前身份、Connection和请求状态，
  *     陈旧结果在锁外销毁。队列不自动扫描/驱逐、不设置时钟/deadline，也不发送响应。
- *     full保留新结果，调用者负责明确处理；不得把拒绝当已交付。通知属于后续组件。
+ *     full保留新结果，调用者负责明确处理；不得把拒绝当已交付。try_publish_and_notify另行组合eventfd通知。
  *     析构前撤销所有入口并等待调用返回；close/empty不证明调用者静止，析构不自动排空。
  */
 class CompletionQueue final {

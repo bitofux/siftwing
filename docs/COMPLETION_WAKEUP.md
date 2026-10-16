@@ -12,7 +12,7 @@ Sub每轮先清通知，再按各自预算消费fd移交和结果队列。通知
 
 ## 可选请求提交与应用
 
-`ProtocolSubConfig`尾部增加结果条目容量和每轮预算（均[1,1024]），以及默认空的`RoutedRequestSubmitter*`。旧配置默认继续PING/PONG与受信错误行为。启用者在start前配置submitter，保证对象到Sub join返回仍存活；接口只将准入后的SEARCH/SUGGEST与完整ConnectionId作为拥有请求交接，不在I/O线程执行查询或等待任务空位。accepted须移空源，拒绝或提交前异常保留源，每接纳任务至多发布一个结果；异常由Sub关闭该连接。full/closed返回既有安全OVERLOADED/STOPPING响应，具体生产饱和策略留给业务接入和资源控制模块。
+`ProtocolSubConfig`提供结果条目容量和每轮预算（均[1,1024]），以及默认空的`RoutedRequestSubmitter*`。旧配置默认继续PING/PONG与受信错误行为。启用者在start前配置submitter，保证对象到Sub join返回仍存活；接口只将准入后的SEARCH/SUGGEST与完整ConnectionId作为拥有请求交接，不在I/O线程执行查询或等待任务空位。accepted须移空源，拒绝或提交前异常保留源，每接纳任务至多发布一个结果；异常由Sub关闭该连接。full/closed返回既有安全OVERLOADED/STOPPING响应，生产等待队列的拒绝、响应排空和恢复准入见[worker饱和策略](WORKER_SATURATION.md)。
 
 接纳后Connection仍有在途请求，所属slot标记等待结果并暂停IN/RDHUP订阅，避免管线请求及半关闭持续触发LT。全关闭ERR/HUP仍可关闭该连接。半关闭的读EOF在响应完成后继续观察。
 

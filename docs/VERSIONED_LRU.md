@@ -53,4 +53,5 @@ CTest注册`cache.versioned_lru_test`、`cache.versioned_lru_concurrency_test`�
 空结果、错误不存、超大成功旁路、共享服务并发及1/2个Sub的TCP回包、半关闭、续读和关联号。
 
 小型计时仅输出当前小语料/当前进程的关闭缓存与暖缓存耗时，无速度门槛，不外推生产吞吐或最坏延迟。
-未实现TTL、Redis、热切换、分片、取消或优雅退出，不提供缓存命中绕过worker队列的旁路。
+未实现TTL、Redis、热切换、分片或任务取消，不提供缓存命中绕过worker队列的旁路。
+正式服务已有[优雅退出](GRACEFUL_SHUTDOWN.md)，缓存命中同样经过worker与Completion，并服从限时网络排空和发布者屏障。
