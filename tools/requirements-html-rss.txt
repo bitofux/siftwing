@@ -1,0 +1,4 @@
+# 仅用于离线HTML转RSS，不参与C++构建或在线服务。
+beautifulsoup4>=4.12,<5
+lxml>=5,<7
+feedgen>=1,<2
