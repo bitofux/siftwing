@@ -69,8 +69,8 @@ int error(const siftwing::base::Error &diagnostic) {
 } // namespace
 
 int main(int argc, char **argv) {
-    if (!(argc == 2 && std::string_view(argv[1]) == "--fixture") &&
-        !(argc == 6 && std::string_view(argv[1]) == "--files")) {
+    if (!(argc == 2 && std::string_view(argv[1]) == "--fixture")
+        && !(argc == 6 && std::string_view(argv[1]) == "--files")) {
         return 2;
     }
     try {
@@ -85,7 +85,8 @@ int main(int argc, char **argv) {
             chinese = std::move(created).value();
             first = "\xef\xbb\xbf THE\r\nAND\n中文\n";
         } else {
-            auto created = CppJiebaTokenizer::create({argv[2], argv[3], std::nullopt, 16777216, true});
+            auto created =
+                CppJiebaTokenizer::create({argv[2], argv[3], std::nullopt, 16777216, true});
             if (!created) {
                 return error(created.error());
             }
@@ -102,8 +103,9 @@ int main(int argc, char **argv) {
         if (!en || !cn) {
             return 1;
         }
-        const TextPipelineLimits limits{{16777216, 16777216}, {16777216, 3000000, 32768, 16777216},
-                                          {3000000, 16777216, 32768, 3000000, 16777216, 1000000, 16777216}};
+        const TextPipelineLimits limits{{16777216, 16777216},
+            {16777216, 3000000, 32768, 16777216},
+            {3000000, 16777216, 32768, 3000000, 16777216, 1000000, 16777216}};
         std::vector<TokenAnalysis> documents;
         std::string line;
         std::size_t input_bytes = 0;
@@ -111,8 +113,8 @@ int main(int argc, char **argv) {
             if (line.empty() || (line[0] != 'E' && line[0] != 'C')) {
                 return 2;
             }
-            if (documents.size() == 100 || line.size() > 33554433 ||
-                line.size() > 134217728 - input_bytes) {
+            if (documents.size() == 100 || line.size() > 33554433
+                || line.size() > 134217728 - input_bytes) {
                 return 1;
             }
             input_bytes += line.size();

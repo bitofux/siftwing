@@ -11,15 +11,15 @@
 namespace siftwing::query {
 /** @brief 标量窗口选项；不是字节、字素簇或词的数量。 */
 struct SummaryOptions final {
-    std::uint64_t window_scalars = 160;         ///< 正窗口长度，含命中起点，须不超出窗口预算。
+    std::uint64_t window_scalars = 160; ///< 正窗口长度，含命中起点，须不超出窗口预算。
     std::uint64_t leading_context_scalars = 40; ///< 期望的命中前文长度，可为0，须小于窗口。
 };
 /** @brief 五项显式正预算，含端点；不限制整个进程的内存或CPU。 */
 struct SummaryLimits final {
-    std::uint64_t max_content_bytes = 0;  ///< 完整原正文UTF-8字节，截取前计量。
-    std::uint64_t max_query_terms = 0;    ///< 全部保留的唯一查询词数，不重复计TF次数。
-    std::uint64_t max_query_bytes = 0;    ///< 全部唯一查询键累计UTF-8字节。
-    std::uint64_t max_match_pairs = 0;    ///< 正文标量N乘全部唯一查询键累计标量Q，完整准入。
+    std::uint64_t max_content_bytes = 0; ///< 完整原正文UTF-8字节，截取前计量。
+    std::uint64_t max_query_terms = 0; ///< 全部保留的唯一查询词数，不重复计TF次数。
+    std::uint64_t max_query_bytes = 0; ///< 全部唯一查询键累计UTF-8字节。
+    std::uint64_t max_match_pairs = 0; ///< 正文标量N乘全部唯一查询键累计标量Q，完整准入。
     std::uint64_t max_window_scalars = 0; ///< 请求窗口上限；短正文不使非法请求合法。
 };
 /**
@@ -27,11 +27,11 @@ struct SummaryLimits final {
  * @note 不附加省略号、标题、HTML或JSON转义；缺失正文以空串交付。
  */
 struct Summary final {
-    std::string text;                     ///< 原文字节副本，保留大小写、换行和空白，没有借用逃逸。
+    std::string text; ///< 原文字节副本，保留大小写、换行和空白，没有借用逃逸。
     std::uint64_t source_byte_offset = 0; ///< text起点在原正文中的0基字节偏移，空正文为0。
-    bool matched = false;          ///< 完整正文是否含任一词键子串，不保证长词完整落在短窗口内。
+    bool matched = false; ///< 完整正文是否含任一词键子串，不保证长词完整落在短窗口内。
     bool truncated_before = false; ///< 原正文是否有未返回的前缀，不等于是否存在省略号。
-    bool truncated_after = false;  ///< 原正文是否有未返回的后缀。
+    bool truncated_after = false; ///< 原正文是否有未返回的后缀。
 };
 /**
  * @brief 在最早查询词位置周围截取标量窗口，无命中取正文开头

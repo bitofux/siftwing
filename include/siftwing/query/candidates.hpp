@@ -16,8 +16,8 @@ using CandidateDocuments = std::vector<base::DocumentId>;
 /** @brief 三项正预算，含端点；控制准入与输出数量，不是进程内存或CPU硬上限。 */
 struct CandidateLimits final {
     std::uint64_t max_query_terms = 0; ///< 查询唯一词键数，未知词也计入，重复次数不计。
-    std::uint64_t max_postings = 0;    ///< 所有已知查询词的完整Posting列表长度总和，合并前准入。
-    std::uint64_t max_candidates = 0;  ///< 最终唯一文档数，不限制AND中间匹配或按top_k截断。
+    std::uint64_t max_postings = 0; ///< 所有已知查询词的完整Posting列表长度总和，合并前准入。
+    std::uint64_t max_candidates = 0; ///< 最终唯一文档数，不限制AND中间匹配或按top_k截断。
 };
 
 /**

@@ -42,9 +42,9 @@ int main() {
         const ReadLimits reading{4096, 4096, 10, 4096};
         auto from_txt = read_documents({{SourceKind::txt, "note.txt", raw_txt}}, txt, reading, {});
         auto from_rss = read_documents({{SourceKind::rss, "feed.xml", raw_rss}}, rss, reading, {});
-        check(from_txt && from_rss && from_txt.value().items.size() == 1 &&
-                  from_rss.value().items.size() == 1,
-              "real TXT and RSS adapters produce original owned records");
+        check(from_txt && from_rss && from_txt.value().items.size() == 1
+                  && from_rss.value().items.size() == 1,
+            "real TXT and RSS adapters produce original owned records");
         const auto &first = *from_txt.value().items.at(0).record;
         const auto &second = *from_rss.value().items.at(0).record;
         const auto before_txt = first.content, before_rss = second.content;
@@ -52,7 +52,7 @@ int main() {
         auto b = normalize_utf8(second.content, {4096, 4096});
         auto q = normalize_utf8("GREEN & blue 2026.\t中文　123！ one ONE", {4096, 4096});
         check(a && b && q && a.value() == b.value() && a.value() == q.value(),
-              "equivalent extracted and query-shaped text shares explicit normalization");
+            "equivalent extracted and query-shaped text shares explicit normalization");
         siftwing::test::Resources resources;
         auto created = CppJiebaTokenizer::create(resources.config());
         const Tokenizer &tokenizer = *created.value();
@@ -61,47 +61,47 @@ int main() {
         auto tb = tokenizer.tokenize(b.value(), limits);
         auto tq = tokenizer.tokenize(q.value(), limits);
         const TokenSequence hand_written{"green", "blue", "2026", "中文", "123", "one", "one"};
-        check(ta && tb && tq && ta.value() == hand_written && ta.value() == tb.value() &&
-                  ta.value() == tq.value(),
-              "the same virtual interface produces the independently hand-written ordered words");
-        check(first.content == before_txt && second.content == before_rss &&
-                  first.title == "示例 TITLE" && second.title == first.title,
-              "normalization and tokenization preserve source record text and title");
+        check(ta && tb && tq && ta.value() == hand_written && ta.value() == tb.value()
+                  && ta.value() == tq.value(),
+            "the same virtual interface produces the independently hand-written ordered words");
+        check(first.content == before_txt && second.content == before_rss
+                  && first.title == "示例 TITLE" && second.title == first.title,
+            "normalization and tokenization preserve source record text and title");
         check(a.value().find("中文") != a.value().npos && ta.value().size() == 7,
-              "mixed path retains Chinese tokens and original source text");
+            "mixed path retains Chinese tokens and original source text");
         auto limited = tokenizer.tokenize(a.value(), {4096, 1, 100, 4096});
-        check(!limited && limited.error().context == "tokenizer.tokens" &&
-                  first.content == before_txt,
-              "token budget failure publishes no sequence and cannot mutate a document");
+        check(!limited && limited.error().context == "tokenizer.tokens"
+                  && first.content == before_txt,
+            "token budget failure publishes no sequence and cannot mutate a document");
         const auto upper = tokenizer.tokenize("GREEN", limits);
         check(upper && upper.value() == TokenSequence{"GREEN"},
-              "tokenizer has no hidden lowercase step");
+            "tokenizer has no hidden lowercase step");
         check(raw_txt.find("\r\n") != raw_txt.npos && raw_rss.find("<p>") != raw_rss.npos,
-              "adapter source input bytes remain unchanged");
+            "adapter source input bytes remain unchanged");
         auto stops = StopWords::parse({"GREEN\n中文\n"}, {100, 10, 10, 100});
         auto fa = analyze_tokens(ta.value(), stops.value(), {100, 4096, 100, 100, 4096, 100, 4096});
         auto fb = analyze_tokens(tb.value(), stops.value(), {100, 4096, 100, 100, 4096, 100, 4096});
         auto fq = analyze_tokens(tq.value(), stops.value(), {100, 4096, 100, 100, 4096, 100, 4096});
         const TokenSequence filtered{"blue", "2026", "123", "one", "one"};
         const FrequencyTable expected_tf{{"blue", 1}, {"2026", 1}, {"123", 1}, {"one", 2}};
-        check(fa && fb && fq && fa.value().tokens == filtered && fb.value().tokens == filtered &&
-                  fq.value().tokens == filtered,
-              "TXT RSS and query-shaped text share explicit exact filtering");
-        check(fa.value().tf.terms == expected_tf && fb.value().tf.terms == expected_tf &&
-                  fa.value().tf.total_tokens == 5,
-              "single-document TF counts repeated one twice");
+        check(fa && fb && fq && fa.value().tokens == filtered && fb.value().tokens == filtered
+                  && fq.value().tokens == filtered,
+            "TXT RSS and query-shaped text share explicit exact filtering");
+        check(fa.value().tf.terms == expected_tf && fb.value().tf.terms == expected_tf
+                  && fa.value().tf.total_tokens == 5,
+            "single-document TF counts repeated one twice");
         const RecommendationLimits counting{10, 100, 100, 4096, 100};
         auto cumulative = accumulate_recommendation({}, fa.value().tf, counting);
         auto twice = accumulate_recommendation(cumulative.value(), fb.value().tf, counting);
-        check(twice &&
-                  twice.value().terms ==
-                      FrequencyTable{{"blue", 2}, {"2026", 2}, {"123", 2}, {"one", 4}} &&
-                  twice.value().documents == 2,
-              "recommendation explicitly counts both duplicate document deliveries without search "
-              "dedup");
-        check(first.content == before_txt && second.content == before_rss &&
-                  ta.value() == hand_written,
-              "filtering and accumulation preserve source records and original tokens");
+        check(twice
+                  && twice.value().terms
+                         == FrequencyTable{{"blue", 2}, {"2026", 2}, {"123", 2}, {"one", 4}}
+                  && twice.value().documents == 2,
+            "recommendation explicitly counts both duplicate document deliveries without search "
+            "dedup");
+        check(first.content == before_txt && second.content == before_rss
+                  && ta.value() == hand_written,
+            "filtering and accumulation preserve source records and original tokens");
         // 测试显式组合分词、过滤与词频组件，独立验证单次交付的统计。
     } catch (const std::exception &e) {
         ++failures;

@@ -193,11 +193,10 @@ void validate(const OnlineServerConfig &config) {
     if (!config.sub_count || config.sub_count > 64 || !config.workers || config.workers > 64
         || !config.task_capacity || config.task_capacity > 1024 || config.sub.request_submitter
         || config.sub.reactor_id != 0 || config.sub.logger || config.sub.log_index_version
-        || config.sub.service_info
-        || !config.main.accept_attempt_budget || config.main.accept_attempt_budget > 1024
-        || l.backlog <= 0 || (l.family != IpFamily::v4 && l.family != IpFamily::v6)
-        || l.address.empty() || l.address.size() >= INET6_ADDRSTRLEN
-        || l.address.find('\0') != l.address.npos)
+        || config.sub.service_info || !config.main.accept_attempt_budget
+        || config.main.accept_attempt_budget > 1024 || l.backlog <= 0
+        || (l.family != IpFamily::v4 && l.family != IpFamily::v6) || l.address.empty()
+        || l.address.size() >= INET6_ADDRSTRLEN || l.address.find('\0') != l.address.npos)
         throw std::invalid_argument("invalid server configuration");
     std::array<char, INET6_ADDRSTRLEN> text{};
     std::memcpy(text.data(), l.address.data(), l.address.size());
@@ -437,7 +436,8 @@ OnlineServerReport OnlineServer::report() const {
         result.first_error = code(state_->publication_error.load());
     return result;
 }
-snapshot::SnapshotLoadSubmit OnlineServer::try_load_snapshot(snapshot::SnapshotLoadRequest request) {
+snapshot::SnapshotLoadSubmit OnlineServer::try_load_snapshot(
+    snapshot::SnapshotLoadRequest request) {
     if (state_->totals.stopped || state_->shutdown_started)
         return snapshot::SnapshotLoadSubmit::stopped;
     return state_->service->try_load_candidate(std::move(request));

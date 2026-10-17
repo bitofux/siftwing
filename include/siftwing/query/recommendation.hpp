@@ -14,14 +14,14 @@
 namespace siftwing::query {
 /** @brief 八项正uint64预算，含端点；默认0拒绝，不是进程硬CPU/内存限制。 */
 struct RecommendationLimits final {
-    std::uint64_t max_query_bytes = 0;     ///< 完整输入词键UTF-8字节数。
-    std::uint64_t max_query_scalars = 0;   ///< 完整输入Unicode标量数，重复逐次计入距离。
-    std::uint64_t max_top_k = 0;           ///< 请求k的上限，不是候选数量，也不按k预分配。
+    std::uint64_t max_query_bytes = 0; ///< 完整输入词键UTF-8字节数。
+    std::uint64_t max_query_scalars = 0; ///< 完整输入Unicode标量数，重复逐次计入距离。
+    std::uint64_t max_top_k = 0; ///< 请求k的上限，不是候选数量，也不按k预分配。
     std::uint64_t max_character_links = 0; ///< 唯一查询字符的已知列表长度和，同词可跨列表重复计入。
-    std::uint64_t max_candidates = 0;      ///< 共享字符列表并集的唯一词数，与k无关。
+    std::uint64_t max_candidates = 0; ///< 共享字符列表并集的唯一词数，与k无关。
     std::uint64_t max_candidate_bytes = 0; ///< 全部唯一候选词键的UTF-8字节和，与k无关。
-    std::uint64_t max_distance_cells = 0;  ///< 全部候选M*Li之和，仅计DP非边界单元。
-    std::uint64_t max_output_bytes = 0;    ///< 返回前min(k,C)项拥有词文本的UTF-8字节和。
+    std::uint64_t max_distance_cells = 0; ///< 全部候选M*Li之和，仅计DP非边界单元。
+    std::uint64_t max_output_bytes = 0; ///< 返回前min(k,C)项拥有词文本的UTF-8字节和。
 };
 
 /**
@@ -29,9 +29,9 @@ struct RecommendationLimits final {
  * @note 可复制/移动/修改；文本不借用词典，但term_id仍只属于原推荐词典/快照。
  */
 struct RecommendedTerm final {
-    base::TermId term_id;    ///< 本推荐Lexicon局部身份，不能解释为搜索词ID或文档身份。
-    std::string term;        ///< 独立拥有原词键，不进行规范化、HTML或JSON转义。
-    std::uint64_t distance;  ///< Unicode标量Levenshtein距离，插入/删除/替换各1，交换非单步。
+    base::TermId term_id; ///< 本推荐Lexicon局部身份，不能解释为搜索词ID或文档身份。
+    std::string term; ///< 独立拥有原词键，不进行规范化、HTML或JSON转义。
+    std::uint64_t distance; ///< Unicode标量Levenshtein距离，插入/删除/替换各1，交换非单步。
     std::uint64_t frequency; ///< 正推荐累计出现次数，不是搜索DF/N或单文档TF。
 };
 /** @brief 按距离升序、频次降序、UTF-8字节序升序的拥有前缀，修改后自行维护排序。 */

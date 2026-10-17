@@ -37,13 +37,13 @@ inline constexpr std::array<FileLayout, 6> artifact_layout{{{"documents.bin", 1}
     {"recommendation-characters.txt", 1}}};
 /** @brief 三项正预算，含端点；不计已有输入、容器容量或分配器，不是硬资源限制。 */
 struct ManifestLimits final {
-    std::uint64_t max_manifest_bytes = 0;   ///< 完整manifest输入/输出字节数。
-    std::uint64_t max_file_bytes = 0;       ///< 每个payload声明/验证的字节数。
+    std::uint64_t max_manifest_bytes = 0; ///< 完整manifest输入/输出字节数。
+    std::uint64_t max_file_bytes = 0;     ///< 每个payload声明/验证的字节数。
     std::uint64_t max_total_file_bytes = 0; ///< 六个payload受检总和，不含manifest/COMPLETE。
 };
 /** @brief 调用方提供的独立来源声明；合法摘要不能证明原始选择或配置正确。 */
 struct Provenance final {
-    std::string input_sha256;  ///< 拥有输入集合规范描述的64位小写hex SHA-256。
+    std::string input_sha256; ///< 拥有输入集合规范描述的64位小写hex SHA-256。
     std::string config_sha256; ///< 拥有该支配置/资源规范描述的SHA-256，不能隐式复用另一支。
 };
 /** @brief 搜索显式保留集统计，不从推荐次数或最大DocId推导。 */
@@ -64,8 +64,8 @@ struct RecommendationSummary final {
 /** @brief 一项拥有型文件声明，角色由array位置决定；可修改值须再次validate。 */
 struct FileDigest final {
     std::uint32_t format_version = 1; ///< 该角色payload格式，不是manifest或快照版本。
-    std::uint64_t bytes = 0;          ///< 精确完整字节数，文档库之外的空编码也须非空。
-    std::string sha256;               ///< 完整payload字节的64位小写hex SHA-256，无认证保证。
+    std::uint64_t bytes = 0; ///< 精确完整字节数，文档库之外的空编码也须非空。
+    std::string sha256;      ///< 完整payload字节的64位小写hex SHA-256，无认证保证。
 };
 /**
  * @brief 拥有型可修改元数据；消费函数重新完整验证，无文件IO或隐式发布
@@ -73,13 +73,13 @@ struct FileDigest final {
  *     无内部借用、fd或缓存。所有调用期间输入不得失效或并发写；未实测并发。
  */
 struct Manifest final {
-    base::SnapshotVersion snapshot;       ///< 不透明身份，0和UINT64_MAX合法，不代表时间顺序。
-    std::string build_version;            ///< 1—128字节ASCII [A-Za-z0-9._+-]，拥有稳定构建身份。
-    SearchSummary search;                 ///< 搜索部件生产的整数统计，不能证明跨文件语义一致。
+    base::SnapshotVersion snapshot; ///< 不透明身份，0和UINT64_MAX合法，不代表时间顺序。
+    std::string build_version; ///< 1—128字节ASCII [A-Za-z0-9._+-]，拥有稳定构建身份。
+    SearchSummary search; ///< 搜索部件生产的整数统计，不能证明跨文件语义一致。
     Provenance search_provenance;         ///< 搜索自己的输入/config摘要。
     RecommendationSummary recommendation; ///< 推荐部件生产的独立累计统计。
     Provenance recommendation_provenance; ///< 推荐自己的输入/config摘要。
-    std::array<FileDigest, 6> files;      ///< 按artifact_layout逐位置拥有完整六项声明。
+    std::array<FileDigest, 6> files; ///< 按artifact_layout逐位置拥有完整六项声明。
 };
 /**
  * @brief 验证元数据，不访问目录或证明payload语义

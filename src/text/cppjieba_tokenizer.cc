@@ -107,7 +107,7 @@ std::string load_file(const std::string &path, std::uint64_t limit, const char *
         }
         begin = end + 1;
     }
-    struct stat before{};
+    struct stat before {};
     if (::fstat(directory.get(), &before) != 0 || !S_ISREG(before.st_mode)) {
         reject("cppjieba.io", std::string(label) + ": resource must be a regular file");
     }
@@ -140,7 +140,7 @@ std::string load_file(const std::string &path, std::uint64_t limit, const char *
         }
         bytes.append(buffer.data(), n);
     }
-    struct stat after{};
+    struct stat after {};
     if (::fstat(directory.get(), &after) != 0 || before.st_size != after.st_size
         || bytes.size() != size.value() || before.st_mtim.tv_sec != after.st_mtim.tv_sec
         || before.st_mtim.tv_nsec != after.st_mtim.tv_nsec

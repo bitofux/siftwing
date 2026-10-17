@@ -37,8 +37,8 @@ int main(int argc, char **argv) {
         return 2;
     }
     try {
-        const siftwing::text::TokenizationLimits limits{positive(argv[1]), positive(argv[2]),
-                                                        positive(argv[3]), positive(argv[4])};
+        const siftwing::text::TokenizationLimits limits{
+            positive(argv[1]), positive(argv[2]), positive(argv[3]), positive(argv[4])};
         std::string input;
         std::array<char, 4096> buffer{};
         // 装载预算由工具承担；生产接口只接受调用方已装载字节，不能回收该成本。
@@ -54,10 +54,11 @@ int main(int argc, char **argv) {
         if (std::cin.bad()) {
             return 1;
         }
-        auto created = siftwing::text::CppJiebaTokenizer::create(
-            {argv[5], argv[6],
-             std::string(argv[7]) == "-" ? std::nullopt : std::optional<std::string>{argv[7]},
-             positive(argv[8]), std::string(argv[9]) == "1"});
+        auto created = siftwing::text::CppJiebaTokenizer::create({argv[5],
+            argv[6],
+            std::string(argv[7]) == "-" ? std::nullopt : std::optional<std::string>{argv[7]},
+            positive(argv[8]),
+            std::string(argv[9]) == "1"});
         if (!created) {
             std::cout << "{\"error_context\":\"" << created.error().context << "\"}\n";
             return 1;

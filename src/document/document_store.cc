@@ -115,7 +115,7 @@ Result<Fd> open_file(const std::string &path) {
     return Result<Fd>::success(Fd{fd});
 }
 Result<std::uint64_t> file_size(int fd, const DocumentStoreLimits &limits) {
-    struct stat info{};
+    struct stat info {};
     if (::fstat(fd, &info) < 0) {
         return io_error<std::uint64_t>(errno);
     }
@@ -337,7 +337,7 @@ Result<OffsetTable> decode_offset_table(std::string_view bytes, const DocumentSt
     table.entries.reserve((bytes.size() - static_cast<std::size_t>(table_header))
                           / static_cast<std::size_t>(entry_bytes));
     for (std::size_t cursor = static_cast<std::size_t>(table_header); cursor < bytes.size();
-        cursor += static_cast<std::size_t>(entry_bytes)) {
+         cursor += static_cast<std::size_t>(entry_bytes)) {
         auto id = base::DocumentId::from_integer(get(bytes, cursor, 8));
         table.entries.push_back(
             {id.value(), get(bytes, cursor + 8, 8), get(bytes, cursor + 16, 8)});

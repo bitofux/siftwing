@@ -51,25 +51,62 @@ struct Failure final : std::runtime_error {
 };
 // 显式登记本轮复用核心的业务/预算诊断；未知诊断保持INTERNAL_ERROR，绝不按文案猜类型。
 Status classify(std::string_view context) {
-    constexpr std::string_view invalid[]{"query.empty", "query.mode", "query.top_k",
-        "normalize.nul", "tokenizer.nul", "recommend.query", "recommend.nul",
-        "recommend.top_k", "summary.options"};
-    constexpr std::string_view resource[]{"normalize.input_bytes", "normalize.output_bytes",
-        "tokenizer.input_bytes", "tokenizer.token_bytes", "tokenizer.tokens", "tokenizer.output_bytes",
-        "frequency.input_bytes", "frequency.input_tokens", "frequency.token_bytes",
-        "frequency.output_bytes", "frequency.output_tokens", "frequency.distinct_terms",
-        "frequency.vocabulary_bytes", "candidate.terms", "candidate.postings", "candidate.documents",
-        "ranking.work", "summary.content_bytes", "summary.query_terms", "summary.query_bytes", "summary.work",
-        "highlight.text_bytes", "highlight.query_terms", "highlight.query_bytes", "highlight.work",
-        "highlight.spans", "highlight.output_bytes", "recommend.query_bytes", "recommend.query_scalars",
-        "recommend.character_links", "recommend.candidates", "recommend.candidate_bytes",
-        "recommend.work", "recommend.output_bytes"};
-    for (auto name : invalid) if (context == name) return Status::invalid_request;
-    for (auto name : resource) if (context == name) return Status::resource_limit;
+    constexpr std::string_view invalid[]{"query.empty",
+        "query.mode",
+        "query.top_k",
+        "normalize.nul",
+        "tokenizer.nul",
+        "recommend.query",
+        "recommend.nul",
+        "recommend.top_k",
+        "summary.options"};
+    constexpr std::string_view resource[]{"normalize.input_bytes",
+        "normalize.output_bytes",
+        "tokenizer.input_bytes",
+        "tokenizer.token_bytes",
+        "tokenizer.tokens",
+        "tokenizer.output_bytes",
+        "frequency.input_bytes",
+        "frequency.input_tokens",
+        "frequency.token_bytes",
+        "frequency.output_bytes",
+        "frequency.output_tokens",
+        "frequency.distinct_terms",
+        "frequency.vocabulary_bytes",
+        "candidate.terms",
+        "candidate.postings",
+        "candidate.documents",
+        "ranking.work",
+        "summary.content_bytes",
+        "summary.query_terms",
+        "summary.query_bytes",
+        "summary.work",
+        "highlight.text_bytes",
+        "highlight.query_terms",
+        "highlight.query_bytes",
+        "highlight.work",
+        "highlight.spans",
+        "highlight.output_bytes",
+        "recommend.query_bytes",
+        "recommend.query_scalars",
+        "recommend.character_links",
+        "recommend.candidates",
+        "recommend.candidate_bytes",
+        "recommend.work",
+        "recommend.output_bytes"};
+    for (auto name : invalid)
+        if (context == name)
+            return Status::invalid_request;
+    for (auto name : resource)
+        if (context == name)
+            return Status::resource_limit;
     return Status::internal_error;
 }
-template <class T> T take(base::Result<T> value) {
-    if (!value) throw Failure(value.error().context, value.error().message, classify(value.error().context));
+template <class T>
+T take(base::Result<T> value) {
+    if (!value)
+        throw Failure(
+            value.error().context, value.error().message, classify(value.error().context));
     return std::move(value).value();
 }
 struct Options : SearchServiceConfig {
@@ -112,7 +149,8 @@ private:
     throw Failure("service.io", std::error_code(error, std::generic_category()).message());
 }
 std::string absolute(const std::string &raw) {
-    if (raw.find('\0') != raw.npos) throw Failure("service.path", "资源路径含NUL");
+    if (raw.find('\0') != raw.npos)
+        throw Failure("service.path", "资源路径含NUL");
     const std::filesystem::path path(raw);
     for (const auto &part : path) {
         if (part == "..") {
@@ -147,7 +185,8 @@ std::string load(const std::string &path, std::uint64_t cap) {
         }
         fd.replace(next);
     }
-    struct stat before{}, after{};
+    struct stat before {
+    }, after{};
     if (::fstat(fd.get(), &before) != 0) {
         io_error();
     }
@@ -329,7 +368,8 @@ std::uint64_t scalars(std::string_view bytes) {
     }
     return static_cast<std::uint64_t>(utf8::distance(bytes.begin(), bytes.end()));
 }
-void search(Json &out, const Options &o, const snapshot::SnapshotReader &reader, const Pipeline &p) {
+void search(
+    Json &out, const Options &o, const snapshot::SnapshotReader &reader, const Pipeline &p) {
     const auto q = take(
         query::Query::from_text(o.input, *p.value, {o.mode, o.top_k}, {text_limits(o), o.max_k}));
     const auto ranked =
@@ -346,7 +386,8 @@ void search(Json &out, const Options &o, const snapshot::SnapshotReader &reader,
         }
         const auto count = scalars(record->content);
         if (count > remaining / query_scalars) {
-            throw Failure("service.display_work", "全部返回正文匹配工作超限", Status::resource_limit);
+            throw Failure(
+                "service.display_work", "全部返回正文匹配工作超限", Status::resource_limit);
         }
         remaining -= count * query_scalars;
     }
@@ -431,7 +472,6 @@ void search(Json &out, const Options &o, const snapshot::SnapshotReader &reader,
         out.raw("]}}");
     }
     out.raw("]");
-
 }
 void suggest(Json &out, const Options &o, const snapshot::SnapshotReader &reader) {
     const auto cap = std::min<std::uint64_t>(4096, o.query_bytes);
@@ -464,7 +504,9 @@ void suggest(Json &out, const Options &o, const snapshot::SnapshotReader &reader
     out.raw("]");
 }
 
-[[noreturn]] void arguments() { throw Failure("service.arguments", "非法业务字段", Status::invalid_request); }
+[[noreturn]] void arguments() {
+    throw Failure("service.arguments", "非法业务字段", Status::invalid_request);
+}
 Options parse_request(const Options &fixed, const concurrency::SearchTask &task) {
     Options o = fixed;
     o.output_bytes = std::min<std::uint64_t>(o.output_bytes, task.body_limit());
@@ -473,38 +515,53 @@ Options parse_request(const Options &fixed, const concurrency::SearchTask &task)
     // codec已经核严格UTF8/对象/64层；业务DOM额外拒重复键，避免last-wins歧义。
     std::set<std::string> keys;
     bool duplicate = false;
-    const auto callback = [&](int depth, nlohmann::json::parse_event_t event, nlohmann::json &value) {
-        if (event == nlohmann::json::parse_event_t::key && depth == 1)
-            if (!keys.insert(value.get<std::string>()).second) duplicate = true;
-        return true;
-    };
+    const auto callback =
+        [&](int depth, nlohmann::json::parse_event_t event, nlohmann::json &value) {
+            if (event == nlohmann::json::parse_event_t::key && depth == 1)
+                if (!keys.insert(value.get<std::string>()).second)
+                    duplicate = true;
+            return true;
+        };
     const auto j = nlohmann::json::parse(task.request()->body, callback);
-    if (duplicate || !j.is_object()) arguments();
-    const std::set<std::string> allowed = search_request
-        ? std::set<std::string>{"query", "mode", "top_k", "summary_window", "summary_context"}
-        : std::set<std::string>{"key", "top_k", "normalize_key"};
-    for (const auto &item : j.items()) if (!allowed.count(item.key())) arguments();
+    if (duplicate || !j.is_object())
+        arguments();
+    const std::set<std::string> allowed =
+        search_request
+            ? std::set<std::string>{"query", "mode", "top_k", "summary_window", "summary_context"}
+            : std::set<std::string>{"key", "top_k", "normalize_key"};
+    for (const auto &item : j.items())
+        if (!allowed.count(item.key()))
+            arguments();
     const auto text = search_request ? "query" : "key";
-    if (!j.contains(text) || !j[text].is_string()) arguments();
+    if (!j.contains(text) || !j[text].is_string())
+        arguments();
     o.input = j[text].get<std::string>();
     auto integer = [&](const char *name, std::uint64_t &value) {
-        if (!j.contains(name)) return;
-        if (!j[name].is_number_unsigned()) arguments();
+        if (!j.contains(name))
+            return;
+        if (!j[name].is_number_unsigned())
+            arguments();
         value = j[name].get<std::uint64_t>();
     };
     integer("top_k", o.top_k);
-    if (o.top_k == 0 || o.top_k > o.max_k) arguments();
+    if (o.top_k == 0 || o.top_k > o.max_k)
+        arguments();
     if (search_request) {
         if (j.contains("mode")) {
-            if (!j["mode"].is_string()) arguments();
+            if (!j["mode"].is_string())
+                arguments();
             const auto mode = j["mode"].get<std::string>();
-            if (mode != "and" && mode != "or") arguments();
+            if (mode != "and" && mode != "or")
+                arguments();
             o.mode = mode == "and" ? QueryMode::all : QueryMode::any;
         }
-        integer("summary_window", o.window); integer("summary_context", o.leading);
-        if (o.window == 0 || o.window > 4096 || o.leading >= o.window) arguments();
+        integer("summary_window", o.window);
+        integer("summary_context", o.leading);
+        if (o.window == 0 || o.window > 4096 || o.leading >= o.window)
+            arguments();
     } else if (j.contains("normalize_key")) {
-        if (!j["normalize_key"].is_boolean()) arguments();
+        if (!j["normalize_key"].is_boolean())
+            arguments();
         o.normalize_key = j["normalize_key"].get<bool>();
     }
     return o;
@@ -515,10 +572,12 @@ void validate_config(const SearchServiceConfig &o) {
         || o.cache.max_value_bytes > o.cache.bytes)
         throw Failure("service.cache_config", "非法缓存配置");
     if (o.parent.empty() || !o.query_bytes || o.query_bytes > 65536 || !o.max_k || o.max_k > 100
-        || !o.work || o.work > 50000000 || !o.output_bytes || o.output_bytes > net::frame_max_body_bytes
-        || !o.snapshot_bytes || o.snapshot_bytes > 512 * mib || !o.resource_bytes || o.resource_bytes > 16 * mib
+        || !o.work || o.work > 50000000 || !o.output_bytes
+        || o.output_bytes > net::frame_max_body_bytes || !o.snapshot_bytes
+        || o.snapshot_bytes > 512 * mib || !o.resource_bytes || o.resource_bytes > 16 * mib
         || (o.tokenizer != "english" && o.tokenizer != "cppjieba")
-        || (o.tokenizer == "english" && (!o.dictionary.empty() || !o.model.empty() || !o.user.empty()))
+        || (o.tokenizer == "english"
+            && (!o.dictionary.empty() || !o.model.empty() || !o.user.empty()))
         || (o.tokenizer == "cppjieba" && (o.dictionary.empty() || o.model.empty())))
         throw Failure("service.config", "非法固定服务配置");
 }
@@ -531,8 +590,8 @@ struct SearchService::Impl {
     bool loading_stopped = false; ///< 仅控制者访问；停止后不重新创建Loader。
     std::unique_ptr<snapshot::SnapshotLoader> loader; ///< 最后声明，先join再销毁借用的Manager。
     Impl(Options selected, std::unique_ptr<snapshot::SnapshotManager> loaded, Pipeline resources)
-        : options(std::move(selected)), snapshots(std::move(loaded)), pipeline(std::move(resources)),
-          cache(options.cache) {}
+        : options(std::move(selected)), snapshots(std::move(loaded)),
+          pipeline(std::move(resources)), cache(options.cache) {}
 };
 SearchService::SearchService(std::unique_ptr<Impl> state) noexcept : state_(std::move(state)) {}
 SearchService::~SearchService() noexcept = default;
@@ -540,9 +599,10 @@ base::Result<std::unique_ptr<SearchService>> SearchService::create(SearchService
     using Output = base::Result<std::unique_ptr<SearchService>>;
     try {
         validate_config(config);
-        Options o; static_cast<SearchServiceConfig &>(o) = std::move(config);
-        auto snapshots = take(snapshot::SnapshotManager::open(o.parent,
-            take(base::SnapshotVersion::from_integer(o.version)), read_limits(o)));
+        Options o;
+        static_cast<SearchServiceConfig &>(o) = std::move(config);
+        auto snapshots = take(snapshot::SnapshotManager::open(
+            o.parent, take(base::SnapshotVersion::from_integer(o.version)), read_limits(o)));
         auto p = pipeline(o);
         // cppjieba工厂独立读取已验证文件；重核SHA后才发布组合，不将路径共享给worker。
         for (const auto &resource : p.resources)
@@ -554,8 +614,8 @@ base::Result<std::unique_ptr<SearchService>> SearchService::create(SearchService
         return Output::failure({error.what(), error.context});
     }
 }
-SearchServiceResult SearchService::execute(
-    const concurrency::SearchTask &task, CacheObservation *observation,
+SearchServiceResult SearchService::execute(const concurrency::SearchTask &task,
+    CacheObservation *observation,
     std::optional<std::uint64_t> *snapshot_version) const {
     const auto observe = [observation](CacheObservation value) noexcept {
         if (observation)
@@ -564,7 +624,8 @@ SearchServiceResult SearchService::execute(
     observe(CacheObservation::not_checked);
     if (snapshot_version)
         snapshot_version->reset();
-    if (!task.valid()) return Status::invalid_request;
+    if (!task.valid())
+        return Status::invalid_request;
     try {
         // 每次调用持有同一完整快照；响应头、版本缓存键和计算共享其生命期。
         const auto snapshot = state_->snapshots->current();
@@ -572,22 +633,27 @@ SearchServiceResult SearchService::execute(
         if (snapshot_version)
             *snapshot_version = reader.manifest()->snapshot.value();
         const auto o = parse_request(state_->options, task);
-        Json out(o.output_bytes); header(out, o, *reader.manifest());
+        Json out(o.output_bytes);
+        header(out, o, *reader.manifest());
         std::optional<cache::CacheKey> key;
         if (o.cache.capacity == 0)
             observe(CacheObservation::disabled);
         if (o.cache.capacity != 0) {
             // schema与原始文本预算先检查；同一规范化键不能替超长原请求绕过准入。
             const bool is_search = o.command == "SEARCH";
-            const auto cap = is_search ? o.query_bytes : std::min<std::uint64_t>(4096, o.query_bytes);
+            const auto cap =
+                is_search ? o.query_bytes : std::min<std::uint64_t>(4096, o.query_bytes);
             if (o.input.size() > cap)
                 throw Failure("service.query_bytes", "原查询字节超限", Status::resource_limit);
             auto canonical = is_search || o.normalize_key
-                ? take(text::normalize_utf8(o.input, {cap, cap})) : o.input;
+                                 ? take(text::normalize_utf8(o.input, {cap, cap}))
+                                 : o.input;
             // JSON数组按解析后的有效参数编码，键序/省略默认值等价，字符串不会有拼接歧义。
-            auto params = is_search
-                ? nlohmann::json::array({o.top_k, o.mode == QueryMode::all, o.window, o.leading, o.output_bytes})
-                : nlohmann::json::array({o.top_k, o.normalize_key, o.output_bytes});
+            auto params =
+                is_search
+                    ? nlohmann::json::array(
+                          {o.top_k, o.mode == QueryMode::all, o.window, o.leading, o.output_bytes})
+                    : nlohmann::json::array({o.top_k, o.normalize_key, o.output_bytes});
             // 版本身份可回滚/复用；完整清单绑定六载荷与全部响应元数据，防止旧计算迟到写串库。
             // 只读内存，无文件I/O；固定64字节身份纳入原LRU键/字节预算，不保存无界版本账本。
             // Reader已验证全部内容；此处只编码固定结构元数据，不重套初始版本的载荷预算。
@@ -597,7 +663,8 @@ SearchServiceResult SearchService::execute(
             params.push_back(take(snapshot::sha256_bytes(canonical_manifest)));
             key = cache::CacheKey{reader.manifest()->snapshot.value(),
                 is_search ? cache::Operation::search : cache::Operation::suggest,
-                std::move(canonical), params.dump()};
+                std::move(canonical),
+                params.dump()};
             observe(CacheObservation::miss);
             try {
                 if (auto hit = state_->cache.get(*key)) {
@@ -608,16 +675,23 @@ SearchServiceResult SearchService::execute(
                 observe(CacheObservation::unavailable);
             }
         }
-        if (o.command == "SEARCH") search(out, o, reader, state_->pipeline);
-        else suggest(out, o, reader);
+        if (o.command == "SEARCH")
+            search(out, o, reader, state_->pipeline);
+        else
+            suggest(out, o, reader);
         out.raw("}");
         if (key) {
-            try { (void)state_->cache.put(*key, out.bytes()); }
-            catch (const std::bad_alloc &) { /* 可选缓存分配失败不使已完成业务变成错误。 */ }
+            try {
+                (void)state_->cache.put(*key, out.bytes());
+            } catch (const std::bad_alloc &) { /* 可选缓存分配失败不使已完成业务变成错误。 */
+            }
         }
         return out.bytes();
-    } catch (const Failure &error) { return error.status; }
-    catch (const nlohmann::json::parse_error &) { return Status::invalid_request; }
+    } catch (const Failure &error) {
+        return error.status;
+    } catch (const nlohmann::json::parse_error &) {
+        return Status::invalid_request;
+    }
 }
 snapshot::SnapshotHandle SearchService::current_snapshot() const noexcept {
     return state_->snapshots->current();
@@ -626,7 +700,8 @@ snapshot::SnapshotPublishResult SearchService::publish_candidate(
     snapshot::SnapshotHandle candidate) noexcept {
     return state_->snapshots->publish_candidate(std::move(candidate));
 }
-snapshot::SnapshotLoadSubmit SearchService::try_load_candidate(snapshot::SnapshotLoadRequest request) {
+snapshot::SnapshotLoadSubmit SearchService::try_load_candidate(
+    snapshot::SnapshotLoadRequest request) {
     if (state_->loading_stopped)
         return snapshot::SnapshotLoadSubmit::stopped;
     if (!state_->loader)
@@ -645,12 +720,18 @@ std::string SearchService::server_info() const {
     const auto &o = state_->options;
     const auto snapshot = state_->snapshots->current();
     const auto &m = *snapshot->manifest();
-    return nlohmann::json{{"schema_version", 1}, {"command", "SERVER_INFO"},
-        {"protocol_version", 1}, {"snapshot_version", std::to_string(m.snapshot.value())},
+    return nlohmann::json{{"schema_version", 1},
+        {"command", "SERVER_INFO"},
+        {"protocol_version", 1},
+        {"snapshot_version", std::to_string(m.snapshot.value())},
         {"build_version", m.build_version},
         {"commands", {"PING", "SERVER_INFO", "SEARCH", "SUGGEST"}},
-        {"limits", {{"max_body_bytes", o.output_bytes}, {"max_query_bytes", o.query_bytes}, {"max_top_k", o.max_k}}},
-        {"cache_enabled", o.cache.capacity != 0}}.dump();
+        {"limits",
+            {{"max_body_bytes", o.output_bytes},
+                {"max_query_bytes", o.query_bytes},
+                {"max_top_k", o.max_k}}},
+        {"cache_enabled", o.cache.capacity != 0}}
+        .dump();
 }
 std::uint64_t SearchService::index_version() const noexcept {
     return state_->snapshots->current()->manifest()->snapshot.value();
@@ -663,5 +744,7 @@ metrics::Index SearchService::index_stats() const noexcept {
         manifest.search.terms,
         manifest.recommendation.terms};
 }
-cache::LruStats SearchService::cache_stats() const { return state_->cache.stats(); }
+cache::LruStats SearchService::cache_stats() const {
+    return state_->cache.stats();
+}
 } // namespace siftwing::query

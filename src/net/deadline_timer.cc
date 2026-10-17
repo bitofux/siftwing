@@ -14,7 +14,9 @@
 namespace siftwing::net {
 namespace {
 constexpr DeadlineTime billion = 1000000000;
-std::error_code code(int value) noexcept { return {value, std::generic_category()}; }
+std::error_code code(int value) noexcept {
+    return {value, std::generic_category()};
+}
 } // namespace
 std::variant<DeadlineTime, std::error_code> monotonic_now() noexcept {
     timespec value{};

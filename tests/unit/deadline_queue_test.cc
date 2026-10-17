@@ -17,7 +17,10 @@ using namespace siftwing::net;
 unsigned int checks = 0;
 void check(bool ok, const char *label) {
     ++checks;
-    if (!ok) { std::cerr << "deadline queue failed: " << label << '\n'; std::exit(1); }
+    if (!ok) {
+        std::cerr << "deadline queue failed: " << label << '\n';
+        std::exit(1);
+    }
 }
 bool same(std::optional<DeadlineEntry> a, std::optional<DeadlineEntry> b) {
     return a.has_value() == b.has_value() && (!a || (a->key == b->key && a->when == b->when));
@@ -26,7 +29,9 @@ bool same(std::optional<DeadlineEntry> a, std::optional<DeadlineEntry> b) {
 std::optional<DeadlineEntry> reference_next(const std::map<std::uint64_t, DeadlineTime> &model) {
     std::optional<DeadlineEntry> result;
     for (const auto &entry : model)
-        if (!result || std::make_pair(entry.second, entry.first) < std::make_pair(result->when, result->key))
+        if (!result
+            || std::make_pair(entry.second, entry.first)
+                   < std::make_pair(result->when, result->key))
             result = DeadlineEntry{entry.first, entry.second};
     return result;
 }
@@ -34,23 +39,37 @@ std::optional<DeadlineEntry> reference_next(const std::map<std::uint64_t, Deadli
 int main() {
     for (const std::size_t bad : {std::size_t{0}, std::size_t{2049}}) {
         bool caught = false;
-        try { DeadlineQueue queue(bad); } catch (const std::invalid_argument &) { caught = true; }
+        try {
+            DeadlineQueue queue(bad);
+        } catch (const std::invalid_argument &) {
+            caught = true;
+        }
         check(caught, "capacity rejected before allocation");
     }
     DeadlineQueue one(1);
     check(one.size() == 0 && one.capacity() == 1 && !one.next() && !one.pop_due(1), "empty");
-    check(one.upsert({0, 1}) == DeadlineUpdate::invalid && one.upsert({1, 0}) == DeadlineUpdate::invalid
-          && one.upsert({1, -1}) == DeadlineUpdate::invalid && one.size() == 0, "invalid unchanged");
+    check(one.upsert({0, 1}) == DeadlineUpdate::invalid
+              && one.upsert({1, 0}) == DeadlineUpdate::invalid
+              && one.upsert({1, -1}) == DeadlineUpdate::invalid && one.size() == 0,
+        "invalid unchanged");
     check(one.upsert({1, 10}) == DeadlineUpdate::stored && !one.pop_due(9), "before boundary");
-    check(one.upsert({2, 1}) == DeadlineUpdate::full && same(one.next(), DeadlineEntry{1, 10}), "full preserves old");
+    check(one.upsert({2, 1}) == DeadlineUpdate::full && same(one.next(), DeadlineEntry{1, 10}),
+        "full preserves old");
     for (DeadlineTime i = 1; i <= 10000; ++i)
-        check(one.upsert({1, i}) == DeadlineUpdate::stored && one.size() == 1, "full updates never accumulate");
-    check(!one.erase(0) && !one.erase(2) && !one.pop_due(-1), "unknown erase and negative now preserve");
-    check(same(one.pop_due(10000), DeadlineEntry{1, 10000}) && one.size() == 0 && !one.erase(1), "equal boundary consumes once");
-    check(one.upsert({std::numeric_limits<std::uint64_t>::max(), std::numeric_limits<DeadlineTime>::max()})
-          == DeadlineUpdate::stored, "max key and time");
-    check(same(one.pop_due(std::numeric_limits<DeadlineTime>::max()), DeadlineEntry{
-        std::numeric_limits<std::uint64_t>::max(), std::numeric_limits<DeadlineTime>::max()}), "max boundary");
+        check(one.upsert({1, i}) == DeadlineUpdate::stored && one.size() == 1,
+            "full updates never accumulate");
+    check(!one.erase(0) && !one.erase(2) && !one.pop_due(-1),
+        "unknown erase and negative now preserve");
+    check(same(one.pop_due(10000), DeadlineEntry{1, 10000}) && one.size() == 0 && !one.erase(1),
+        "equal boundary consumes once");
+    check(one.upsert(
+              {std::numeric_limits<std::uint64_t>::max(), std::numeric_limits<DeadlineTime>::max()})
+              == DeadlineUpdate::stored,
+        "max key and time");
+    check(same(one.pop_due(std::numeric_limits<DeadlineTime>::max()),
+              DeadlineEntry{std::numeric_limits<std::uint64_t>::max(),
+                  std::numeric_limits<DeadlineTime>::max()}),
+        "max boundary");
     DeadlineQueue maximum(2048);
     for (std::uint64_t k = 1; k <= 2048; ++k)
         check(maximum.upsert({k, 1}) == DeadlineUpdate::stored, "maximum real storage");
@@ -65,22 +84,30 @@ int main() {
         const std::uint64_t key = (seed >> 4U) % 13U;
         const DeadlineTime when = static_cast<DeadlineTime>((seed >> 12U) % 31U) - 1;
         switch (seed % 4U) {
-        case 0: {
-            const auto expected = key == 0 || when <= 0 ? DeadlineUpdate::invalid
-                : model.count(key) || model.size() < 7 ? DeadlineUpdate::stored : DeadlineUpdate::full;
-            check(queue.upsert({key, when}) == expected, "model update result");
-            if (expected == DeadlineUpdate::stored) model[key] = when;
-            break;
-        }
-        case 1: check(queue.erase(key) == (model.erase(key) != 0), "model cancel"); break;
-        case 2: {
-            auto due = reference_next(model);
-            if (due && due->when > when) due.reset();
-            check(same(queue.pop_due(when), due), "model due with <=");
-            if (due) model.erase(due->key);
-            break;
-        }
-        default: break;
+            case 0: {
+                const auto expected = key == 0 || when <= 0 ? DeadlineUpdate::invalid
+                                      : model.count(key) || model.size() < 7
+                                          ? DeadlineUpdate::stored
+                                          : DeadlineUpdate::full;
+                check(queue.upsert({key, when}) == expected, "model update result");
+                if (expected == DeadlineUpdate::stored)
+                    model[key] = when;
+                break;
+            }
+            case 1:
+                check(queue.erase(key) == (model.erase(key) != 0), "model cancel");
+                break;
+            case 2: {
+                auto due = reference_next(model);
+                if (due && due->when > when)
+                    due.reset();
+                check(same(queue.pop_due(when), due), "model due with <=");
+                if (due)
+                    model.erase(due->key);
+                break;
+            }
+            default:
+                break;
         }
         check(queue.size() == model.size() && queue.size() <= queue.capacity(), "model size");
         check(same(queue.next(), reference_next(model)), "model minimum");

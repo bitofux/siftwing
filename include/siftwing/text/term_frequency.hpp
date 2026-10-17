@@ -14,9 +14,9 @@
 namespace siftwing::text {
 /** @brief 停用词配置的四正预算；字节为UTF-8，等于上限合法。 */
 struct StopWordLimits final {
-    std::uint64_t max_input_bytes = 0;      ///< 所有源原字节总和，BOM/空行/重复/CRLF均计入。
-    std::uint64_t max_entries = 0;          ///< 规范化后唯一非空词条数量。
-    std::uint64_t max_entry_bytes = 0;      ///< 任一规范化非空词条字节，重复也检查。
+    std::uint64_t max_input_bytes = 0; ///< 所有源原字节总和，BOM/空行/重复/CRLF均计入。
+    std::uint64_t max_entries = 0;     ///< 规范化后唯一非空词条数量。
+    std::uint64_t max_entry_bytes = 0; ///< 任一规范化非空词条字节，重复也检查。
     std::uint64_t max_vocabulary_bytes = 0; ///< 唯一词条字节总和，不含容器开销。
 };
 /**
@@ -59,12 +59,12 @@ private:
 using FrequencyTable = std::map<std::string, std::uint64_t, std::less<>>;
 /** @brief 单一文档过滤后TF；外部可构造，交给累计前会校验正频及总数一致。 */
 struct DocumentTermFrequencies final {
-    FrequencyTable terms;           ///< 每词在该文档的实际出现次数，不是布尔含词或DF。
+    FrequencyTable terms; ///< 每词在该文档的实际出现次数，不是布尔含词或DF。
     std::uint64_t total_tokens = 0; ///< 必须等于terms所有次数之和；空表仅允许零。
 };
 /** @brief 一次分析的拥有序列与TF；序列保留顺序、重复及原token大小写。 */
 struct TokenAnalysis final {
-    TokenSequence tokens;       ///< 停用词过滤后的完整序列，不借用输入、StopWords或其TF键。
+    TokenSequence tokens; ///< 停用词过滤后的完整序列，不借用输入、StopWords或其TF键。
     DocumentTermFrequencies tf; ///< 与tokens精确一致的单文档统计。
 };
 /** @brief 一次token分析的七正预算，等于上限合法；不等于进程内存/CPU硬限。 */
@@ -100,13 +100,13 @@ struct TokenAnalysisLimits final {
     const TokenSequence &input, const StopWords &stopwords, const TokenAnalysisLimits &limits);
 /** @brief 推荐语料累计表，与单文档TF/搜索DF分开；输入集合选择由调用方承担。 */
 struct RecommendationFrequencies final {
-    FrequencyTable terms;           ///< 所有显式交付文档TF的出现次数之和，不默认搜索去重。
+    FrequencyTable terms; ///< 所有显式交付文档TF的出现次数之和，不默认搜索去重。
     std::uint64_t total_tokens = 0; ///< 必须等于terms次数之和；uint64溢出拒绝。
-    std::uint64_t documents = 0;    ///< 已交付次数，空文档也计1；无DocId/隐式幂等或去重。
+    std::uint64_t documents = 0; ///< 已交付次数，空文档也计1；无DocId/隐式幂等或去重。
 };
 /** @brief 每次累计后的五正预算；等于上限合法，配置不可用零表示无限。 */
 struct RecommendationLimits final {
-    std::uint64_t max_documents = 0;        ///< 接受的文档交付次数，非去重文档数或搜索N。
+    std::uint64_t max_documents = 0; ///< 接受的文档交付次数，非去重文档数或搜索N。
     std::uint64_t max_distinct_terms = 0;   ///< 累计唯一词数。
     std::uint64_t max_term_bytes = 0;       ///< 任何已有/新词键字节。
     std::uint64_t max_vocabulary_bytes = 0; ///< 累计唯一词键字节和。
@@ -151,6 +151,5 @@ struct RecommendationLimits final {
  * @throws 分配或未知异常上传，局部累计自动释放；预算不是进程硬内存限制。
  */
 [[nodiscard]] base::Result<RecommendationFrequencies> accumulate_recommendation_batch(
-    const std::vector<DocumentTermFrequencies> &documents,
-    const RecommendationLimits &limits);
+    const std::vector<DocumentTermFrequencies> &documents, const RecommendationLimits &limits);
 } // namespace siftwing::text

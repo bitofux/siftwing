@@ -21,7 +21,7 @@ namespace siftwing::document {
 
 /** @brief 调用方为一个逻辑TXT输入提供的身份与标题；不自动分配身份。 */
 struct TxtDocumentMetadata final {
-    base::DocumentId doc_id;          ///< 显式身份，零合法；批量唯一性仍由read_documents验证。
+    base::DocumentId doc_id; ///< 显式身份，零合法；批量唯一性仍由read_documents验证。
     std::optional<std::string> title; ///< 拥有显式标题；缺失、空或全空白时回退，不改变原配置。
 };
 

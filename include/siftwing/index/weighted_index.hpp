@@ -112,9 +112,9 @@ private:
         std::vector<double> idfs,
         std::vector<std::vector<double>> weights,
         std::vector<double> norms) noexcept;
-    InvertedIndex raw_;        ///< 唯一拥有原始统计/词键/整数关系，不重建词表或变更ID。
+    InvertedIndex raw_; ///< 唯一拥有原始统计/词键/整数关系，不重建词表或变更ID。
     std::vector<double> idfs_; ///< 按TermId对齐，构建/导出消费，有限>=1。
     std::vector<std::vector<double>> weights_; ///< 每词按原始Posting位置对齐，拥有正有限单位权重。
-    std::vector<double> norms_;                ///< 按原始文档统计位置对齐，空篇+0，其他篇正有限。
+    std::vector<double> norms_; ///< 按原始文档统计位置对齐，空篇+0，其他篇正有限。
 };
 } // namespace siftwing::index

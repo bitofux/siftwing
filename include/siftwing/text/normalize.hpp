@@ -21,7 +21,7 @@ inline constexpr std::uint32_t normalization_policy_version = 1;
 
 /** @brief 调用方显式提供的正字节上限；输入与最终输出分别计数，等于上限合法。 */
 struct NormalizationLimits final {
-    std::uint64_t max_input_bytes = 0;  ///< 原始输入UTF-8字节数；验证/输出分配前检查。
+    std::uint64_t max_input_bytes = 0; ///< 原始输入UTF-8字节数；验证/输出分配前检查。
     std::uint64_t max_output_bytes = 0; ///< 最终规范化字符串字节数；完整预计算后才分配。
 };
 

@@ -52,7 +52,7 @@ enum class ReadIssueCode {
 /** @brief 拥有型诊断；详细格式与具体格式适配器对应，不解析 region 文本。 */
 struct ReadIssue final {
     ReadIssueCode code = ReadIssueCode::io_error; ///< 语义原因；不是 errno 或底层库的错误编号。
-    std::string message;                          ///< 非空、拥有型原因文本；不保存输入视图。
+    std::string message; ///< 非空、拥有型原因文本；不保存输入视图。
     std::string region; ///< 可为空的格式内定位；partial_extraction 时须描述未覆盖范围。
 };
 
@@ -60,7 +60,7 @@ struct ReadIssue final {
 struct ReadItem final {
     SourceIdentity source_id; ///< 拥有来源位置；输入名必须与请求一致，序号按交付顺序严格递增。
     ReadStatus status =
-        ReadStatus::failed;               ///< success/warning 才交付 record，其余状态不含 record。
+        ReadStatus::failed; ///< success/warning 才交付 record，其余状态不含 record。
     std::optional<DocumentRecord> record; ///< 拥有抽取记录；有载荷时来源/种类必须与请求一致。
     std::vector<ReadIssue> issues; ///< success 为空，其余状态至少有一条非空原因；顺序由适配器确定。
 };
@@ -68,8 +68,8 @@ struct ReadItem final {
 /** @brief 本次同步调用的输入；已装载字节的所有者仍为调用者。 */
 struct ReaderInput final {
     SourceKind kind = SourceKind::txt; ///< 来源种类；组装默认TXT，不按扩展名猜测。
-    std::string input_path;            ///< 拥有型相对标识；非空，无 NUL、空路径分段、. 或 .. 分段。
-    std::string_view bytes;            ///< 仅本次同步调用借用，调用结束前须存活且不被修改。
+    std::string input_path; ///< 拥有型相对标识；非空，无 NUL、空路径分段、. 或 .. 分段。
+    std::string_view bytes; ///< 仅本次同步调用借用，调用结束前须存活且不被修改。
 };
 
 /**
@@ -81,9 +81,9 @@ struct ReaderInput final {
  *     bytes 已由调用方装载，本接口不能追回装载前的 IO/分配成本。
  */
 struct ReadLimits final {
-    std::uint64_t max_input_bytes = 0;    ///< 每个输入最大字节数；0表示尚未配置，等于正数上限合法。
+    std::uint64_t max_input_bytes = 0; ///< 每个输入最大字节数；0表示尚未配置，等于正数上限合法。
     std::uint64_t max_document_bytes = 0; ///< 每篇标题加正文最大字节数；0尚未配置。
-    std::uint64_t max_records = 0;        ///< 批量全部状态结果最大条数；0尚未配置。
+    std::uint64_t max_records = 0; ///< 批量全部状态结果最大条数；0尚未配置。
     std::uint64_t max_total_text_bytes = 0; ///< 批量接纳记录累计文本最大字节数；0尚未配置。
 };
 
@@ -100,7 +100,7 @@ enum class PartialPolicy {
 
 /** @brief 显式传入的批量策略；组装默认值为遇错停止、拒绝部分结果。 */
 struct ReadPolicy final {
-    FailurePolicy failure = FailurePolicy::stop;   ///< 仅控制普通 rejected/failed，不吞掉诊断。
+    FailurePolicy failure = FailurePolicy::stop; ///< 仅控制普通 rejected/failed，不吞掉诊断。
     PartialPolicy partial = PartialPolicy::reject; ///< 部分结果必须显式选择 accept 才接纳。
 };
 
@@ -124,16 +124,16 @@ enum class ReadStopReason {
 struct ReadStop final {
     ReadStopReason reason =
         ReadStopReason::record_limit; ///< 区分策略停止、条数不足和累计文本不足。
-    SourceIdentity source_id;         ///< 触发停止的输入/逻辑位置；文件尚未调用时序号为0。
-    std::string message;              ///< 拥有型原因；不表示尚未处理的后续输入已成功或失败。
+    SourceIdentity source_id; ///< 触发停止的输入/逻辑位置；文件尚未调用时序号为0。
+    std::string message; ///< 拥有型原因；不表示尚未处理的后续输入已成功或失败。
 };
 
 /** @brief 批量读取的拥有型报告；可在输入销毁后使用。 */
 struct ReadReport final {
     std::vector<ReadItem> items; ///< 按输入名 std::string 字典序、文件内严格递增序号保存结果。
-    ReadCounts counts;           ///< 包含拒绝与失败；空批量合法，统计全0。
+    ReadCounts counts;                  ///< 包含拒绝与失败；空批量合法，统计全0。
     std::uint64_t total_text_bytes = 0; ///< 已接纳记录的标题与正文总字节数。
-    std::optional<ReadStop> stop;       ///< 提前停止才存在；已有结果保留，没有静默截断。
+    std::optional<ReadStop> stop; ///< 提前停止才存在；已有结果保留，没有静默截断。
 };
 
 /** @brief 仅在 DocumentReader::read 同步调用期间借用的接收端。 */

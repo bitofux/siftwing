@@ -24,8 +24,10 @@ Query::Query(Query &&other) noexcept
     other.frequencies_.total_tokens = 0;
 }
 
-base::Result<Query> Query::from_text(std::string_view input, const text::TextPipeline &pipeline,
-                                   QueryOptions options, const QueryLimits &limits) {
+base::Result<Query> Query::from_text(std::string_view input,
+    const text::TextPipeline &pipeline,
+    QueryOptions options,
+    const QueryLimits &limits) {
     if (limits.max_top_k == 0) {
         return base::Result<Query>::failure({"查询条数预算必须为正", "query.limits"});
     }

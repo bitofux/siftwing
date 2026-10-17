@@ -349,7 +349,7 @@ std::optional<std::string_view> namespace_uri(const Element *element, std::strin
     }
     const std::string attribute = prefix.empty() ? "xmlns" : "xmlns:" + std::string(prefix);
     for (auto *scope = element; scope != nullptr;
-        scope = scope->Parent() == nullptr ? nullptr : scope->Parent()->ToElement()) {
+         scope = scope->Parent() == nullptr ? nullptr : scope->Parent()->ToElement()) {
         if (const auto *uri = scope->Attribute(attribute.c_str())) {
             return uri;
         }
@@ -439,7 +439,7 @@ struct Field {
 Field find_field(const Element *parent, std::string_view uri, std::string_view local) {
     Field result;
     for (auto *child = parent->FirstChildElement(); child != nullptr;
-        child = child->NextSiblingElement()) {
+         child = child->NextSiblingElement()) {
         if (matches(child, uri, local)) {
             if (result.node) {
                 result.duplicate = true;

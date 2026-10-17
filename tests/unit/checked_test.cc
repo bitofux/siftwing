@@ -22,15 +22,15 @@ using siftwing::base::checked_add;
 using siftwing::base::checked_mul;
 using siftwing::base::checked_narrow;
 
-static_assert(std::is_same_v<decltype(checked_add(std::size_t{}, std::size_t{})),
-                             Result<std::size_t>>);
+static_assert(
+    std::is_same_v<decltype(checked_add(std::size_t{}, std::size_t{})), Result<std::size_t>>);
 static_assert(std::is_same_v<decltype(checked_narrow<std::uint32_t>(std::uint64_t{})),
-                             Result<std::uint32_t>>);
+    Result<std::uint32_t>>);
 
 std::size_t checks = 0;
 std::size_t failures = 0;
 
-void check(bool condition, const char* label) {
+void check(bool condition, const char *label) {
     ++checks;
     if (!condition) {
         if (failures < 20) {
@@ -41,7 +41,7 @@ void check(bool condition, const char* label) {
 }
 
 template <typename T>
-void expect_value(const Result<T>& result, T expected, const char* label) {
+void expect_value(const Result<T> &result, T expected, const char *label) {
     check(result.has_value() && result.value() == expected, label);
 }
 
@@ -57,15 +57,15 @@ void exhaustive_arithmetic() {
             const auto sum = checked_add(a, b);
             const int expected_sum = lhs + rhs;
             const bool sum_fits = expected_sum >= minimum && expected_sum <= maximum;
-            check(sum.has_value() == sum_fits &&
-                      (!sum_fits || static_cast<int>(sum.value()) == expected_sum),
-                  "8-bit addition vs independent int oracle");
+            check(sum.has_value() == sum_fits
+                      && (!sum_fits || static_cast<int>(sum.value()) == expected_sum),
+                "8-bit addition vs independent int oracle");
             const auto product = checked_mul(a, b);
             const int expected_product = lhs * rhs;
             const bool product_fits = expected_product >= minimum && expected_product <= maximum;
-            check(product.has_value() == product_fits &&
-                      (!product_fits || static_cast<int>(product.value()) == expected_product),
-                  "8-bit multiplication vs independent int oracle");
+            check(product.has_value() == product_fits
+                      && (!product_fits || static_cast<int>(product.value()) == expected_product),
+                "8-bit multiplication vs independent int oracle");
         }
     }
 }
@@ -81,13 +81,13 @@ void exhaustive_conversion() {
         const auto result = checked_narrow<To>(static_cast<From>(input));
         const bool fits = input >= target_min && input <= target_max;
         check(result.has_value() == fits && (!fits || static_cast<int>(result.value()) == input),
-              "8-bit conversion vs independent int oracle");
+            "8-bit conversion vs independent int oracle");
     }
 }
 
 // 记录布局验收夹具证明调用者按“乘法→加法→窄化”短路；不写文件、不冻结生产格式。
-Result<std::uint32_t> layout_offset(std::uint64_t count, std::uint64_t width,
-                                    std::uint64_t offset) {
+Result<std::uint32_t> layout_offset(
+    std::uint64_t count, std::uint64_t width, std::uint64_t offset) {
     const auto bytes = checked_mul(count, width, "layout bytes");
     if (!bytes) {
         return Result<std::uint32_t>::failure(bytes.error());
@@ -157,7 +157,8 @@ void wide_boundaries() {
     expect_value(checked_narrow<std::int32_t>(S{s32max}), s32max, "signed narrowing exact max");
     check(!checked_narrow<std::int32_t>(S{s32min} - S{1}), "signed narrowing below min");
     check(!checked_narrow<std::int32_t>(S{s32max} + S{1}), "signed narrowing above max");
-    expect_value(checked_narrow<std::uint32_t>(S{u32max}), u32max, "signed to smaller unsigned max");
+    expect_value(
+        checked_narrow<std::uint32_t>(S{u32max}), u32max, "signed to smaller unsigned max");
     check(!checked_narrow<std::uint32_t>(S{u32max} + S{1}), "signed to smaller unsigned overflow");
     check(!checked_narrow<std::uint32_t>(S{-1}), "signed to smaller unsigned negative");
     expect_value(checked_narrow<S>(u32max), S{u32max}, "unsigned widening into signed");
@@ -175,12 +176,16 @@ void caller_and_ownership() {
     constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
     expect_value(layout_offset(3, 8, 10), std::uint32_t{34}, "layout caller success");
     const auto mul_failure = layout_offset(maximum, 2, 0);
-    check(!mul_failure && mul_failure.error().context == "layout bytes", "caller stops at multiplication");
+    check(!mul_failure && mul_failure.error().context == "layout bytes",
+        "caller stops at multiplication");
     const auto add_failure = layout_offset(1, 1, maximum);
-    check(!add_failure && add_failure.error().context == "layout end", "caller stops at offset addition");
+    check(!add_failure && add_failure.error().context == "layout end",
+        "caller stops at offset addition");
     const auto narrow_failure = layout_offset(1, 1, std::numeric_limits<std::uint32_t>::max());
-    check(!narrow_failure && narrow_failure.error().context == "layout field", "caller stops at field conversion");
-    expect_value(layout_offset(0, maximum, 9), std::uint32_t{9}, "zero count ignores large width safely");
+    check(!narrow_failure && narrow_failure.error().context == "layout field",
+        "caller stops at field conversion");
+    expect_value(
+        layout_offset(0, maximum, 9), std::uint32_t{9}, "zero count ignores large width safely");
 
     // 局部 string 含 NUL 且随后被改写，用于证明失败 Error 拥有完整 context 副本。
     const auto owned_error = [maximum] {
@@ -189,19 +194,22 @@ void caller_and_ownership() {
         context.assign("changed");
         return result.error();
     }();
-    check(owned_error.context == std::string{"input\0offset", 12} &&
-              owned_error.message == "integer addition overflow", "error owns context including embedded NUL");
+    check(owned_error.context == std::string{"input\0offset", 12}
+              && owned_error.message == "integer addition overflow",
+        "error owns context including embedded NUL");
     const auto mul = checked_mul(maximum, std::uint64_t{2});
-    check(!mul && mul.error().context == "checked_mul" &&
-              mul.error().message == "integer multiplication overflow", "default multiplication error");
+    check(!mul && mul.error().context == "checked_mul"
+              && mul.error().message == "integer multiplication overflow",
+        "default multiplication error");
     const auto narrow = checked_narrow<unsigned int>(-1);
-    check(!narrow && narrow.error().context == "checked_narrow" &&
-              narrow.error().message == "integer conversion out of range", "default conversion error");
+    check(!narrow && narrow.error().context == "checked_narrow"
+              && narrow.error().message == "integer conversion out of range",
+        "default conversion error");
     const auto empty = checked_add(maximum, std::uint64_t{1}, {});
     check(!empty && empty.error().context.empty(), "empty context does not mean success");
 }
 
-}  // namespace
+} // namespace
 
 int main() {
     wide_boundaries();

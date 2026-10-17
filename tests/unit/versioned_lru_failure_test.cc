@@ -14,20 +14,36 @@ thread_local bool observe = false;
 thread_local unsigned int allocations = 0, fail_at = 0;
 unsigned int checks = 0;
 void check(bool ok, const char *why) {
-    ++checks; if (!ok) { std::cerr << why << '\n'; std::exit(1); }
+    ++checks;
+    if (!ok) {
+        std::cerr << why << '\n';
+        std::exit(1);
+    }
 }
 }
 // 普通全局new与malloc/free成对替换，不覆盖对齐分配/直接malloc或真实OOM。
 void *operator new(std::size_t n) {
-    if (observe && ++allocations == fail_at) throw std::bad_alloc();
-    if (auto *p = std::malloc(n ? n : 1)) return p;
+    if (observe && ++allocations == fail_at)
+        throw std::bad_alloc();
+    if (auto *p = std::malloc(n ? n : 1))
+        return p;
     throw std::bad_alloc();
 }
-void *operator new[](std::size_t n) { return ::operator new(n); }
-void operator delete(void *p) noexcept { std::free(p); }
-void operator delete[](void *p) noexcept { std::free(p); }
-void operator delete(void *p, std::size_t) noexcept { std::free(p); }
-void operator delete[](void *p, std::size_t) noexcept { std::free(p); }
+void *operator new[](std::size_t n) {
+    return ::operator new(n);
+}
+void operator delete(void *p) noexcept {
+    std::free(p);
+}
+void operator delete[](void *p) noexcept {
+    std::free(p);
+}
+void operator delete(void *p, std::size_t) noexcept {
+    std::free(p);
+}
+void operator delete[](void *p, std::size_t) noexcept {
+    std::free(p);
+}
 int main() {
     using namespace siftwing::cache;
     const CacheKey a{1, Operation::search, std::string(128, 'a'), std::string(64, 'p')};
@@ -41,17 +57,31 @@ int main() {
             VersionedLru cache({2, 4096, 1024});
             check(cache.put(a, body) && cache.put(b, body), "initial values");
             const auto old = cache.stats();
-            allocations = 0; fail_at = position; observe = true; bool caught = false;
+            allocations = 0;
+            fail_at = position;
+            observe = true;
+            bool caught = false;
             try {
-                if (mode == 0) (void)cache.put(c, changed);
-                else if (mode == 1) (void)cache.put(a, changed);
-                else (void)cache.get(a);
-            } catch (const std::bad_alloc &) { caught = true; }
-            observe = false; fail_at = 0;
-            if (position == 0) { count = allocations; check(count > 0 && !caught, "allocation observed"); continue; }
+                if (mode == 0)
+                    (void)cache.put(c, changed);
+                else if (mode == 1)
+                    (void)cache.put(a, changed);
+                else
+                    (void)cache.get(a);
+            } catch (const std::bad_alloc &) {
+                caught = true;
+            }
+            observe = false;
+            fail_at = 0;
+            if (position == 0) {
+                count = allocations;
+                check(count > 0 && !caught, "allocation observed");
+                continue;
+            }
             const auto now = cache.stats();
-            check(caught && allocations == position && old.entries == now.entries && old.bytes == now.bytes
-                && old.hits == now.hits && old.misses == now.misses && old.evictions == now.evictions,
+            check(caught && allocations == position && old.entries == now.entries
+                      && old.bytes == now.bytes && old.hits == now.hits && old.misses == now.misses
+                      && old.evictions == now.evictions,
                 "failed operation preserves report and size");
             check(cache.put(c, body) && !cache.get(a) && cache.get(b) == body,
                 "failed operation preserves LRU order and untouched contents");

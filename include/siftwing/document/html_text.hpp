@@ -18,16 +18,16 @@ namespace siftwing::document {
 
 /** @brief 调用方显式提供的五项正预算；等于上限合法，零表示配置缺失。 */
 struct HtmlTextLimits final {
-    std::uint64_t max_input_bytes = 0;  ///< 原始片段字节，含开头BOM；解析前检查。
+    std::uint64_t max_input_bytes = 0; ///< 原始片段字节，含开头BOM；解析前检查。
     std::uint64_t max_output_bytes = 0; ///< 最终UTF-8正文的字节预算，字符串增长前检查。
-    std::uint64_t max_tokens = 0;       ///< 解析回调次数，含文本、结束标签及EOF；树处理前检查。
+    std::uint64_t max_tokens = 0; ///< 解析回调次数，含文本、结束标签及EOF；树处理前检查。
     std::uint64_t max_nodes = 0; ///< 解析后DOM节点，含过滤子树及template内容容器，不含合成根。
     std::uint64_t max_depth = 0; ///< DOM节点最大深度，根的孩子为1；另限制解析中的元素栈。
 };
 
 /** @brief 拥有型抽取结果；空text表示没有正文，与解析恢复标记分别判断。 */
 struct HtmlText final {
-    std::string text;       ///< 拥有UTF-8文字，输入和解析树销毁后仍有效；没有URL或图片内容。
+    std::string text; ///< 拥有UTF-8文字，输入和解析树销毁后仍有效；没有URL或图片内容。
     bool recovered = false; ///< Lexbor记录了tokenizer/tree解析诊断，不证明页面全文完整。
 };
 

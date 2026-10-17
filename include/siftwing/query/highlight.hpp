@@ -17,11 +17,11 @@ struct HighlightSpan final {
 };
 /** @brief 六项显式正预算，含端点；不提供整个进程CPU/内存硬限制。 */
 struct HighlightLimits final {
-    std::uint64_t max_text_bytes = 0;   ///< 完整输入原字节上限。
-    std::uint64_t max_query_terms = 0;  ///< 全部唯一保留查询词上限，含索引未知词。
-    std::uint64_t max_query_bytes = 0;  ///< 全部唯一词键累计UTF-8字节。
-    std::uint64_t max_match_pairs = 0;  ///< 输入标量N乘全部唯一键累计标量Q的完整准入。
-    std::uint64_t max_spans = 0;        ///< 重叠及相邻合并后的区间数量上限。
+    std::uint64_t max_text_bytes = 0;  ///< 完整输入原字节上限。
+    std::uint64_t max_query_terms = 0; ///< 全部唯一保留查询词上限，含索引未知词。
+    std::uint64_t max_query_bytes = 0; ///< 全部唯一词键累计UTF-8字节。
+    std::uint64_t max_match_pairs = 0; ///< 输入标量N乘全部唯一键累计标量Q的完整准入。
+    std::uint64_t max_spans = 0;       ///< 重叠及相邻合并后的区间数量上限。
     std::uint64_t max_output_bytes = 0; ///< 最终HTML字节，包含所有实体与每对13字节mark标签。
 };
 /**

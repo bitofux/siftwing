@@ -19,7 +19,7 @@ namespace siftwing::document {
 struct RssParseLimits final {
     std::uint64_t max_xml_nodes = 0; ///< 包括文本/注释/声明，排除document合成节点。
     std::uint64_t max_xml_depth = 0; ///< document孩子深度1；tinyxml2另有500层内部上限。
-    HtmlTextLimits html;             ///< 每个候选正文字段的HTML预算，输出另取单篇预算的较小值。
+    HtmlTextLimits html; ///< 每个候选正文字段的HTML预算，输出另取单篇预算的较小值。
 };
 
 /**

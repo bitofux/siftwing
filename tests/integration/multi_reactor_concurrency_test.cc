@@ -107,7 +107,7 @@ int main() {
             // Sub响应与Main累计由不同线程分别发布；响应完成不证明Main快照已追上。
             const auto totals = server.totals();
             return responses == 240 && totals.accepted == 60 && totals.handed_off == 60
-                && totals.rejected == 0;
+                   && totals.rejected == 0;
         });
         const auto totals = server.totals();
         check(totals.accepted == 60 && totals.handed_off == 60 && totals.rejected == 0,

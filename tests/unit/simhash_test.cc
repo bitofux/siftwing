@@ -58,10 +58,12 @@ int main() {
         expect({{{"a", 3}, {"b", 2}}, 5}, a, "strict majority feature controls every bit");
         expect({{{"a", 300}, {"b", 200}}, 500}, a, "positive scaling leaves direction unchanged");
         expect({{{"a", max}}, max}, a, "full uint64 weight without signed conversion");
-        expect({{{"a", (max / 2) + 1}, {"b", max / 2}}, max}, a,
-               "one vote majority across full uint64 range");
-        expect({{{"a", max / 2}, {"b", max / 2}}, max - 1}, a & b,
-               "large exact ties do not round through double");
+        expect({{{"a", (max / 2) + 1}, {"b", max / 2}}, max},
+            a,
+            "one vote majority across full uint64 range");
+        expect({{{"a", max / 2}, {"b", max / 2}}, max - 1},
+            a & b,
+            "large exact ties do not round through double");
         auto empty = make_simhash({}, broad);
         check(empty && !empty.value(), "empty feature table is successful absence");
         // 结构验证、完整编码优先于格式验证，非空零指纹仍由类型合法表达。
@@ -74,36 +76,66 @@ int main() {
         for (const std::string word : {"a b", "a\tb", "a\nb", "a　b", "a\xc2\x85"}) {
             error({{{word, 1}}, 1}, broad, "simhash.term");
         }
-        const std::array<const char *, 25> spaces{
-            "\t", "\n", "\v", "\f", "\r", " ", "\u0085", "\u00a0", "\u1680",
-            "\u2000", "\u2001", "\u2002", "\u2003", "\u2004", "\u2005", "\u2006",
-            "\u2007", "\u2008", "\u2009", "\u200a", "\u2028", "\u2029", "\u202f",
-            "\u205f", "\u3000"};
+        const std::array<const char *, 25> spaces{"\t",
+            "\n",
+            "\v",
+            "\f",
+            "\r",
+            " ",
+            "\u0085",
+            "\u00a0",
+            "\u1680",
+            "\u2000",
+            "\u2001",
+            "\u2002",
+            "\u2003",
+            "\u2004",
+            "\u2005",
+            "\u2006",
+            "\u2007",
+            "\u2008",
+            "\u2009",
+            "\u200a",
+            "\u2028",
+            "\u2029",
+            "\u202f",
+            "\u205f",
+            "\u3000"};
         for (const auto *space : spaces) {
             error({{{std::string("a") + space + "b", 1}}, 1}, broad, "simhash.term");
         }
-        check(static_cast<bool>(make_simhash({{{"\ufeff",1},{"\u200b",1}},2}, broad)),
-              "BOM scalar and zero-width space are literal non-White_Space keys");
-        const std::array<std::string, 10> invalid{
-            "\x80", "\xc0\xaf", "\xe2\x82", "\xed\xa0\x80", "\xf4\x90\x80\x80",
-            "\xf5\x80\x80\x80", "\xff", "\xe0\x80\xaf", "\xc2x", "\xf0\x80\x80\xaf"};
+        check(static_cast<bool>(make_simhash({{{"\ufeff", 1}, {"\u200b", 1}}, 2}, broad)),
+            "BOM scalar and zero-width space are literal non-White_Space keys");
+        const std::array<std::string, 10> invalid{"\x80",
+            "\xc0\xaf",
+            "\xe2\x82",
+            "\xed\xa0\x80",
+            "\xf4\x90\x80\x80",
+            "\xf5\x80\x80\x80",
+            "\xff",
+            "\xe0\x80\xaf",
+            "\xc2x",
+            "\xf0\x80\x80\xaf"};
         for (const auto &word : invalid) {
             error({{{word, 1}}, 1}, broad, "simhash.utf8");
         }
         error({{{std::string("a\0b", 3), 1}}, 1}, broad, "simhash.nul");
         error({{{"", 0}, {"z\xff", 1}}, 1}, broad, "simhash.utf8");
         auto diagnostic = make_simhash({{{"a\xff", 1}}, 1}, broad);
-        check(!diagnostic && diagnostic.error().message.find("term 0") != std::string::npos &&
-                  diagnostic.error().message.find("byte 1") != std::string::npos,
-              "encoding diagnosis locates term and byte");
+        check(!diagnostic && diagnostic.error().message.find("term 0") != std::string::npos
+                  && diagnostic.error().message.find("byte 1") != std::string::npos,
+            "encoding diagnosis locates term and byte");
         const DocumentTermFrequencies two{{{"aa", 2}, {"bb", 1}}, 3};
         const SimHashLimits exact{2, 2, 4, 3};
         check(static_cast<bool>(make_simhash(two, exact)), "all exact budgets accepted");
         const std::array<std::uint64_t SimHashLimits::*, 4> members{
-            &SimHashLimits::max_distinct_terms, &SimHashLimits::max_term_bytes,
-            &SimHashLimits::max_vocabulary_bytes, &SimHashLimits::max_total_tokens};
-        const std::array<const char *, 4> contexts{
-            "simhash.distinct_terms", "simhash.term_bytes", "simhash.vocabulary_bytes",
+            &SimHashLimits::max_distinct_terms,
+            &SimHashLimits::max_term_bytes,
+            &SimHashLimits::max_vocabulary_bytes,
+            &SimHashLimits::max_total_tokens};
+        const std::array<const char *, 4> contexts{"simhash.distinct_terms",
+            "simhash.term_bytes",
+            "simhash.vocabulary_bytes",
             "simhash.total_tokens"};
         for (std::size_t i = 0; i < members.size(); ++i) {
             auto limits = exact;
@@ -117,13 +149,16 @@ int main() {
             for (std::uint64_t right = 0; right < 256; ++right) {
                 std::uint32_t count = 0;
                 for (unsigned bit = 0; bit < 8; ++bit) {
-                    count += static_cast<std::uint32_t>(((left >> bit) & 1U) != ((right >> bit) & 1U));
+                    count +=
+                        static_cast<std::uint32_t>(((left >> bit) & 1U) != ((right >> bit) & 1U));
                 }
-                check(hamming_distance({left}, {right}) == count, "exhaustive independent 8bit distance");
+                check(hamming_distance({left}, {right}) == count,
+                    "exhaustive independent 8bit distance");
             }
         }
         for (unsigned bit = 0; bit < 64; ++bit) {
-            check(hamming_distance({0}, {std::uint64_t{1} << bit}) == 1, "every individual 64bit position");
+            check(hamming_distance({0}, {std::uint64_t{1} << bit}) == 1,
+                "every individual 64bit position");
         }
         check(hamming_distance({0}, {max}) == 64, "all 64 bits differ");
         check(hamming_distance({a}, {a}) == 0, "same fingerprint distance zero");
@@ -134,7 +169,7 @@ int main() {
         input.terms.clear();
         input.total_tokens = 0;
         check(saved && owned && saved.value()->bits == owned.value()->bits && two.terms.size() == 2,
-              "result owns bits beyond input mutation and original input unchanged");
+            "result owns bits beyond input mutation and original input unchanged");
     } catch (const std::exception &e) {
         ++failures;
         std::cerr << "unexpected: " << e.what() << '\n';

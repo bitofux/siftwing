@@ -42,17 +42,16 @@ void value_contract() {
     static_assert(std::is_nothrow_copy_assignable_v<Id>);
     static_assert(std::is_nothrow_move_assignable_v<Id>);
     static_assert(std::is_trivially_copyable_v<Id>);
-    static_assert(std::is_same_v<decltype(std::declval<const Id&>().value()),
-                                 std::uint64_t>);
+    static_assert(std::is_same_v<decltype(std::declval<const Id &>().value()), std::uint64_t>);
     static_assert(std::is_same_v<decltype(Id::from_integer(0)), Result<Id>>);
-    static_assert(noexcept(std::declval<const Id&>().value()));
+    static_assert(noexcept(std::declval<const Id &>().value()));
     static_assert(noexcept(std::declval<Id>() == std::declval<Id>()));
 }
 
 std::size_t checks = 0;
 std::size_t failures = 0;
 
-void check(bool condition, const char* label) {
+void check(bool condition, const char *label) {
     ++checks;
     if (!condition) {
         ++failures;
@@ -63,18 +62,16 @@ void check(bool condition, const char* label) {
 template <typename Id, typename From>
 void source_boundaries() {
     // 独立参考：标准源整数均不宽于当前平台的 uint64_t；负值不属于其数学值域。
-    static_assert(std::numeric_limits<From>::digits <=
-                  std::numeric_limits<std::uint64_t>::digits);
+    static_assert(std::numeric_limits<From>::digits <= std::numeric_limits<std::uint64_t>::digits);
     constexpr std::array<From, 4> inputs{
-        From{0}, From{1}, std::numeric_limits<From>::min(),
-        std::numeric_limits<From>::max()};
+        From{0}, From{1}, std::numeric_limits<From>::min(), std::numeric_limits<From>::max()};
     for (const auto input : inputs) {
         const bool fits = !std::is_signed_v<From> || input >= From{0};
         const auto result = Id::from_integer(input);
         check(result.has_value() == fits, "source integer mathematical membership");
         if (fits && result) {
             check(result.value().value() == static_cast<std::uint64_t>(input),
-                  "successful identity preserves the complete source value");
+                "successful identity preserves the complete source value");
         }
     }
 }
@@ -102,27 +99,30 @@ void construction_and_ownership() {
     const auto from_const = Id::from_integer(constant);
     const auto from_volatile = Id::from_integer(volatile_input);
     check(from_const && from_const.value().value() == 7,
-          "by-value deduction accepts const input without storing a reference");
+        "by-value deduction accepts const input without storing a reference");
     check(from_volatile && from_volatile.value().value() == 8,
-          "by-value deduction copies volatile input");
+        "by-value deduction copies volatile input");
 
     const auto zero = Id::from_integer(0);
     const auto maximum = Id::from_integer(std::numeric_limits<std::uint64_t>::max());
     check(zero && zero.value().value() == 0, "zero is a valid identity");
     check(maximum && maximum.value().value() == std::numeric_limits<std::uint64_t>::max(),
-          "maximum is a valid identity, not a sentinel");
+        "maximum is a valid identity, not a sentinel");
     if (!zero || !maximum) {
         return;
     }
     auto source = maximum.value();
     const auto copy = source;
     auto moved = std::move(source);
-    check(source == maximum.value() && moved == copy, "moving an integer identity preserves its source");
+    check(source == maximum.value() && moved == copy,
+        "moving an integer identity preserves its source");
     moved = zero.value();
-    check(moved == zero.value() && source == maximum.value(), "copy assignment replaces only its target");
+    check(moved == zero.value() && source == maximum.value(),
+        "copy assignment replaces only its target");
     moved = std::move(source);
-    check(moved == maximum.value() && source == maximum.value(), "move assignment preserves its source");
-    auto& alias = moved;
+    check(moved == maximum.value() && source == maximum.value(),
+        "move assignment preserves its source");
+    auto &alias = moved;
     moved = alias;
     check(moved == maximum.value(), "self copy assignment preserves value");
     moved = std::move(alias);
@@ -138,15 +138,16 @@ void construction_and_ownership() {
     check(!failure, "negative input returns failure before unsigned conversion");
     if (!failure) {
         check(failure.error().context == std::string{"id\0context", 10},
-              "failure owns complete context after source destruction");
+            "failure owns complete context after source destruction");
         check(failure.error().message == "integer conversion out of range",
-              "failure preserves the checked conversion diagnostic");
+            "failure preserves the checked conversion diagnostic");
     }
     const auto default_failure = Id::from_integer(std::numeric_limits<std::int64_t>::min());
     check(!default_failure && default_failure.error().context == "id.from_integer",
-          "default context and signed minimum rejection");
+        "default context and signed minimum rejection");
     const auto empty_context = Id::from_integer(-1, "");
-    check(!empty_context && empty_context.error().context.empty(), "empty failure context remains empty");
+    check(!empty_context && empty_context.error().context.empty(),
+        "empty failure context remains empty");
 }
 
 template <typename Id>
@@ -185,7 +186,8 @@ void ordering() {
         }
     }
     std::vector<Id> identities;
-    for (const auto input : {ascending[3], ascending[4], ascending[2], ascending[0], ascending[1]}) {
+    for (const auto input :
+        {ascending[3], ascending[4], ascending[2], ascending[0], ascending[1]}) {
         auto result = Id::from_integer(input);
         if (!result) {
             check(false, "sort inputs must be creatable");
@@ -195,12 +197,13 @@ void ordering() {
     }
     std::sort(identities.begin(), identities.end());
     for (std::size_t index = 0; index < ascending.size(); ++index) {
-        check(identities[index].value() == ascending[index], "sorting matches an independently written sequence");
+        check(identities[index].value() == ascending[index],
+            "sorting matches an independently written sequence");
     }
 }
 
 // 仅为合同消费夹具：先检查 Result，失败不消费身份；不伪装为文档库查找或编号生成器。
-Result<std::uint64_t> create_and_consume(std::int64_t input, std::size_t& consumed) {
+Result<std::uint64_t> create_and_consume(std::int64_t input, std::size_t &consumed) {
     auto identity = DocumentId::from_integer(input, "consume document");
     if (!identity) {
         return Result<std::uint64_t>::failure(std::move(identity).error());
@@ -213,22 +216,25 @@ void caller_boundary() {
     std::size_t consumed = 0;
     const auto failure = create_and_consume(-1, consumed);
     check(!failure && consumed == 0, "failure stops the caller before identity consumption");
-    check(!failure && failure.error().context == "consume document", "caller preserves failure context");
+    check(!failure && failure.error().context == "consume document",
+        "caller preserves failure context");
     const auto success = create_and_consume(7, consumed);
-    check(success && success.value() == 7 && consumed == 1, "caller consumes a successful typed identity once");
+    check(success && success.value() == 7 && consumed == 1,
+        "caller consumes a successful typed identity once");
     const auto zero = create_and_consume(0, consumed);
-    check(zero && zero.value() == 0 && consumed == 2, "zero success is distinguished from failure by Result");
+    check(zero && zero.value() == 0 && consumed == 2,
+        "zero success is distinguished from failure by Result");
 
     // 相同数字属于三个不同身份域；这里只显式读取数字，不跨类型比较。
     const auto document = DocumentId::from_integer(7);
     const auto term = TermId::from_integer(7);
     const auto version = SnapshotVersion::from_integer(7);
-    check(document && term && version && document.value().value() == term.value().value() &&
-              term.value().value() == version.value().value(),
-          "different identity types can hold the same raw value");
+    check(document && term && version && document.value().value() == term.value().value()
+              && term.value().value() == version.value().value(),
+        "different identity types can hold the same raw value");
 }
 
-}  // namespace
+} // namespace
 
 int main() {
     construction_and_ownership<DocumentId>();

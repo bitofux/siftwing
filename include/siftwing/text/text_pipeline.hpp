@@ -22,8 +22,8 @@ namespace siftwing::text {
  */
 struct TextPipelineLimits final {
     NormalizationLimits normalization; ///< 拥有原文字节/规范化输出的两正预算值。
-    TokenizationLimits tokenization;   ///< 拥有规范化输入/未过滤分词输出的四正预算值。
-    TokenAnalysisLimits analysis;      ///< 拥有未过滤输入/保留序列/TF词键的七正预算值。
+    TokenizationLimits tokenization; ///< 拥有规范化输入/未过滤分词输出的四正预算值。
+    TokenAnalysisLimits analysis; ///< 拥有未过滤输入/保留序列/TF词键的七正预算值。
 };
 
 /**
@@ -88,7 +88,7 @@ public:
 private:
     TextPipeline(std::unique_ptr<Tokenizer> tokenizer, StopWords stopwords);
     std::unique_ptr<Tokenizer> tokenizer_; ///< 拥有已初始化分词器，仅经const tokenize使用。
-    StopWords stopwords_;                  ///< 拥有精确匹配的只读配置，不保存外部字节视图。
+    StopWords stopwords_; ///< 拥有精确匹配的只读配置，不保存外部字节视图。
 };
 
 } // namespace siftwing::text

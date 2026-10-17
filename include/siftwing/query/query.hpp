@@ -26,7 +26,7 @@ struct QueryOptions final {
 /** @brief 显式正预算；文本三阶段沿已有合同，条数上限含端点，不是进程硬资源限。 */
 struct QueryLimits final {
     text::TextPipelineLimits text; ///< 原查询、规范化、未过滤/过滤token与唯一词键各自计量。
-    std::uint64_t max_top_k = 0;   ///< 正uint64上限；0不表示无限，默认选项也不自动缩小。
+    std::uint64_t max_top_k = 0; ///< 正uint64上限；0不表示无限，默认选项也不自动缩小。
 };
 
 /**
@@ -42,7 +42,7 @@ public:
     /** @brief 转交拥有TF并显式清空源，所有原借用失效。 */
     Query(Query &&other) noexcept;
     Query &operator=(const Query &) = delete; ///< 不在已发布查询上替换状态。
-    Query &operator=(Query &&) = delete;      ///< 使用构造转交，保持已发布查询只读。
+    Query &operator=(Query &&) = delete; ///< 使用构造转交，保持已发布查询只读。
     /** @brief 释放拥有词键，无管线资源或文件句柄。 */
     ~Query() noexcept = default;
 
@@ -92,7 +92,7 @@ public:
 private:
     Query(text::DocumentTermFrequencies frequencies, QueryOptions options);
     text::DocumentTermFrequencies frequencies_; ///< 拥有唯一词键及重复次数；总次数严格等于次数和。
-    QueryOptions options_;                      ///< 拥有已校验选项，复制/移动不重新解析。
+    QueryOptions options_; ///< 拥有已校验选项，复制/移动不重新解析。
 };
 
 } // namespace siftwing::query

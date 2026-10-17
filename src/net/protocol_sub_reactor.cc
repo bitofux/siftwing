@@ -119,9 +119,9 @@ class Sessions final {
         record.connection = identity;
         record.request_id = request;
         // Sub事件记录观察时点；某次业务实际使用的版本由worker持有的句柄记录。
-        record.index_version = config_.service_info
-                                   ? std::optional<std::uint64_t>(config_.service_info->index_version())
-                                   : config_.log_index_version;
+        record.index_version = config_.service_info ? std::optional<std::uint64_t>(
+                                                          config_.service_info->index_version())
+                                                    : config_.log_index_version;
         record.native_error = native_error;
         config_.logger->write(record);
     }
@@ -363,8 +363,9 @@ class Sessions final {
                             && read.request->message_type == MessageType::server_info_request
                             && (config_.service_info || !config_.server_info_body.empty())
                             && nlohmann::json::parse(read.request->body).empty()) {
-                            const auto body = config_.service_info ? config_.service_info->server_info()
-                                                                  : config_.server_info_body;
+                            const auto body = config_.service_info
+                                                  ? config_.service_info->server_info()
+                                                  : config_.server_info_body;
                             response = make_response(*read.request, body, config_.max_body_bytes);
                             if (std::holds_alternative<ProtocolError>(response))
                                 response = make_error_response(*read.request,

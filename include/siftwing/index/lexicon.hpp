@@ -95,7 +95,7 @@ using CharacterIndex = std::map<char32_t, std::vector<base::TermId>>;
 
 /** @brief 九项正预算；lexicon计输入/词表，其余计推荐统计与字符关系。 */
 struct RecommendationDictionaryLimits final {
-    LexiconLimits lexicon;                 ///< 输入为M1.13唯一频次表，但仍核全套词键预算。
+    LexiconLimits lexicon; ///< 输入为M1.13唯一频次表，但仍核全套词键预算。
     std::uint64_t max_documents = 0;       ///< 显式交付次数，不是搜索去重后N。
     std::uint64_t max_total_tokens = 0;    ///< 累计出现次数，不是DF。
     std::uint64_t max_characters = 0;      ///< 不同Unicode标量键数量。
@@ -166,7 +166,7 @@ private:
         CharacterIndex characters,
         std::uint64_t documents,
         std::uint64_t total_tokens) noexcept;
-    Lexicon lexicon_;                        ///< 拥有本推荐词表，搜索Lexicon完全独立。
+    Lexicon lexicon_; ///< 拥有本推荐词表，搜索Lexicon完全独立。
     std::vector<std::uint64_t> frequencies_; ///< 拥有ID→出现次数，与词表位置一致。
     CharacterIndex characters_;              ///< 拥有标量→局部ID关系，无文档身份。
     std::uint64_t documents_;                ///< 已验证推荐交付次数，移动源归零。

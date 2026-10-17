@@ -37,10 +37,16 @@ void hex(std::string_view input) {
     std::cout.put('"');
 }
 
-int run(int argc, char** argv) {
-    if (argc != 6) { throw std::invalid_argument("usage: probe INPUT_BYTES OUTPUT_BYTES TOKENS NODES DEPTH < fragment"); }
-    const siftwing::document::HtmlTextLimits limits{positive(argv[1]), positive(argv[2]), positive(argv[3]),
-                                                  positive(argv[4]), positive(argv[5])};
+int run(int argc, char **argv) {
+    if (argc != 6) {
+        throw std::invalid_argument(
+            "usage: probe INPUT_BYTES OUTPUT_BYTES TOKENS NODES DEPTH < fragment");
+    }
+    const siftwing::document::HtmlTextLimits limits{positive(argv[1]),
+        positive(argv[2]),
+        positive(argv[3]),
+        positive(argv[4]),
+        positive(argv[5])};
     std::string input;
     std::array<char, 4096> buffer{};
     while (std::cin) {
@@ -48,28 +54,40 @@ int run(int argc, char** argv) {
         const auto count = std::cin.gcount();
         if (count > 0) {
             const auto size = static_cast<std::uint64_t>(count);
-            if (input.size() > limits.max_input_bytes || size > limits.max_input_bytes - input.size()) {
+            if (input.size() > limits.max_input_bytes
+                || size > limits.max_input_bytes - input.size()) {
                 std::cout << "{\"error_context\":\"html.input_bytes\"}\n";
                 return 1;
             }
             input.append(buffer.data(), static_cast<std::size_t>(count));
         }
     }
-    if (!std::cin.eof()) { throw std::runtime_error("input stream failed"); }
+    if (!std::cin.eof()) {
+        throw std::runtime_error("input stream failed");
+    }
     auto result = siftwing::document::extract_html_text(input, limits);
     if (!result) {
-        std::cout << "{\"error_context_hex\":"; hex(result.error().context); std::cout << "}\n";
+        std::cout << "{\"error_context_hex\":";
+        hex(result.error().context);
+        std::cout << "}\n";
         return 1;
     }
-    std::cout << "{\"text_hex\":"; hex(result.value().text);
+    std::cout << "{\"text_hex\":";
+    hex(result.value().text);
     std::cout << ",\"recovered\":" << (result.value().recovered ? "true" : "false") << "}\n";
     std::cout.flush();
     return std::cout ? 0 : 1;
 }
 } // namespace
 
-int main(int argc, char** argv) {
-    try { return run(argc, argv); }
-    catch (const std::invalid_argument& error) { std::cerr << error.what() << '\n'; return 2; }
-    catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
+int main(int argc, char **argv) {
+    try {
+        return run(argc, argv);
+    } catch (const std::invalid_argument &error) {
+        std::cerr << error.what() << '\n';
+        return 2;
+    } catch (const std::exception &error) {
+        std::cerr << error.what() << '\n';
+        return 1;
+    }
 }

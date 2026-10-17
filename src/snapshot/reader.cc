@@ -165,7 +165,7 @@ Result<void> exact_directory(int fd) {
             return fail<void>("reader.directory");
         }
         const auto slot = static_cast<std::size_t>(it - names.begin());
-        struct stat st{};
+        struct stat st {};
         int r;
         do {
             r = ::fstatat(fd, entry->d_name, &st, AT_SYMLINK_NOFOLLOW);
@@ -206,7 +206,8 @@ Result<std::string> read_file(int directory,
         return io<std::string>("reader.open");
     }
     Fd owner{fd};
-    struct stat before{}, after{};
+    struct stat before {
+    }, after{};
     int r;
     do {
         r = ::fstat(fd, &before);

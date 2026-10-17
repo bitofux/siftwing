@@ -29,8 +29,8 @@ struct CorpusStatistics final {
 };
 /** @brief 九项正预算，等于上限合法；不含输入装载/容器容量/排序开销，非硬资源限制。 */
 struct InvertedIndexLimits final {
-    LexiconLimits lexicon;           ///< 五预算；输入词数/字节按跨文档的每个词键计，输出计并集。
-    std::uint64_t max_documents = 0; ///< 输入文档条数，包括空文档。
+    LexiconLimits lexicon; ///< 五预算；输入词数/字节按跨文档的每个词键计，输出计并集。
+    std::uint64_t max_documents = 0;         ///< 输入文档条数，包括空文档。
     std::uint64_t max_document_tokens = 0;   ///< 每篇受检TF总和。
     std::uint64_t max_total_tokens = 0;      ///< 全库受检次数总和。
     std::uint64_t max_postings_per_term = 0; ///< 每个词的唯一文档关系数，即DF。
@@ -118,9 +118,9 @@ private:
         std::vector<PostingList> postings,
         std::vector<DocumentStatistics> documents,
         CorpusStatistics statistics) noexcept;
-    Lexicon lexicon_;                           ///< 拥有唯一搜索词表，词位置即TermId。
-    std::vector<PostingList> postings_;         ///< 与词表等长对齐，拥有完整正TF关系。
+    Lexicon lexicon_;                   ///< 拥有唯一搜索词表，词位置即TermId。
+    std::vector<PostingList> postings_; ///< 与词表等长对齐，拥有完整正TF关系。
     std::vector<DocumentStatistics> documents_; ///< 拥有唯一递增文档统计，包含空文档。
-    CorpusStatistics statistics_;               ///< 与当前拥有状态一致的受检值统计。
+    CorpusStatistics statistics_; ///< 与当前拥有状态一致的受检值统计。
 };
 } // namespace siftwing::index

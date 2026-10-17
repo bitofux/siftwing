@@ -118,14 +118,14 @@ int main(int argc, char **argv) {
         RecommendationFrequencies cumulative;
         std::vector<TokenAnalysis> analyzed;
         for (const auto &document : documents) {
-            auto current =
-                analyze_tokens(document, stopwords.value(),
-                               {3000000, 33554432, 32768, 3000000, 33554432, 1000000, 33554432});
+            auto current = analyze_tokens(document,
+                stopwords.value(),
+                {3000000, 33554432, 32768, 3000000, 33554432, 1000000, 33554432});
             if (!current) {
                 return error(current.error());
             }
-            auto next = accumulate_recommendation(cumulative, current.value().tf,
-                                                  {1000, 1000000, 32768, 33554432, 3000000});
+            auto next = accumulate_recommendation(
+                cumulative, current.value().tf, {1000, 1000000, 32768, 33554432, 3000000});
             if (!next) {
                 return error(next.error());
             }

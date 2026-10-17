@@ -25,7 +25,7 @@ enum class FdHandoffResult {
 struct FdHandoffQueueStatus {
     std::size_t capacity; ///< 构造后不变的正容量。
     std::size_t size;     ///< 仍由队列拥有的条目数，不大于capacity。
-    bool closed;         ///< 单调关闭标志；关闭后仍允许取出已有条目。
+    bool closed;          ///< 单调关闭标志；关闭后仍允许取出已有条目。
 };
 /**
  * @brief 预分配有锁有界fd队列；多生产者可发布，调用方安排单目标消费者
@@ -82,9 +82,9 @@ public:
 
 private:
     std::vector<UniqueFd> slots_; ///< 固定长度；活跃环区外的槽位必须为空，析构兜底拥有残留fd。
-    mutable std::mutex mutex_;    ///< 保护槽位、head_、size_与closed_，锁内不做资源清理或回调。
-    std::size_t head_ = 0;        ///< 下一条目的位置，始终小于slots_.size()。
-    std::size_t size_ = 0;        ///< 当前条目数；由push/pop在锁内更新。
-    bool closed_ = false;        ///< 只由close在锁内置true，不可重开。
+    mutable std::mutex mutex_; ///< 保护槽位、head_、size_与closed_，锁内不做资源清理或回调。
+    std::size_t head_ = 0; ///< 下一条目的位置，始终小于slots_.size()。
+    std::size_t size_ = 0; ///< 当前条目数；由push/pop在锁内更新。
+    bool closed_ = false;  ///< 只由close在锁内置true，不可重开。
 };
 } // namespace siftwing::net

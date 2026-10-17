@@ -20,7 +20,11 @@ struct DeadlineEntry {
     DeadlineTime when = 0; ///< 正的CLOCK_MONOTONIC绝对纳秒，等于当前时间即到期。
 };
 /** @brief stored为插入或更新；full与invalid均保持整个容器不变。 */
-enum class DeadlineUpdate { stored, full, invalid };
+enum class DeadlineUpdate {
+    stored,
+    full,
+    invalid
+};
 /**
  * @brief 所属线程串行操作的有界期限集合，无fd/锁/时钟读取/回调，不复制或移动
  * @note 预分配后操作不分配、不抛异常；查找/更新/最小值/取消/取到期均O(capacity)。
@@ -51,9 +55,14 @@ public:
     /** @brief 最小when<=now时删除并返回它，否则保持；now<=0无到期。调用方提供同钟纳秒。 */
     [[nodiscard]] std::optional<DeadlineEntry> pop_due(DeadlineTime now) noexcept;
     /** @brief 当前真实条目数，不含任何取消/更新的旧副本。 */
-    [[nodiscard]] std::size_t size() const noexcept { return size_; }
+    [[nodiscard]] std::size_t size() const noexcept {
+        return size_;
+    }
     /** @brief 构造冻结的条目上限，不表示fd、RSS或全局请求预算。 */
-    [[nodiscard]] std::size_t capacity() const noexcept { return entries_.size(); }
+    [[nodiscard]] std::size_t capacity() const noexcept {
+        return entries_.size();
+    }
+
 private:
     std::vector<DeadlineEntry> entries_; ///< 构造时固定长度，只有[0,size_)为活跃条目。
     std::size_t size_ = 0; ///< 插入递增，真实取消/取到期递减，不扩容。

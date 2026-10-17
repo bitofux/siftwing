@@ -15,8 +15,8 @@ namespace siftwing::snapshot {
 /** @brief 26项正预算；含端点，限制字节/统计而非进程内存或CPU硬上限。 */
 struct SnapshotReadLimits final {
     document::DocumentStoreLimits documents; ///< 记录、库与偏移表预算。
-    ManifestLimits manifest;                 ///< 清单、单payload和六payload总预算；不含COMPLETE。
-    index::InvertedIndexLimits search;       ///< 原TF/词表/文档/关系预算，不采用推荐统计。
+    ManifestLimits manifest; ///< 清单、单payload和六payload总预算；不含COMPLETE。
+    index::InvertedIndexLimits search; ///< 原TF/词表/文档/关系预算，不采用推荐统计。
     index::RecommendationDictionaryLimits recommendation; ///< 独立推荐及字符关系预算。
 };
 /**

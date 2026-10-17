@@ -20,7 +20,7 @@ Output fail(const char *context, const char *message) {
     return Output::failure({message, context});
 }
 struct Dimension final {
-    base::TermId term;                  // 拥有本索引局部身份，排序固定查询范数及点积的累积次序。
+    base::TermId term; // 拥有本索引局部身份，排序固定查询范数及点积的累积次序。
     double weight;                      // 先为TF*IDF，随后原位替换为单位查询权重。
     const index::PostingList *postings; // 同步借用，不逃逸。
     const std::vector<double> *weights; // 与postings逐位置对齐，由同一WeightedIndex保证。

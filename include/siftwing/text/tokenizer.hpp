@@ -22,9 +22,9 @@ using TokenSequence = std::vector<std::string>;
 
 /** @brief 调用方显式提供的四项正预算；按一次调用计，等于上限合法。 */
 struct TokenizationLimits final {
-    std::uint64_t max_input_bytes = 0;  ///< 输入UTF-8字节；完整校验及输出分配前检查。
-    std::uint64_t max_tokens = 0;       ///< 输出token条数，重复词也分别计数。
-    std::uint64_t max_token_bytes = 0;  ///< 任一token的UTF-8字节数，不是码点数。
+    std::uint64_t max_input_bytes = 0; ///< 输入UTF-8字节；完整校验及输出分配前检查。
+    std::uint64_t max_tokens = 0;      ///< 输出token条数，重复词也分别计数。
+    std::uint64_t max_token_bytes = 0; ///< 任一token的UTF-8字节数，不是码点数。
     std::uint64_t max_output_bytes = 0; ///< 所有token字节之和，不含分隔符或容器开销。
 };
 

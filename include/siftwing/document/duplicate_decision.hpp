@@ -16,8 +16,8 @@ namespace siftwing::document {
 
 /** @brief 拥有身份、来源定位与可缺席指纹；不拥有正文，不在此计算或验证指纹资源兼容。 */
 struct DuplicateCandidate final {
-    base::DocumentId doc_id;              ///< 显式身份；0合法，同一批须唯一，不用数值决定保留顺序。
-    SourceIdentity source_id;             ///< 拥有来源名及文件内序号；同一批须唯一。
+    base::DocumentId doc_id; ///< 显式身份；0合法，同一批须唯一，不用数值决定保留顺序。
+    SourceIdentity source_id; ///< 拥有来源名及文件内序号；同一批须唯一。
     std::optional<SimHash64> fingerprint; ///< nullopt仅表示上游成功但没有特征；不能代替分析失败。
 };
 
@@ -28,8 +28,8 @@ struct DuplicatePolicy final {
 
 /** @brief 四项正预算；计量决策层工作量，不是进程硬内存/CPU上限。 */
 struct DuplicateLimits final {
-    std::uint64_t max_documents = 0;               ///< 所有候选条数，包括无特征；0表示未配置。
-    std::uint64_t max_source_path_bytes = 0;       ///< 每个来源标识的原字节数，不含序号。
+    std::uint64_t max_documents = 0; ///< 所有候选条数，包括无特征；0表示未配置。
+    std::uint64_t max_source_path_bytes = 0; ///< 每个来源标识的原字节数，不含序号。
     std::uint64_t max_total_source_path_bytes = 0; ///< 每个候选计一次来源字节，不按文件去重。
     std::uint64_t max_comparisons = 0; ///< 实际执行的指纹对比较数；命中后停止，不计排序比较。
 };
@@ -44,7 +44,7 @@ enum class DuplicateDisposition {
 /** @brief 拥有型重复依据；只引用本批先前已经保留的身份。 */
 struct DuplicateMatch final {
     base::DocumentId retained_id; ///< 最早命中的保留文档，不一定是距离最近或DocId最小者。
-    std::uint32_t distance = 0;   ///< 实际汉明距离，0—64且不大于本批阈值。
+    std::uint32_t distance = 0; ///< 实际汉明距离，0—64且不大于本批阈值。
 };
 
 /** @brief 一条拥有型决策；不保存候选引用或正文，不修改DocumentRecord。 */
@@ -68,7 +68,7 @@ struct DuplicateCounts final {
 struct DuplicateReport final {
     DuplicatePolicy policy; ///< 实际使用的策略副本；本报告不负责快照清单序列化。
     std::vector<DuplicateDecision>
-        decisions;          ///< 来源名std::string字典序、序号升序，与输入排列无关。
+        decisions; ///< 来源名std::string字典序、序号升序，与输入排列无关。
     DuplicateCounts counts; ///< 对全部成功决策计数，无提前停止或隐藏的部分结果。
 };
 

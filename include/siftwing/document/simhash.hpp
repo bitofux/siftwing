@@ -26,8 +26,8 @@ struct SimHash64 final {
 
 /** @brief 四项正预算，等于上限合法；约束现有TF的工作量，不是进程硬内存/CPU限额。 */
 struct SimHashLimits final {
-    std::uint64_t max_distinct_terms = 0;   ///< 输入TF唯一词数，不对词项做topN截断。
-    std::uint64_t max_term_bytes = 0;       ///< 任一UTF-8词键字节，权重不乘入字节量。
+    std::uint64_t max_distinct_terms = 0; ///< 输入TF唯一词数，不对词项做topN截断。
+    std::uint64_t max_term_bytes = 0;     ///< 任一UTF-8词键字节，权重不乘入字节量。
     std::uint64_t max_vocabulary_bytes = 0; ///< 所有唯一词键字节之和，不含容器开销。
     std::uint64_t max_total_tokens = 0;     ///< 正TF之和，允许一直到UINT64_MAX。
 };

@@ -106,7 +106,8 @@ struct AccumulationCounts {
 };
 // 只验证外部交付及新计数；内部累计由本模块维护，不逐篇重扫其词表。
 base::Result<AccumulationCounts> next_counts(const RecommendationFrequencies &current,
-    const DocumentTermFrequencies &document, const RecommendationLimits &limits) {
+    const DocumentTermFrequencies &document,
+    const RecommendationLimits &limits) {
     auto valid = validate_table(document.terms, document.total_tokens, limits);
     if (!valid) {
         return base::Result<AccumulationCounts>::failure(std::move(valid).error());
@@ -117,7 +118,8 @@ base::Result<AccumulationCounts> next_counts(const RecommendationFrequencies &cu
         return base::Result<AccumulationCounts>::failure(std::move(documents).error());
     }
     if (documents.value() > limits.max_documents) {
-        return fail<AccumulationCounts>("recommendation.documents", "document count exceeds budget");
+        return fail<AccumulationCounts>(
+            "recommendation.documents", "document count exceeds budget");
     }
     auto total =
         base::checked_add(current.total_tokens, document.total_tokens, "recommendation.overflow");
@@ -132,8 +134,10 @@ base::Result<AccumulationCounts> next_counts(const RecommendationFrequencies &cu
 }
 // 仅修改尚未发布的局部表；中途失败/异常时调用方销毁整表，不暴露部分累计。
 base::Result<void> merge_document(RecommendationFrequencies &output,
-    const DocumentTermFrequencies &document, AccumulationCounts counts,
-    const RecommendationLimits &limits, std::uint64_t &bytes) {
+    const DocumentTermFrequencies &document,
+    AccumulationCounts counts,
+    const RecommendationLimits &limits,
+    std::uint64_t &bytes) {
     for (const auto &entry : document.terms) {
         auto found = output.terms.find(entry.first);
         if (found == output.terms.end()) {
@@ -343,8 +347,7 @@ base::Result<RecommendationFrequencies> accumulate_recommendation(
     return base::Result<RecommendationFrequencies>::success(std::move(output));
 }
 base::Result<RecommendationFrequencies> accumulate_recommendation_batch(
-    const std::vector<DocumentTermFrequencies> &documents,
-    const RecommendationLimits &limits) {
+    const std::vector<DocumentTermFrequencies> &documents, const RecommendationLimits &limits) {
     if (!recommendation_limits_valid(limits)) {
         return fail<RecommendationFrequencies>(
             "recommendation.limits", "five positive accumulation limits required");

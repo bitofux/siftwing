@@ -36,12 +36,16 @@ namespace siftwing::net {
 [[nodiscard]] std::error_code arm_deadline_timer(
     int stable_fd, std::optional<DeadlineTime> when) noexcept;
 /** @brief drained观察到EAGAIN；预算耗尽不证明已清空；failed保留诊断。 */
-enum class TimerDrainState { drained, budget_exhausted, failed };
+enum class TimerDrainState {
+    drained,
+    budget_exhausted,
+    failed
+};
 /** @brief 内核计数值不作deadline数，成功读取次数只用于就绪观测。 */
 struct TimerDrainResult {
-    TimerDrainState state; ///< drained/budget_exhausted/failed。
+    TimerDrainState state;        ///< drained/budget_exhausted/failed。
     std::size_t successful_reads; ///< 本次成功read次数，不等于到期条目数。
-    std::error_code error; ///< 仅failed非空。
+    std::error_code error;        ///< 仅failed非空。
 };
 /**
  * @brief 有限读取普通单次timerfd，EINTR与成功read均占预算

@@ -11,7 +11,7 @@
 namespace siftwing::query {
 /** @brief 排序预算与结果条数上限，所有端点含上限，不是进程硬资源限制。 */
 struct TopKLimits final {
-    RankingLimits ranking;       ///< 原完整候选/评分四正预算，小k不能绕过这些准入。
+    RankingLimits ranking; ///< 原完整候选/评分四正预算，小k不能绕过这些准入。
     std::uint64_t max_top_k = 0; ///< 显式正请求条数上限；0拒绝，不隐式缩小查询k。
 };
 /**

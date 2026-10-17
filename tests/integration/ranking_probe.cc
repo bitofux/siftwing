@@ -13,52 +13,69 @@
 
 int main() {
     using namespace siftwing;
-    auto pipeline=text::TextPipeline::create(std::make_unique<text::EnglishTokenizer>(),
-        text::StopWords::parse({}, {100,10,10,100}).value()).value();
-    const auto huge=std::numeric_limits<std::uint64_t>::max();
-    const query::QueryLimits ql{{{100000,100000},{100000,1000,1000,100000},
-        {1000,100000,1000,1000,100000,1000,100000}},huge};
-    unsigned mode=0;
+    auto pipeline = text::TextPipeline::create(std::make_unique<text::EnglishTokenizer>(),
+        text::StopWords::parse({}, {100, 10, 10, 100}).value())
+                        .value();
+    const auto huge = std::numeric_limits<std::uint64_t>::max();
+    const query::QueryLimits ql{{{100000, 100000},
+                                    {100000, 1000, 1000, 100000},
+                                    {1000, 100000, 1000, 1000, 100000, 1000, 100000}},
+        huge};
+    unsigned mode = 0;
     query::RankingLimits budget;
-    std::uint64_t k=0;
-    std::size_t count=0;
+    std::uint64_t k = 0;
+    std::size_t count = 0;
     // 仅测试协议：输入原创整数TF，输出round-trip精度分数；不成为生产CLI。
-    std::cout<<std::setprecision(std::numeric_limits<double>::max_digits10);
-    while(std::cin>>mode>>budget.candidates.max_query_terms>>budget.candidates.max_postings
-        >>budget.candidates.max_candidates>>budget.max_score_pairs>>k>>count) {
+    std::cout << std::setprecision(std::numeric_limits<double>::max_digits10);
+    while (std::cin >> mode >> budget.candidates.max_query_terms >> budget.candidates.max_postings
+           >> budget.candidates.max_candidates >> budget.max_score_pairs >> k >> count) {
         std::vector<index::IndexDocument> documents;
-        for(std::size_t i=0;i<count;++i) {
-            std::uint64_t number=0;
-            std::size_t terms=0;
-            std::cin>>number>>terms;
+        for (std::size_t i = 0; i < count; ++i) {
+            std::uint64_t number = 0;
+            std::size_t terms = 0;
+            std::cin >> number >> terms;
             text::DocumentTermFrequencies tf;
-            for(std::size_t j=0;j<terms;++j) {
+            for (std::size_t j = 0; j < terms; ++j) {
                 std::string word;
-                std::uint64_t frequency=0;
-                std::cin>>word>>frequency;
-                tf.terms.emplace(word,frequency);
-                tf.total_tokens+=frequency;
+                std::uint64_t frequency = 0;
+                std::cin >> word >> frequency;
+                tf.terms.emplace(word, frequency);
+                tf.total_tokens += frequency;
             }
-            documents.push_back({base::DocumentId::from_integer(number).value(),std::move(tf)});
+            documents.push_back({base::DocumentId::from_integer(number).value(), std::move(tf)});
         }
-        std::size_t terms=0;
-        std::cin>>terms;
+        std::size_t terms = 0;
+        std::cin >> terms;
         std::string text;
-        for(std::size_t i=0;i<terms;++i) { std::string word;std::cin>>word;text+=word+' '; }
-        if(!std::cin) { return 2; }
-        auto raw=index::InvertedIndex::build(documents,
-            {{100000,1000000,1000,10000,1000000},10000,huge,huge,10000});
-        if(!raw) { std::cerr<<raw.error().context<<": "<<raw.error().message<<'\n';return 2; }
-        const auto weighted=index::WeightedIndex::build(std::move(raw).value(),{10000,10000,huge}).value();
-        const auto q=query::Query::from_text(text,*pipeline,
-            {mode==0?query::QueryMode::all:query::QueryMode::any,k},ql).value();
-        const auto result=query::rank_candidates(q,weighted,budget);
-        if(!result) { std::cout<<"ERR "<<result.error().context<<'\n';continue; }
-        std::cout<<"OK "<<result.value().size();
-        for(const auto &document:result.value()) {
-            std::cout<<' '<<document.document_id.value()<<' '<<document.score;
+        for (std::size_t i = 0; i < terms; ++i) {
+            std::string word;
+            std::cin >> word;
+            text += word + ' ';
         }
-        std::cout<<'\n';
+        if (!std::cin) {
+            return 2;
+        }
+        auto raw = index::InvertedIndex::build(
+            documents, {{100000, 1000000, 1000, 10000, 1000000}, 10000, huge, huge, 10000});
+        if (!raw) {
+            std::cerr << raw.error().context << ": " << raw.error().message << '\n';
+            return 2;
+        }
+        const auto weighted =
+            index::WeightedIndex::build(std::move(raw).value(), {10000, 10000, huge}).value();
+        const auto q = query::Query::from_text(
+            text, *pipeline, {mode == 0 ? query::QueryMode::all : query::QueryMode::any, k}, ql)
+                           .value();
+        const auto result = query::rank_candidates(q, weighted, budget);
+        if (!result) {
+            std::cout << "ERR " << result.error().context << '\n';
+            continue;
+        }
+        std::cout << "OK " << result.value().size();
+        for (const auto &document : result.value()) {
+            std::cout << ' ' << document.document_id.value() << ' ' << document.score;
+        }
+        std::cout << '\n';
     }
-    return std::cin.eof()?0:2;
+    return std::cin.eof() ? 0 : 2;
 }

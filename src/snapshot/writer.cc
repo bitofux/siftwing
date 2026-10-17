@@ -419,7 +419,7 @@ Result<void> write_verified_file(
     }
     Fd input{fd};
     const auto size_matches = [&]() -> Result<void> {
-        struct stat info{};
+        struct stat info {};
         int code;
         do {
             code = ::fstat(input.value, &info);
@@ -517,7 +517,7 @@ Result<void> exact_directory(int directory, std::string_view temp) {
             return io_error<void>(EINVAL, "writer.directory", temp);
         }
         const auto slot = static_cast<std::size_t>(name - file_names.begin());
-        struct stat info{};
+        struct stat info {};
         int code;
         do {
             code = ::fstatat(directory, entry->d_name, &info, AT_SYMLINK_NOFOLLOW);
@@ -571,7 +571,7 @@ Result<PublishedSnapshot> write_snapshot(const std::string &parent_path,
         return Result<PublishedSnapshot>::failure(opened_parent.error());
     }
     Fd parent = std::move(opened_parent).value();
-    struct stat existing{};
+    struct stat existing {};
     int code;
     do {
         code = ::fstatat(parent.value, version.c_str(), &existing, AT_SYMLINK_NOFOLLOW);

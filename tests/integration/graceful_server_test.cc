@@ -40,15 +40,20 @@ struct ReleaseGate {
     }
 };
 }
-query::SearchServiceResult
-real_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *, std::optional<std::uint64_t> *) __asm__(
-    "__real__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE");
-query::SearchServiceResult
-wrapped_execute(const query::SearchService *, const SearchTask &, query::CacheObservation *, std::optional<std::uint64_t> *) __asm__(
-    "__wrap__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE");
+query::SearchServiceResult real_execute(const query::SearchService *,
+    const SearchTask &,
+    query::CacheObservation *,
+    std::optional<std::uint64_t>
+        *) __asm__("__real__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE");
+query::SearchServiceResult wrapped_execute(const query::SearchService *,
+    const SearchTask &,
+    query::CacheObservation *,
+    std::optional<std::uint64_t>
+        *) __asm__("__wrap__ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE");
 query::SearchServiceResult wrapped_execute(const query::SearchService *service,
     const SearchTask &task,
-    query::CacheObservation *observation, std::optional<std::uint64_t> *snapshot_version) {
+    query::CacheObservation *observation,
+    std::optional<std::uint64_t> *snapshot_version) {
     worker = true;
     const auto id = task.request()->request_id;
     if (id < executions.size())

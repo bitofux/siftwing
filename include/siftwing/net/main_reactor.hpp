@@ -23,7 +23,7 @@ namespace siftwing::net {
  */
 struct MainReactorTarget {
     FdHandoffQueue *queue; ///< 非空稳定借用，各目标不同队列；创建时开放。
-    int wakeup_fd;         ///< 目标稳定eventfd借用，各目标数字不同；不得由Main关闭。
+    int wakeup_fd; ///< 目标稳定eventfd借用，各目标数字不同；不得由Main关闭。
 };
 /** @brief 启动后固定的尝试预算与新连接配置，无动态扩缩容。 */
 struct MainReactorConfig {
@@ -32,19 +32,27 @@ struct MainReactorConfig {
     bool termination_signals = false; ///< 启用INT/TERM signalfd；调用者须在线程创建前屏蔽并保持。
 };
 /** @brief 调度结果；终止后保持首因，重复查询零I/O。 */
-enum class MainReactorStop { progress, idle, interrupted, invalid_timeout, failed, closed, shutdown_requested };
+enum class MainReactorStop {
+    progress,
+    idle,
+    interrupted,
+    invalid_timeout,
+    failed,
+    closed,
+    shutdown_requested
+};
 /** @brief 一轮统计，accepted=handed_off+rejected；通知失败仍计handed_off。 */
 struct MainReactorStep {
     MainReactorStop stop = MainReactorStop::progress; ///< idle不证明未来无工作。
-    std::size_t events = 0;          ///< 单次epoll_wait返回数，最多3。
+    std::size_t events = 0;                           ///< 单次epoll_wait返回数，最多3。
     std::size_t accept_attempts = 0; ///< 实际accept4次数，包括失败和重试。
     std::size_t accepted = 0;        ///< 内核已交付socket数量。
     std::size_t handed_off = 0;      ///< 队列已消费源，目标或其消费者拥有。
-    std::size_t rejected = 0;        ///< 未提交源已由Main关闭一次，不改投其他目标。
+    std::size_t rejected = 0; ///< 未提交源已由Main关闭一次，不改投其他目标。
     bool accept_budget_exhausted = false; ///< 本轮预算耗尽，不证明监听队列为空，LT下后续继续。
-    std::error_code error;          ///< failed首因、interrupted EINTR或invalid_timeout EINVAL。
-    std::error_code cleanup_error;  ///< 首个清理诊断，不覆盖error；Linux close不重试。
-    int signal_number = 0;          ///< shutdown_requested的首个INT/TERM；0表示无正常终止请求。
+    std::error_code error;         ///< failed首因、interrupted EINTR或invalid_timeout EINVAL。
+    std::error_code cleanup_error; ///< 首个清理诊断，不覆盖error；Linux close不重试。
+    int signal_number = 0; ///< shutdown_requested的首个INT/TERM；0表示无正常终止请求。
 };
 /**
  * @brief 独占Listener/LT epoll/停止eventfd；只接入和移交，不创建线程、不读写客户端业务
@@ -78,7 +86,8 @@ public:
      */
     [[nodiscard]] static std::variant<std::unique_ptr<MainReactor>, std::error_code> create(
         const std::vector<MainReactorTarget> &targets,
-        const ListenConfig &listen = {}, const MainReactorConfig &config = {});
+        const ListenConfig &listen = {},
+        const MainReactorConfig &config = {});
     /** @brief 所属线程调用close；同步设施异常导致terminate，不能在并发stop调用中析构。 */
     ~MainReactor() noexcept;
     MainReactor(const MainReactor &) = delete;
@@ -86,7 +95,9 @@ public:
     MainReactor(MainReactor &&) = delete;
     MainReactor &operator=(MainReactor &&) = delete;
     /** @brief 所属线程观察实际监听端口；终止后0，不授予fd借用。 */
-    [[nodiscard]] std::uint16_t port() const noexcept { return listener_.port(); }
+    [[nodiscard]] std::uint16_t port() const noexcept {
+        return listener_.port();
+    }
     /**
      * @brief 单调发布停止，再有限通知Main自己的eventfd；不直接关闭任何资源
      *
@@ -129,21 +140,26 @@ public:
      *     自身通知端撤销mutex的同步异常可抛，保护与request_stop串行，避免写入复用fd。
      */
     [[nodiscard]] std::error_code close();
+
 private:
-    MainReactor(std::vector<MainReactorTarget> &&targets, Listener &&listener,
-        UniqueFd &&epoll, UniqueFd &&wakeup, UniqueFd &&termination, MainReactorConfig config) noexcept;
+    MainReactor(std::vector<MainReactorTarget> &&targets,
+        Listener &&listener,
+        UniqueFd &&epoll,
+        UniqueFd &&wakeup,
+        UniqueFd &&termination,
+        MainReactorConfig config) noexcept;
     void fail(MainReactorStep &step, std::error_code error);
     std::vector<MainReactorTarget> targets_; ///< 固定借用表，顺序即轮询顺序，Main不拥有目标。
-    Listener listener_;      ///< 所属线程拥有，只用于accept，不读业务。
-    UniqueFd epoll_;         ///< 所属线程拥有，监听listener、自己的停止端及可选信号端。
-    UniqueFd wakeup_;        ///< mutex保护借用/撤销，先在锁内转交局部拥有者，再锁外close。
-    UniqueFd termination_;   ///< 所属线程独占signalfd，DEL后close；不恢复mask或清除pending。
+    Listener listener_; ///< 所属线程拥有，只用于accept，不读业务。
+    UniqueFd epoll_; ///< 所属线程拥有，监听listener、自己的停止端及可选信号端。
+    UniqueFd wakeup_; ///< mutex保护借用/撤销，先在锁内转交局部拥有者，再锁外close。
+    UniqueFd termination_; ///< 所属线程独占signalfd，DEL后close；不恢复mask或清除pending。
     int shutdown_signal_ = 0; ///< 所属线程单调记录首次终止信号；不代表关闭已完成。
     std::mutex wakeup_mutex_; ///< 串行有限notify与拥有者撤销，不在锁内close/queue操作/join。
     std::atomic<bool> stop_{false}; ///< 跨线程单调请求，不表示清理完成。
-    MainReactorConfig config_; ///< 创建后不变。
-    std::size_t cursor_ = 0;   ///< 下一目标，小于targets_.size()；只所属线程访问。
-    bool closed_ = false;     ///< 所属线程的幂等清理标志，不作跨线程报告。
+    MainReactorConfig config_;      ///< 创建后不变。
+    std::size_t cursor_ = 0; ///< 下一目标，小于targets_.size()；只所属线程访问。
+    bool closed_ = false;    ///< 所属线程的幂等清理标志，不作跨线程报告。
     std::error_code first_error_;   ///< 所属线程首因，清理不能覆盖。
     std::error_code cleanup_error_; ///< 所属线程首个清理诊断。
 };

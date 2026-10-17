@@ -15,13 +15,13 @@ namespace siftwing::query {
 /** @brief 拥有文档身份和相关性；发布后可修改，修改者负责重新维持分数与排序性质。 */
 struct RankedDocument final {
     base::DocumentId document_id; ///< 命中当前索引的强身份，不借用文档；0/MAX及稀疏值合法。
-    double score;                 ///< 发布时有限且0<score<=1的单位向量内积，最后夹到数学上界1。
+    double score; ///< 发布时有限且0<score<=1的单位向量内积，最后夹到数学上界1。
 };
 /** @brief 完整拥有的分数降序序列；精确同分按DocId升序，无epsilon合并或top_k截断。 */
 using RankedDocuments = std::vector<RankedDocument>;
 /** @brief 四项正预算，含端点；计准入组合与输出条数，不是硬CPU或内存限。 */
 struct RankingLimits final {
-    CandidateLimits candidates;        ///< 沿候选合同计唯一词、完整Posting准入及最终文档数。
+    CandidateLimits candidates; ///< 沿候选合同计唯一词、完整Posting准入及最终文档数。
     std::uint64_t max_score_pairs = 0; ///< 候选数C乘已知唯一查询词数T，含未命中维度的二分探测。
 };
 /**

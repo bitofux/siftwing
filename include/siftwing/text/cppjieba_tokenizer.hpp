@@ -21,11 +21,11 @@ inline constexpr std::uint32_t cppjieba_tokenization_policy_version = 1;
 /** @brief 初始化时显式提供且按值拥有的资源配置；不从工作目录推断默认资源。 */
 struct CppJiebaConfig final {
     std::string dictionary_path; ///< 主词典绝对路径，严格UTF-8，非空的word freq tag行。
-    std::string hmm_model_path;  ///< HMM绝对路径；无论开关均验证/装载完整模型。
+    std::string hmm_model_path; ///< HMM绝对路径；无论开关均验证/装载完整模型。
     std::optional<std::string>
-        user_dictionary_path;         ///< 单一用户词典绝对路径；nullopt不加载，空文件合法。
+        user_dictionary_path; ///< 单一用户词典绝对路径；nullopt不加载，空文件合法。
     std::uint64_t max_file_bytes = 0; ///< 各文件独立正字节预算，等于上限合法，原CRLF也计入。
-    bool use_hmm = true;              ///< 汉字段是否使用词典与HMM混合；false仅词典DAG路径。
+    bool use_hmm = true; ///< 汉字段是否使用词典与HMM混合；false仅词典DAG路径。
 };
 
 /**
@@ -67,7 +67,7 @@ public:
 
     /** @brief 在实现文件内释放segment，再释放其借用的模型/词典；析构不抛出。 */
     ~CppJiebaTokenizer() noexcept override;
-    CppJiebaTokenizer(const CppJiebaTokenizer &) = delete;            ///< 不复制词典/模型拥有者。
+    CppJiebaTokenizer(const CppJiebaTokenizer &) = delete; ///< 不复制词典/模型拥有者。
     CppJiebaTokenizer &operator=(const CppJiebaTokenizer &) = delete; ///< 不替换已初始化资源。
     CppJiebaTokenizer(CppJiebaTokenizer &&) = delete; ///< 保持对象内部资源地址与身份稳定。
     CppJiebaTokenizer &operator=(CppJiebaTokenizer &&) = delete; ///< 通过unique_ptr转移所有权。

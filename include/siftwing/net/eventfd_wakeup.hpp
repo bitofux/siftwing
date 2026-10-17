@@ -41,12 +41,16 @@ inline constexpr std::size_t eventfd_attempt_limit = 64;
  */
 [[nodiscard]] std::error_code notify_eventfd(int stable_fd) noexcept;
 /** @brief drained是观察到EAGAIN；budget_exhausted不能证明已清空，failed含诊断。 */
-enum class EventFdDrainState { drained, budget_exhausted, failed };
+enum class EventFdDrainState {
+    drained,
+    budget_exhausted,
+    failed
+};
 /** @brief 只记录成功read次数；忽略内核计数值，它不是队列条目数。 */
 struct EventFdDrainResult {
-    EventFdDrainState state;       ///< 是否观察到暂时无通知、预算耗尽或错误。
-    std::size_t successful_reads;  ///< 本调用成功读取次数，不是通知数或工作数。
-    std::error_code error;         ///< 仅failed非空；预算耗尽是显式状态。
+    EventFdDrainState state;      ///< 是否观察到暂时无通知、预算耗尽或错误。
+    std::size_t successful_reads; ///< 本调用成功读取次数，不是通知数或工作数。
+    std::error_code error;        ///< 仅failed非空；预算耗尽是显式状态。
 };
 /**
  * @brief 有限批量清通知；成功read与EINTR均占一次尝试
@@ -68,8 +72,8 @@ struct EventFdDrainResult {
     int stable_fd, std::size_t max_attempts = eventfd_attempt_limit) noexcept;
 /** @brief 入队和通知为两个结果；只有accepted时执行通知，通知错误不撤销提交。 */
 struct FdHandoffWakeupResult {
-    FdHandoffResult handoff;             ///< accepted后source为空，队列或消费者拥有fd。
-    std::error_code notification_error;  ///< 拒绝入队时为空；accepted仍须检查通知诊断。
+    FdHandoffResult handoff;            ///< accepted后source为空，队列或消费者拥有fd。
+    std::error_code notification_error; ///< 拒绝入队时为空；accepted仍须检查通知诊断。
 };
 /**
  * @brief 先提交真实队列，再通知；不将通知失败伪装成入队失败

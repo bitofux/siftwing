@@ -31,7 +31,7 @@
  *
  * @note 入口不持久化输入，也不提供索引、查询或网络服务能力。
  */
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     if (argc != 3 || std::string_view{argv[1]}.size() != 1) {
         std::cerr << "usage: siftwing_build_probe <single-byte> <bytes>\n";
         return 2;

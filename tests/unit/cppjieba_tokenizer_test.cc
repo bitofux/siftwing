@@ -54,9 +54,11 @@ int main() {
         const TokenizationLimits exact{input.size(), 3, 6, 14};
         auto exact_result = tokenizer.tokenize(input, exact);
         check(exact_result && exact_result.value() == TokenSequence{"中文", "A1", "中文"},
-              "all equal limits");
-        const char *contexts[] = {"tokenizer.input_bytes", "tokenizer.tokens",
-                                  "tokenizer.token_bytes", "tokenizer.output_bytes"};
+            "all equal limits");
+        const char *contexts[] = {"tokenizer.input_bytes",
+            "tokenizer.tokens",
+            "tokenizer.token_bytes",
+            "tokenizer.output_bytes"};
         for (unsigned i = 0; i < 4; ++i) {
             auto lim = exact;
             if (i == 0)
@@ -90,7 +92,7 @@ int main() {
         }
         auto bad = tokenizer.tokenize(std::string("A B\xff", 4), {10, 1, 1, 1});
         check(!bad && bad.error().context == "tokenizer.utf8",
-              "complete encoding before output budgets");
+            "complete encoding before output budgets");
         auto nul = tokenizer.tokenize(std::string("A\0B", 3), generous);
         check(!nul && nul.error().context == "tokenizer.nul", "embedded NUL");
         auto invalid = [&](CppJiebaConfig cfg, const char *context) {
@@ -133,9 +135,16 @@ int main() {
         check(static_cast<bool>(equal), "equal file budget");
         --cfg.max_file_bytes;
         invalid(cfg, "cppjieba.file_bytes");
-        for (const std::string &broken : std::vector<std::string>{
-                 "", "中文 0 n\n", "中文 -1 n\n", "中文 2147483648 n\n", "中文 1.5 n\n", "中文 1\n",
-                 "中文 1 n extra\n", "中文 1 n\n中文 2 n\n", "中\t文 1 n\n", "中文 1 n\n\n"}) {
+        for (const std::string &broken : std::vector<std::string>{"",
+                 "中文 0 n\n",
+                 "中文 -1 n\n",
+                 "中文 2147483648 n\n",
+                 "中文 1.5 n\n",
+                 "中文 1\n",
+                 "中文 1 n extra\n",
+                 "中文 1 n\n中文 2 n\n",
+                 "中\t文 1 n\n",
+                 "中文 1 n\n\n"}) {
             files.write("dict", broken);
             invalid(files.config(), "cppjieba.dictionary");
         }
@@ -147,12 +156,12 @@ int main() {
         invalid(files.config(), "cppjieba.nul");
         files.write("dict", siftwing::test::dictionary);
         for (const std::string &broken :
-             std::vector<std::string>{"bad", "0 0 0 0\n", siftwing::test::model + "0\n"}) {
+            std::vector<std::string>{"bad", "0 0 0 0\n", siftwing::test::model + "0\n"}) {
             files.write("hmm", broken);
             invalid(files.config(), "cppjieba.hmm_model");
         }
         for (const std::string &replacement :
-             std::vector<std::string>{"nan", "inf", "1", "-3.15e100", "bad"}) {
+            std::vector<std::string>{"nan", "inf", "1", "-3.15e100", "bad"}) {
             auto m = siftwing::test::model;
             m.replace(m.find("0 -100"), 1, replacement);
             files.write("hmm", m);
@@ -167,12 +176,12 @@ int main() {
         }
         files.write("hmm", siftwing::test::model);
         for (const std::string &broken :
-             std::vector<std::string>{"中文 0 n\n", "中文 1 n extra\n", "中文\n中文\n"}) {
+            std::vector<std::string>{"中文 0 n\n", "中文 1 n extra\n", "中文\n中文\n"}) {
             files.write("user", broken);
             invalid(user_config, "cppjieba.user_dictionary");
         }
         for (const std::string &valid :
-             std::vector<std::string>{"", "中国北京\n", "中国北京 nz\n", "中国北京 1000 nz\r\n"}) {
+            std::vector<std::string>{"", "中国北京\n", "中国北京 nz\n", "中国北京 1000 nz\r\n"}) {
             files.write("user", valid);
             auto r = CppJiebaTokenizer::create(user_config);
             check(static_cast<bool>(r), "valid user forms");
@@ -190,7 +199,7 @@ int main() {
         words("中文", {"中文"});
         make.value().reset();
         check(owned && owned.value() == TokenSequence{"中文"},
-              "output owns bytes after input/tokenizer destruction");
+            "output owns bytes after input/tokenizer destruction");
     } catch (const std::exception &e) {
         ++failures;
         std::cerr << "unexpected: " << e.what() << '\n';

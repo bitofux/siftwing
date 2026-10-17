@@ -13,9 +13,9 @@
 namespace siftwing::snapshot {
 /** @brief 调用方拥有的身份/来源声明；不读取来源文件或证明配置真实性。 */
 struct SnapshotMetadata final {
-    base::SnapshotVersion snapshot;       ///< 不透明版本，0/UINT64_MAX合法；正式叶子为规范十进制。
-    std::string build_version;            ///< 拥有稳定构建身份，沿用Manifest的ASCII合同。
-    Provenance search_provenance;         ///< 搜索输入/config的独立摘要声明。
+    base::SnapshotVersion snapshot; ///< 不透明版本，0/UINT64_MAX合法；正式叶子为规范十进制。
+    std::string build_version;    ///< 拥有稳定构建身份，沿用Manifest的ASCII合同。
+    Provenance search_provenance; ///< 搜索输入/config的独立摘要声明。
     Provenance recommendation_provenance; ///< 推荐自己的输入/config声明，不隐式复用搜索。
 };
 /** @brief 八项正预算，含端点；复用单记录/库/偏移和清单预算，不是硬进程内存限制。 */
@@ -35,7 +35,7 @@ enum class PublicationDurability {
  *     成员有效但内容未指定。该普通值可修改，不提供目录锁或真实性保证。
  */
 struct PublishedSnapshot final {
-    Manifest manifest;                ///< 拥有实际发布的完整文件声明；目录叶子可从snapshot生成。
+    Manifest manifest; ///< 拥有实际发布的完整文件声明；目录叶子可从snapshot生成。
     PublicationDurability durability; ///< 同步完成或持久性未确认，二者都已发布。
     int system_errno; ///< 原始Linux errno值，可用generic_category解释；不是跨平台业务码。
 };

@@ -13,14 +13,15 @@
 
 int main() {
     int failures = 0;
-    const auto check = [&failures](std::string_view label, std::string_view bytes,
-                                   char needle, std::size_t expected) {
-        const auto actual = siftwing::bootstrap::count_probe_byte(bytes, needle);
-        if (actual != expected) {
-            std::cerr << label << ": expected " << expected << ", got " << actual << '\n';
-            ++failures;
-        }
-    };
+    const auto check =
+        [&failures](
+            std::string_view label, std::string_view bytes, char needle, std::size_t expected) {
+            const auto actual = siftwing::bootstrap::count_probe_byte(bytes, needle);
+            if (actual != expected) {
+                std::cerr << label << ": expected " << expected << ", got " << actual << '\n';
+                ++failures;
+            }
+        };
 
     // 基础集合覆盖空、部分匹配、无匹配、全匹配和单字节边界。
     check("empty", {}, 'a', 0);

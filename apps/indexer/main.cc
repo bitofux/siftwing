@@ -87,7 +87,8 @@ struct Options final {
     std::uint64_t records = records_cap, total_text = 128 * mib, comparisons = 50000000;
     std::uint32_t threshold = 3;
 };
-constexpr const char *help = R"(用法：siftwing-indexer --output <父目录> --version <版本> --build-version <身份> [选项]
+constexpr const char *help =
+    R"(用法：siftwing-indexer --output <父目录> --version <版本> --build-version <身份> [选项]
 
 必需选项：
   --output <父目录>                            已有的快照发布父目录
@@ -306,7 +307,8 @@ std::string load(const std::string &path, std::uint64_t limit) {
         }
         fd.replace(next);
     }
-    struct stat before{}, after{};
+    struct stat before {
+    }, after{};
     if (::fstat(fd.get(), &before) != 0) {
         io_error(path);
     }
@@ -356,7 +358,7 @@ bool unnamespaced(const tinyxml2::XMLElement *element, std::string_view name) {
         return false;
     }
     for (auto *scope = element; scope;
-        scope = scope->Parent() ? scope->Parent()->ToElement() : nullptr) {
+         scope = scope->Parent() ? scope->Parent()->ToElement() : nullptr) {
         if (const auto *uri = scope->Attribute("xmlns")) {
             return *uri == '\0';
         }
