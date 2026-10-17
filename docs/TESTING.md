@@ -2,6 +2,10 @@
 
 从仓库根目录执行。公共测试使用原创输入与独立参考，不依赖课程资料、私有语料或本机绝对资源路径。Ubuntu 是活动验证环境；依赖、离线配置和许可见[依赖说明](DEPENDENCIES.md)。
 
+仅学习 V1 或先构建程序时，见[按学习范围构建](BUILDING.md)。`app.v1_cli_*` 复用现有
+CLI 正常/拒绝路径参考验证纯 V1 入口；`v1.golden/rejection/lifecycle` 使用纯 V1 CLI，
+完整 CLI 的本地及网络行为继续由既有 app/net 用例覆盖。
+
 ## 两个完整普通构建
 
 ```sh
@@ -16,7 +20,7 @@ ctest --test-dir build/release --output-on-failure --no-tests=error
 
 Debug 与 Release 使用独立目录；行为验证在 Release 下仍有效，不依赖被 NDEBUG 消除的 assert。`--no-tests=error` 防止空测试列表被当作成功；配置、构建和 CTest 都必须分别检查退出码。默认启用 CTest；`-DBUILD_TESTING=OFF` 仅构建产品，不能用来报告测试通过。
 
-当前默认注册 221 项；配置 `-DSIFTWING_BUILD_BENCHMARKS=ON` 另加负载工具合同，共 222 项。实际选择仍须核对当前源码与配置，不把本文数字当作测试已执行：
+当前默认注册 223 项；配置 `-DSIFTWING_BUILD_BENCHMARKS=ON` 另加负载工具合同，共 224 项。实际选择仍须核对当前源码与配置，不把本文数字当作测试已执行：
 
 ```sh
 ctest --test-dir build/debug --show-only=json-v1

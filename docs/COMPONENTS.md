@@ -1,5 +1,8 @@
 # 组件合同参考
 
+当前业务归档为 `siftwing_v1` 和 `siftwing_full`。下文细粒度名称保留为链接别名，
+组件分工与历史依赖说明不代表独立静态库或现行 CMake PUBLIC/PRIVATE 边；实际构建关系见[构建指南](BUILDING.md)。
+
 本页保留原README的细粒度接口说明；首次运行见[演示](DEMO.md)，整体链路见[设计](DESIGN.md)，构建与工具验证见[测试指南](TESTING.md)。查询、候选、排序、摘要/高亮和推荐分别以[Query](QUERY.md)、[候选](CANDIDATES.md)、[排序](RANKING.md)、[top-k](TOP_K.md)、[摘要](SUMMARY.md)、[高亮](HIGHLIGHT.md)、[推荐](RECOMMENDATION.md)为精确入口。
 
 下文“本模块”的限制指所在段落的组件。例如词频组件不负责装载文件，生产indexer仍通过明确的文件装载入口组合它；不能将组件非职责误当作整个项目缺失能力。

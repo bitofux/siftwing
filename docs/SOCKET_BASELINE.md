@@ -19,8 +19,8 @@ Linux的`close()`先释放fd槽，再可能报告错误；`UniqueFd::close()`先
 
 ## 创建与单次收发
 
-接口权威为`include/siftwing/net/unique_fd.hpp`及`socket_ops.hpp`；CMake目标`siftwing_socket`
-PUBLIC依赖`siftwing_base`，无新第三方。系统错误采用`generic_category()`保存errno，
+接口权威为`include/siftwing/net/unique_fd.hpp`及`socket_ops.hpp`；socket组件（链接别名`siftwing_socket`）
+实现复用`siftwing_base`，无新第三方。系统错误采用`generic_category()`保存errno，
 没有字符串诊断分配，与协议的`DecodeError`/`ProtocolError`保持独立。
 
 `open_tcp_socket(IpFamily::v4/v6)`用一次socket调用创建TCP描述符，同时设置

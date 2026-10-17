@@ -1,6 +1,6 @@
 # 查询模型
 
-目标 `siftwing_query` 提供 `siftwing::query::Query::from_text`，PUBLIC依赖
+查询组件（链接别名 `siftwing_query`）提供 `siftwing::query::Query::from_text`，实现复用
 `siftwing_text_pipeline`。查询与建库共用调用方提供的初始化管线；不读文件、不加载快照，
 不对查询再实现一套规范化或分词规则。调用方负责资源和停用配置与建库相容。
 

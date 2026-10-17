@@ -1,5 +1,8 @@
 # 本地查询程序
 
+纯 V1 学习入口为 `siftwing-v1-cli`，本页本地参数也适用于该程序；它不编译网络模式。
+完整 `siftwing-cli` 的本地与网络行为保持，库边界和构建命令见[构建指南](BUILDING.md)。
+
 本文描述本地快照模式；显式`--network`的四命令与传输合同见[网络客户端](NETWORK_CLIENT.md)。
 
 `siftwing-cli` 从正式完整快照执行独立的 SEARCH 和 SUGGEST。CMake目标为`siftwing_cli`，

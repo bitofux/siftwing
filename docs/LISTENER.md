@@ -1,6 +1,6 @@
 # Listener 与有界 accept4 接入
 
-`include/siftwing/net/listener.hpp`是接口合同权威，`siftwing_listener` PUBLIC依赖
+`include/siftwing/net/listener.hpp`是接口合同权威，Listener组件（链接别名`siftwing_listener`）复用
 [fd/socket基线](SOCKET_BASELINE.md)。Listener独占监听fd，已交付连接各由调用方UniqueFd独占。
 它提供监听创建和接入，不创建EventLoop、Connection、线程、业务处理或codec接线。
 

@@ -2,7 +2,7 @@
 
 `siftwing_connection` 将已连接的流 socket、[有界 Buffer](BUFFER.md)、
 [增量拆帧](FRAME_DECODER.md)与[Body 准入](FRAME_CODEC.md)串起来。
-它 PUBLIC 依赖 `siftwing_socket` 和 `siftwing_frame_codec`；接口权威为
+其实现复用 `siftwing_socket` 和 `siftwing_frame_codec`；接口权威为
 `include/siftwing/net/connection.hpp`。通常由[Listener](LISTENER.md)交付 fd，
 所属 I/O 线程构造并串行使用 Connection。
 

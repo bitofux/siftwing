@@ -1,7 +1,7 @@
 # TF-IDF、归一化与确定性导出
 
-公共合同权威为 [weighted_index.hpp](../include/siftwing/index/weighted_index.hpp)，生产目标
-`siftwing_weights` 仅公开依赖 `siftwing_inverted_index`，没有新第三方库。
+公共合同权威为 [weighted_index.hpp](../include/siftwing/index/weighted_index.hpp)。
+权重组件（链接别名`siftwing_weights`）实现复用 `siftwing_inverted_index`，没有新第三方库。
 
 策略版本 1：TF 是原始正出现次数，N 是显式搜索集合的文档数，DF 是含词文档数。
 IDF = 1 + ln((N+1)/(DF+1))，使用自然对数；实现使用等价的

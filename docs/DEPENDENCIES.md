@@ -1,5 +1,8 @@
 # 第三方依赖
 
+当前业务归档为 `siftwing_v1` 和 `siftwing_full`。下文细粒度名称保留为链接别名，
+组件分工与历史依赖说明不代表独立静态库或现行 CMake PUBLIC/PRIVATE 边；实际构建关系见[构建指南](BUILDING.md)。
+
 当前TXT/RSS适配器、HTML辅助、共用文本规范化、英文/中文分词及停用词/词频使用 [utfcpp](https://github.com/nemtrif/utfcpp) 4.0.6（也称utf8cpp），
 负责严格UTF-8验证和码点遍历。它是头文件库，许可证为BSL-1.0；
 许可原文保留在 [utfcpp-LICENSE.txt](../third_party/licenses/utfcpp-LICENSE.txt)。

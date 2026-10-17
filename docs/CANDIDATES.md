@@ -1,6 +1,6 @@
 # 候选文档集合
 
-`siftwing_candidates` PUBLIC依赖`siftwing_query`和`siftwing_inverted_index`。
+候选组件（链接别名`siftwing_candidates`）实现复用`siftwing_query`和`siftwing_inverted_index`。
 `collect_candidates(query,index,limits)`同步借用已验证的查询与当前有效索引，返回
 `Result<CandidateDocuments>`；成功值独立拥有`vector<DocumentId>`，发布时严格递增且唯一。
 调用方可复制、移动或修改结果，修改后不保证原有序性。原始列表仍归索引拥有，函数不改输入。

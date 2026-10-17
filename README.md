@@ -6,6 +6,9 @@ Siftwing 是 C++17/Linux 单机文档搜索服务：将 TXT/RSS XML 建成完整
 
 ## 构建与验证
 
+学习时可先构建 `siftwing_v1_apps`，再构建 `siftwing_full_apps`。V1 形成独立静态库，
+full 只编译 V2/V3 实现并复用 V1；命令、库边界和自建程序示例见[按学习范围构建](docs/BUILDING.md)。
+
 活动平台为 Ubuntu，要求 CMake 3.20+、C++17 编译器；启用测试还需 Python 3.8+。首次配置通过 CMake 获取固定版本并核对归档哈希；[依赖与许可证](docs/DEPENDENCIES.md)说明来源及离线配置。公开构建与演示只使用仓库内原创夹具。
 
 ```sh
@@ -18,7 +21,7 @@ cmake --build build/release --parallel 2
 ctest --test-dir build/release --output-on-failure --no-tests=error
 ```
 
-三个正式程序为 `siftwing-indexer`、`siftwing-server` 和 `siftwing-cli`。下面给出最小本地查询；完整网络四命令、正常关闭、预期结果和错误排查见[可复跑演示](docs/DEMO.md)。每次使用全新输出目录，原输入保持只读。
+三个正式程序为 `siftwing-indexer`、`siftwing-server` 和 `siftwing-cli`，另有只链接 V1 的学习入口 `siftwing-v1-cli`。下面给出最小本地查询；完整网络四命令、正常关闭、预期结果和错误排查见[可复跑演示](docs/DEMO.md)。每次使用全新输出目录，原输入保持只读。
 
 ```sh
 siftwing_demo=$(mktemp -d /tmp/siftwing-demo.XXXXXXXX)

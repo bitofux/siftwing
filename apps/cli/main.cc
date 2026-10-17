@@ -61,8 +61,15 @@ struct Options final {
     std::uint64_t query_bytes = 65536, max_k = 100, work = work_cap;
     std::uint64_t output_bytes = 16 * mib, snapshot_bytes = 512 * mib, resource_bytes = 16 * mib;
 };
-constexpr const char *help = R"(用法：siftwing-cli SEARCH --snapshot <父目录> --version <版本> --query <文本> [选项]
-      siftwing-cli SUGGEST --snapshot <父目录> --version <版本> --key <词键> [选项]
+// 两个程序共享本地行为，只在完整CLI编译网络入口。
+#ifdef SIFTWING_CLI_WITH_NETWORK
+#define SIFTWING_CLI_NAME "siftwing-cli"
+#else
+#define SIFTWING_CLI_NAME "siftwing-v1-cli"
+#endif
+constexpr const char *help =
+    "用法：" SIFTWING_CLI_NAME R"( SEARCH --snapshot <父目录> --version <版本> --query <文本> [选项]
+      )" SIFTWING_CLI_NAME R"( SUGGEST --snapshot <父目录> --version <版本> --key <词键> [选项]
 
 通用选项：
   --snapshot <父目录>           快照父目录（必需）
@@ -284,7 +291,8 @@ std::string load(const std::string &path, std::uint64_t cap) {
         }
         fd.replace(next);
     }
-    struct stat before{}, after{};
+    struct stat before {
+    }, after{};
     if (::fstat(fd.get(), &before) != 0) {
         io_error();
     }
@@ -623,16 +631,23 @@ int run(const Options &o) {
     return 0;
 }
 } // namespace
+#ifdef SIFTWING_CLI_WITH_NETWORK
 #include "network.hpp"
+#endif
 int main(int argc, char **argv) {
     try {
         if (std::signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
             throw Failure("cli.signal", "无法设置本进程SIGPIPE策略");
         }
+#ifdef SIFTWING_CLI_WITH_NETWORK
         if (argc >= 2 && std::string_view(argv[1]) == "--network")
             return siftwing::cli::network_main(argc, argv);
+#endif
         if (argc == 2 && std::string_view(argv[1]) == "--help") {
-            std::cout << help << siftwing::cli::network_help();
+            std::cout << help;
+#ifdef SIFTWING_CLI_WITH_NETWORK
+            std::cout << siftwing::cli::network_help();
+#endif
             std::cout.flush();
             return std::cout ? 0 : 3;
         }

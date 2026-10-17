@@ -2,7 +2,7 @@
 
 已有[fd/socket基线](SOCKET_BASELINE.md)负责资源和单次收发；本层提供Linux epoll创建和注册，
 供所属I/O线程使用，已有[单Loop](PROTOCOL_LOOP.md)与[多Sub](MULTI_REACTOR.md)调用方。接口权威为`include/siftwing/net/epoll_ops.hpp`，目标`siftwing_epoll`
-PUBLIC依赖`siftwing_socket`。本层没有事件循环、等待封装、Listener、Connection或业务分发。
+实现复用`siftwing_socket`。本层没有事件循环、等待封装、Listener、Connection或业务分发。
 
 ## 创建、借用与标识
 

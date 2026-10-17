@@ -1,6 +1,6 @@
 # TF-IDF 与余弦排序
 
-`siftwing_ranking` PUBLIC依赖`siftwing_candidates`与`siftwing_weights`。
+排序组件（链接别名`siftwing_ranking`）实现复用`siftwing_candidates`与`siftwing_weights`。
 `rank_candidates(query,weighted_index,limits)`内部从同一个WeightedIndex的原始倒排
 生成完整候选，返回`Result<RankedDocuments>`；不接收外部或其他快照生成的候选。
 成功结果独立拥有`vector<RankedDocument>`，每项为强DocumentId与double分数。
