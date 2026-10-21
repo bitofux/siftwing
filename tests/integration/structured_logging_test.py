@@ -44,7 +44,7 @@ def run(root, parent, records, frequencies, mode):
         stderr = owned
     # 文件配置与CLI共同覆盖日志字段，off文件组合由下面的负例验证。
     config = root / (mode + ".config")
-    values = dict(schema_version=1, snapshot=str(parent), version="0")
+    values = dict(schema_version=2, snapshot=str(parent), version="0")
     if not default_level:
         values["log_level"] = "info"
     config.write_text(json.dumps(values), encoding="utf8")

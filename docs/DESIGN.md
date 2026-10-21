@@ -24,9 +24,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  P[客户端 TCP] --> M[Main: listener / epoll]
-  M --> H[有界 fd 队列 + eventfd]
-  H --> S[固定 Sub: Connection / epoll]
+  P[客户端 TCP] --> S[调用线程唯一 Reactor: Listener / Connection / epoll]
   S --> Q[有界任务队列]
   Q --> W[固定 WorkerPool]
   W --> B[SearchService / 当前快照句柄 / 可选 LRU]
@@ -35,9 +33,16 @@ flowchart LR
   S --> P
 ```
 
-Main 在创建线程前屏蔽 SIGINT/SIGTERM，生产入口将信号交给 Main 的 signalfd。Main 用 epoll 同时等待监听、停止通知和信号，有限 accept4 后轮询移交；监听与客户端 socket 均非阻塞。Sub 分别占用独立线程和 epoll，独占所属连接、Buffer、身份表和 timerfd。worker 是另一组固定线程，不轮询连接、不发送 socket。Main/Sub/worker 的详细启动、发布者屏障和 fd 所有权以[线程拓扑](THREAD_TOPOLOGY.md)为准。
+生产入口在线程创建前屏蔽SIGINT/SIGTERM，由应用调用线程的唯一Reactor统一处理Listener、连接、
+epoll、Completion/eventfd、timerfd和signalfd；监听与客户端socket均非阻塞，不再移交fd。
+worker仍是另一组固定线程，不轮询或发送socket；可选Loader独立机制保持。
+关闭时同线程主动推进网络排空，完整worker发布/通知与join后才释放通知资源，见[在线服务](ONLINE_SEARCH.md)。
+[旧线程拓扑](THREAD_TOPOLOGY.md)保留主从组件合同，全面下线核对属于后续迁移批次，不能据旧图判断当前生产线程。
 
-PING、SERVER_INFO 在 Sub 内处理。SEARCH/SUGGEST 经单在途门禁提交拥有请求，由 worker 执行查询或推荐，发布拥有响应；原 Sub 校验 ConnectionId、generation、request_id 和等待状态后应用。fd 数字可能复用，不能代替连接身份。完整请求交付至响应排空期间保持一个在途请求；TCP 可以分片或合并帧，协议边界由[增量解码](FRAME_DECODER.md)恢复。
+PING、SERVER_INFO在Reactor内处理。SEARCH/SUGGEST经单在途门禁提交拥有请求，由worker执行查询或推荐，
+发布拥有响应；同一Reactor校验ConnectionId、generation、request_id、等待状态及期限后应用。
+fd数字可能复用，不能代替连接身份。完整交付至输出排空保持一个在途请求；
+TCP分片/合并边界由[增量解码](FRAME_DECODER.md)恢复。
 
 [SearchService](ONLINE_SEARCH.md)复用本地 CLI 的 Query、AND/OR 候选、余弦排序、稳定 top-k、摘要/高亮和编辑距离推荐。每次计算只使用一个完整快照句柄。成功无命中是空结果，非法参数、工作预算不足和内部失败沿既有协议状态返回；客户端总期限到达只结束客户端等待，不取消 worker。
 
@@ -61,11 +66,11 @@ PING、SERVER_INFO 在 Sub 内处理。SEARCH/SUGGEST 经单在途门禁提交�
 
 | 位置 | 行为与边界 |
 |---|---|
-| fd 移交队列 | 成功提交后由目标 Sub 接管；满队列不改投其他 Sub。通知失败不撤销已提交 fd |
+| fd 接纳 | 唯一Reactor直接注册；总连接槽满关闭新源，不存在生产fd移交队列 |
 | worker 等待队列 | 满时不等待空位，按同 request_id 返回 OVERLOADED；容量释放后可重新准入 |
 | Completion 发布 | 结果满/拒绝或通知失败记录首因并停止整体；不能丢结果却继续声称请求正常完成 |
 | 输出与期限 | 高低水位、硬限和单在途抑制无界增长；可选 idle/request 期限到期局部关闭连接 |
-| 正常关闭 | 停接入和新任务，限时网络排空，再完成 Loader/worker 和通知发布者静止屏障，最后回收 Sub |
+| 正常关闭 | 停接入和新任务，同线程限时网络排空，再完成Loader/worker及完整通知屏障，最后回收控制fd |
 | 故障关闭 | 保留首因并协调停止；不把故障路径包装成正常排空 |
 
 网络排空不证明对端已收到；关闭预算不是整个退出的硬截止。槽数、文件大小、工作预算不等于全局 RSS/CPU 上限。精确合同见[背压](OUTPUT_BACKPRESSURE.md)、[饱和](WORKER_SATURATION.md)、[期限](DEADLINES.md)和[优雅退出](GRACEFUL_SHUTDOWN.md)。
@@ -83,5 +88,5 @@ PING、SERVER_INFO 在 Sub 内处理。SEARCH/SUGGEST 经单在途门禁提交�
 | 离线输入到快照 | [indexer/main.cc](../apps/indexer/main.cc)、[snapshot/writer.cc](../src/snapshot/writer.cc) |
 | 快照装载与显式发布 | [reader.cc](../src/snapshot/reader.cc)、[manager.cc](../src/snapshot/manager.cc)、[loader.cc](../src/snapshot/loader.cc) |
 | 服务组合 | [server/main.cc](../apps/server/main.cc)、[online_server.cc](../src/net/online_server.cc) |
-| Main/Sub 与结果回投 | [main_reactor.cc](../src/net/main_reactor.cc)、[protocol_sub_reactor.cc](../src/net/protocol_sub_reactor.cc)、[completion_wakeup.cc](../src/net/completion_wakeup.cc) |
+| 唯一生产循环与结果回投 | [online_server.cc](../src/net/online_server.cc)、[protocol_connection_core.cc](../src/net/protocol_connection_core.cc)、[completion_wakeup.cc](../src/net/completion_wakeup.cc) |
 | 查询及客户端 | [search_service.cc](../src/query/search_service.cc)、[client.cc](../src/net/client.cc)、[cli/main.cc](../apps/cli/main.cc) |

@@ -50,7 +50,13 @@ static_assert(!std::is_copy_constructible_v<CompletionQueue>
               && !std::is_move_constructible_v<CompletionQueue>);
 static_assert(std::is_nothrow_destructible_v<CompletionQueue>);
 int main() {
-    for (auto capacity : {std::size_t(0), std::size_t(1025)}) {
+    CompletionQueue aggregate(0, 65536);
+    auto aggregate_output = output({0, 65535, 1}, 1);
+    require(aggregate.status().capacity == 65536
+                && aggregate.try_publish(aggregate_output) == CompletionPublishResult::accepted
+                && !aggregate_output && aggregate.try_pop()->route().slot_index == 65535,
+        "aggregate capacity keeps owning publication and last-slot routing");
+    for (auto capacity : {std::size_t(0), std::size_t(65537)}) {
         bool caught = false;
         try {
             CompletionQueue invalid(0, capacity);

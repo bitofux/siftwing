@@ -28,15 +28,15 @@ C++控制线程通过`OnlineServer::metrics()`取得拥有值；该值不借用�
 
 | 族 | values字段与口径 |
 |---|---|
-| connections | accepted为Main实际接入；handed_off为成功移交；rejected合并Main拒绝及Sub注册前拒绝；admitted为Sub实际注册；closed为注册后关闭；active为当前注册数；discarded为关闭时未注册的移交残留 |
-| network | received_bytes/sent_bytes为正recv/send的实际字节，含头、坏输入及部分发送；input_bytes/output_bytes为已发布Sub报告中的活跃连接用户缓冲可读字节总量；input_high_bytes/output_high_bytes为所有连接中最大的单连接历史可读字节；protocol_errors为坏头、EOF截帧、完整帧Body准入错误次数，不含业务schema校验错误 |
+| connections | accepted为实际accept；handed_off是旧schema退役字段，生产恒0而非直接接纳；rejected合并接入设施及Core注册前拒绝；admitted为Core实际注册；closed为注册后关闭；active为当前注册数；discarded是退役移交残留字段，生产恒0 |
+| network | received_bytes/sent_bytes为正recv/send的实际字节，含头、坏输入及部分发送；input_bytes/output_bytes为Core报告中的活跃连接用户缓冲可读字节总量；input_high_bytes/output_high_bytes为所有连接中最大的单连接历史可读字节；protocol_errors为坏头、EOF截帧、完整帧Body准入错误次数，不含业务schema校验错误 |
 | requests | by_type依次PING、SERVER_INFO、SEARCH、SUGGEST，统计完整受信交付，含坏Body；responses按status 0..6统计实际响应入输出队列次数；drained为输出排空且finish成功次数，不证明对端收到 |
-| queues | tasks为等待worker的任务数，不含execute中的任务；task_capacity为固定槽位容量；handoff/completions为各Sub移交/结果队列即时深度之和 |
+| queues | tasks为等待worker的任务数，不含execute中的任务；task_capacity为固定槽位容量；handoff为旧schema退役字段，生产恒0；completions为唯一结果队列即时深度 |
 | workers | count为固定线程数；busy只覆盖execute调用；succeeded/failed沿WorkerPool正常返回/抛异常计数，业务错误返回仍属于succeeded |
 | search / suggest | count为实际服务execute次数，failures为非成功Body结果（含异常映射）；sum_us/max_us为steady_clock微秒耗时和/最大值；buckets为六个互斥桶；collection_failed表示至少一次查询统计因同步异常丢失 |
 | cache | hits/misses/evictions/entries/bytes来自同锁LRU统计；bytes为charge，非RSS；缓存关闭时沿原缓存合同，不能以业务请求数推测miss |
 | index | documents/terms为只读搜索索引文档/词项数，recommendation_terms为独立推荐词项数，版本读取信封index_version |
-| shutdown | started/finished表示进入关闭与完成worker/Sub屏障；elapsed_us为关闭完整耗时，含join；drain_timeouts/drain_responses为网络排空截止/完成数；stale_completions/discarded_completions为陈旧/停止后销毁的结果数 |
+| shutdown | started/finished表示进入关闭与完成worker/Loader发布者屏障及I/O清理；elapsed_us为关闭完整耗时，含join；drain_timeouts/drain_responses为网络排空截止/完成数；stale_completions/discarded_completions为陈旧/停止后销毁的结果数 |
 
 status槽位依次为成功0、INVALID_REQUEST=1、OVERLOADED=2、STOPPING=3、INTERNAL_ERROR=4、
 DEADLINE_EXCEEDED=5、RESOURCE_LIMIT=6。硬限触发替代错误时只统计实际成功入队的替代响应。
@@ -49,7 +49,7 @@ DEADLINE_EXCEEDED=5、RESOURCE_LIMIT=6。硬限触发替代错误时只统计实
 
 ## 一致性与限制
 
-Connection由所属Sub独占计量，Sub发布值报告；查询两组聚合在同一小锁下更新/复制，
+Connection由唯一Reactor所属线程独占计量并复制报告；查询两组聚合在同一小锁下更新/复制，
 缓存、worker及各队列使用自己的锁。锁不跨execute、网络或日志输出。
 不同组件采样时点不同，不是全局原子快照；运行期不能用跨组件等式或共享计数差精确归因。
 关闭屏障完成后数值稳定，可核算最终总量。high_bytes不是缓冲capacity、全局同时峰值或RSS，

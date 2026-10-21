@@ -153,7 +153,7 @@ def protocol(root):
 def integration(root):
     parent, records, frequencies = ref.golden(root)
     before = ref.inventory(root)
-    with online.Server(parent, ("--subs",2,"--workers",2)) as server:
+    with online.Server(parent, ("--max-connections",256,"--completion-capacity",256,"--workers",2)) as server:
         check(invoke(server.port).stdout == b"{}\n", "real PING")
         info = json.loads(invoke(server.port,"SERVER_INFO").stdout)
         check(info == {"schema_version":1,"command":"SERVER_INFO","protocol_version":1,

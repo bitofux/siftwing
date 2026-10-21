@@ -4,7 +4,7 @@
 
 ## 所属线程中的身份表
 
-`ConnectionIdentityTable` 固定预分配 1—1024 个 slot 元数据，不拥有 Connection/socket。所有查询、修改与析构由所属 Reactor 线程串行调用；const 不授予跨线程查询能力，表不能复制或移动。配置非法抛 invalid_argument，预分配异常传播；构造后 activate/retire/matches/lookup 不分配、不抛异常。
+`ConnectionIdentityTable` 固定预分配 1—65536 个 slot 元数据，不拥有 Connection/socket。所有查询、修改与析构由所属 Reactor 线程串行调用；const 不授予跨线程查询能力，表不能复制或移动。配置非法抛 invalid_argument，预分配异常传播；构造后 activate/retire/matches/lookup 不分配、不抛异常。
 
 activate 对空 slot 建立下一代身份及全表单调 epoll token。拒绝顺序为 invalid_slot、already_live、generation_exhausted、token_exhausted，拒绝保持表。generation 与 token 最大值可使用一次，随后拒绝，不回绕。token 的零保留给 Reactor 控制事件。调用者先激活，再 ADD 并发布 Connection；ADD 失败须 retire，已消费代次/token 不回收。
 
@@ -13,6 +13,10 @@ retire 仅精确匹配当前 reactor、slot、非零 generation 才撤销绑定�
 控制者配置固定且同时可回投的不同 Reactor 编号；旧结果或旧 epoll 批次可能存在时，不能重用 Reactor 命名空间或重建身份表。`ProtocolSubConfig::reactor_id` 默认零保持旧调用行为，组件不自动全球分配编号，也不检测其他实例。启动一次的 Sub 不重启；正式服务控制者接入时仍须保证编号唯一和生产者生命周期。测试多 Sub 控制者按 base+i 配置并拒绝编号溢出。
 
 ## 保持协议行为的 Sub 迁移
+
+以下描述原独立Sub接入历史。当前生产由应用调用线程的唯一Core使用同一身份门禁，
+固定reactor_id=0，总连接默认256/最大65536；控制fd共用保留token0，连接非零token不压缩。
+旧独立ProtocolSubReactor仍限制单Sub至1024。扩界不重置代次、不改变陈旧结果判定或算法。
 
 `ProtocolSubReactor` 内 Sessions 的固定 slot 仍独占 Connection；现在用身份表建立注册元数据，成功 ADD 后保存 ConnectionRegistration，ADD 失败 retire；drop 先撤销身份，再 DEL/close。事件仍携带原有单调 uint64 token，查表得到身份后核当前 slot 绑定才派发，不用复用 fd 数字猜目的地。
 

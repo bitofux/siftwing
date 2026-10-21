@@ -7,7 +7,7 @@
  * IMPLEMENTATION : 独立快照与黄金帧作为参考；不用生产hook，不把运行时长当性能数据。
  */
 #include "siftwing/net/online_server.hpp"
-#include "../support/multi_reactor_fixture.hpp"
+#include "../support/online_server_fixture.hpp"
 #include <csignal>
 #include <fcntl.h>
 #include <fstream>
@@ -44,7 +44,7 @@ std::size_t threads() {
         std::distance(std::filesystem::directory_iterator("/proc/self/task"),
             std::filesystem::directory_iterator{}));
 }
-std::unique_ptr<net::OnlineServer> server(const std::string &root, std::size_t subs) {
+std::unique_ptr<net::OnlineServer> server(const std::string &root, std::size_t capacity_scale) {
     query::SearchServiceConfig cfg;
     cfg.parent = root + "/valid";
     cfg.version = 100;
@@ -53,10 +53,11 @@ std::unique_ptr<net::OnlineServer> server(const std::string &root, std::size_t s
     if (!service)
         throw std::runtime_error(service.error().context);
     net::OnlineServerConfig config;
-    config.sub_count = subs;
+    config.connection.max_connections = capacity_scale * 128;
+    config.connection.completion_capacity = capacity_scale * 128;
     config.workers = 2;
     config.task_capacity = 8;
-    config.main.termination_signals = true;
+    config.reactor.termination_signals = true;
     auto created = net::OnlineServer::create(std::move(service).value(), config);
     if (auto *error = std::get_if<std::error_code>(&created))
         throw std::system_error(*error);
@@ -67,7 +68,7 @@ net::UniqueFd attach(net::OnlineServer &s, std::size_t total) {
     await([&] {
         if (auto e = s.run_once(0))
             throw std::system_error(e);
-        return s.report().handed_off == total;
+        return s.report().reactor.admitted == total;
     });
     return c;
 }
@@ -128,9 +129,9 @@ void publish(net::OnlineServer &s, const snapshot::SnapshotLoadCompletion &done)
 void stopped(const net::OnlineServer &s) {
     const auto report = s.report();
     check(report.stopped && !report.first_error && report.workers.failed == 0, "clean stop report");
-    for (const auto &sub : report.subs)
-        check(sub.state == net::ProtocolSubState::joined && sub.active == 0,
-            "no active Sub connection");
+    for (const auto &sub : {report.reactor})
+        check(sub.state == net::ProtocolSubState::stopped && sub.active == 0,
+            "no active Reactor connection");
 }
 // 只降低当前隔离子进程的软限；异常先关填充fd再恢复原限，不改变硬限/主机配置。
 class FdPressure {
@@ -167,6 +168,7 @@ public:
 };
 Json faults(const std::string &root) {
     auto s = server(root, 2);
+    siftwing::test::OnlineServerDriver drive(*s);
     auto c = attach(*s, 1);
     (void)load(*s, root + "/valid", 101); // 先建立Loader，耗尽窗口只验证文件打开失败。
     // 先取得独立错误文本，让消毒器在fd充足时完成标准库类型检查；耗尽时仍走Reader原路径。
@@ -206,12 +208,19 @@ Json faults(const std::string &root) {
 }
 struct Readers {
     std::atomic<bool> finish{false};
+    std::atomic<std::size_t> done{0};
     std::atomic<std::uint64_t> replies{0};
     std::array<std::atomic<bool>, 2> ready{};
     std::array<std::exception_ptr, 2> errors{};
     std::vector<std::thread> jobs;
     void join() {
         finish = true;
+        // 客户端退出前仍可能等一个在途响应；拥有线程须继续推进唯一I/O循环再join。
+        while (done.load() != jobs.size()) {
+            if (io_progress)
+                io_progress();
+            std::this_thread::yield();
+        }
         for (auto &job : jobs)
             if (job.joinable())
                 job.join();
@@ -220,8 +229,9 @@ struct Readers {
         join();
     }
 };
-Json soak(const std::string &root, std::size_t subs, unsigned seconds) {
-    auto s = server(root, subs);
+Json soak(const std::string &root, std::size_t capacity_scale, unsigned seconds) {
+    auto s = server(root, capacity_scale);
+    siftwing::test::OnlineServerDriver drive(*s);
     auto a = attach(*s, 1), b = attach(*s, 2);
     (void)load(*s, root + "/valid", 101);
     Readers readers; // 必须在server/client之前析构，异常也先结束客户端再销毁服务。
@@ -238,6 +248,7 @@ Json soak(const std::string &root, std::size_t subs, unsigned seconds) {
                 readers.errors[i] = std::current_exception();
                 readers.finish = true;
             }
+            ++readers.done;
         });
     // 两条流都完成首个完整响应后再取运行基线，不把线程构造返回当作业务已就绪。
     await([&] {
@@ -281,9 +292,9 @@ Json soak(const std::string &root, std::size_t subs, unsigned seconds) {
     // 最后一次已接受加载可能仍执行，也可能已完成；确定执行中的关闭另由门禁race测试证明。
     check(s->try_load_snapshot({root + "/incomplete", version(101), limits()}) == Submit::accepted,
         "accepted failure before termination");
-    const int signo = subs == 1 ? SIGINT : SIGTERM;
+    const int signo = capacity_scale == 1 ? SIGINT : SIGTERM;
     check(::kill(::getpid(), signo) == 0 && !s->run_once(100) && s->shutdown_signal() == signo,
-        "normal termination observed by Main");
+        "normal termination observed by Reactor");
     check(!s->shutdown(1000), "soak signal shutdown");
     stopped(*s);
     auto done = s->take_loaded_snapshot();
@@ -293,12 +304,14 @@ Json soak(const std::string &root, std::size_t subs, unsigned seconds) {
     const auto report = s->report();
     check(report.workers.succeeded == readers.replies.load(),
         "every validated request executed once");
+    drive.release();
     s.reset();
     for (const auto &weak : retired)
         check(weak.expired(), "sampled retired Reader reclaimed");
     rusage usage{};
     check(::getrusage(RUSAGE_SELF, &usage) == 0, "resource observation");
-    return {{"subs", subs},
+    return {{"io_reactors", 1},
+        {"capacity_scale", capacity_scale},
         {"cycles", cycles},
         {"valid_responses", readers.replies.load()},
         {"elapsed_ms",
@@ -337,10 +350,10 @@ int main(int argc, char **argv) {
         if (mode == "faults")
             summary = faults(argv[1]);
         else if (mode == "soak") {
-            const auto subs = std::stoul(argv[3]);
-            if (subs != 1 && subs != 2)
-                throw std::invalid_argument("subs in {1,2}");
-            summary = soak(argv[1], subs, static_cast<unsigned>(seconds));
+            const auto capacity_scale = std::stoul(argv[3]);
+            if (capacity_scale != 1 && capacity_scale != 2)
+                throw std::invalid_argument("capacity_scale in {1,2}");
+            summary = soak(argv[1], capacity_scale, static_cast<unsigned>(seconds));
         } else
             throw std::invalid_argument("unknown suite");
         check(fd_count() == fds, "all input/socket/control fds reclaimed");

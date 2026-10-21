@@ -51,7 +51,7 @@ void merge_io(metrics::ConnectionIo &into, const metrics::ConnectionIo &from) no
     into.input_high_bytes = std::max(into.input_high_bytes, from.input_high_bytes);
     into.output_high_bytes = std::max(into.output_high_bytes, from.output_high_bytes);
 }
-// 定时基础失败必须传播到Sub首因，不能被局部客户端异常处理吞掉。
+// 定时基础失败必须传播到Reactor首因，不能被局部客户端异常处理吞掉。
 struct DeadlineFailure final : std::system_error {
     explicit DeadlineFailure(std::error_code error) : std::system_error(error) {}
 };
@@ -67,7 +67,7 @@ DeadlineTime now() {
 class ProtocolConnectionCore::Impl final {
     struct Slot {
         std::unique_ptr<Connection> connection;
-        ConnectionRegistration registration{}; // 身份与epoll key只由所属Sub发布/撤销。
+        ConnectionRegistration registration{}; // 身份与epoll key只由所属I/O线程发布/撤销。
         std::uint32_t mask = 0;
         bool runnable = false, serviced = false;
         bool awaiting_completion = false; // 仅所属线程读写；发布者不接触slot。
@@ -76,8 +76,8 @@ class ProtocolConnectionCore::Impl final {
     };
     std::vector<Slot> slots_;
     int epoll_;
-    int timer_; // 所属Sub栈拥有的timerfd借用，覆盖Sessions整个生命周期。
-    const ProtocolSubConfig &config_;
+    int timer_; // 外层I/O拥有的timerfd借用，覆盖Core完整生命周期。
+    const ProtocolConnectionConfig &config_;
     ProtocolSubStatus &report_;
     metrics::ConnectionIo closed_io_; // 关闭前只合并一次，后续采样再加仍活跃连接，避免重复累计。
     const std::atomic<std::int64_t> &drain_requested_; // 控制者只发布期限，连接仍由此线程处理。
@@ -440,13 +440,13 @@ class ProtocolConnectionCore::Impl final {
 public:
     Impl(int epoll,
         int timer,
-        const ProtocolSubConfig &config,
+        const ProtocolConnectionConfig &config,
         ProtocolSubStatus &report,
         const std::atomic<std::int64_t> &drain_requested)
         : slots_(config.max_connections), epoll_(epoll), timer_(timer), config_(config),
           report_(report), drain_requested_(drain_requested), deadlines_(config.max_connections),
           identities_(config.reactor_id, config.max_connections) {}
-    /** @brief 只由所属Sub观察单调排空请求；关闭空闲或截止连接，不取消拥有任务。 */
+    /** @brief 只由所属I/O线程观察单调排空请求；关闭空闲或截止连接，不取消拥有任务。 */
     void observe_drain() {
         const auto requested = drain_requested_.load();
         if (!requested)
@@ -516,7 +516,7 @@ public:
             throw DeadlineFailure(
                 code(EIO)); // 活跃数不超容量且新slot无旧条目，此分支仅防不变量破坏。
     }
-    void tick(int timeout) {
+    bool prepare_round() {
         observe_drain();
         expire_due();
         bool scheduled = false;
@@ -528,6 +528,27 @@ public:
                 scheduled = true;
             }
         arm();
+        return scheduled;
+    }
+    void check_deadlines() {
+        observe_drain();
+        expire_due();
+        arm();
+    }
+    void dispatch(std::uint64_t token, std::uint32_t events) {
+        const auto identity = identities_.lookup(token);
+        if (!identity)
+            return; // DEL不撤销已取得的事件；从不按复用fd猜当前连接。
+        auto &slot = slots_[identity->slot_index];
+        if (slot.connection && slot.registration.identity == *identity && !slot.serviced) {
+            if (slot.awaiting_completion && (events & (EPOLLHUP | EPOLLERR)))
+                drop(slot, code(ECONNRESET));
+            else
+                service(slot);
+        }
+    }
+    void tick(int timeout) {
+        const bool scheduled = prepare_round();
         std::array<epoll_event, 64> events{};
         const int count = ::epoll_wait(
             epoll_, events.data(), static_cast<int>(events.size()), scheduled ? 0 : timeout);
@@ -538,8 +559,7 @@ public:
         }
         if (count > static_cast<int>(events.size()))
             throw std::system_error(code(EIO));
-        observe_drain();
-        expire_due(); // 先处理到期，再处理同一批I/O；epoll事件顺序不决定超时胜负。
+        check_deadlines(); // 同钟裁决先于I/O，事件顺序不决定超时胜负。
         for (int i = 0; i < count; ++i) {
             const auto token = events[static_cast<std::size_t>(i)].data.u64;
             if (token == 0) {
@@ -551,17 +571,7 @@ public:
                     throw std::system_error(timer.error);
                 continue; // eventfd下轮清通知；实际条目已按同钟时间检查。
             }
-            const auto identity = identities_.lookup(token);
-            if (!identity)
-                continue; // 已取epoll批次不会随DEL清空，陈旧key不能猜当前fd。
-            auto &slot = slots_[identity->slot_index];
-            if (slot.connection && slot.registration.identity == *identity && !slot.serviced) {
-                if (slot.awaiting_completion
-                    && (events[static_cast<std::size_t>(i)].events & (EPOLLHUP | EPOLLERR)))
-                    drop(slot, code(ECONNRESET));
-                else
-                    service(slot);
-            }
+            dispatch(token, events[static_cast<std::size_t>(i)].events);
         }
     }
     void complete(const concurrency::RoutedCompletion &result) {
@@ -636,7 +646,7 @@ public:
 
 ProtocolConnectionCore::ProtocolConnectionCore(int epoll,
     int timer,
-    const ProtocolSubConfig &config,
+    const ProtocolConnectionConfig &config,
     ProtocolSubStatus &report,
     const std::atomic<std::int64_t> &drain_requested)
     : impl_(std::make_unique<Impl>(epoll, timer, config, report, drain_requested)) {}
@@ -649,6 +659,15 @@ void ProtocolConnectionCore::admit(UniqueFd &source) {
 }
 void ProtocolConnectionCore::tick(int timeout) {
     impl_->tick(timeout);
+}
+bool ProtocolConnectionCore::prepare_round() {
+    return impl_->prepare_round();
+}
+void ProtocolConnectionCore::check_deadlines() {
+    impl_->check_deadlines();
+}
+void ProtocolConnectionCore::dispatch(std::uint64_t token, std::uint32_t events) {
+    impl_->dispatch(token, events);
 }
 void ProtocolConnectionCore::complete(const concurrency::RoutedCompletion &result) {
     impl_->complete(result);

@@ -56,14 +56,11 @@ constexpr Field fields[] = {{"snapshot", Kind::text},
     {"reuse_address", Kind::boolean},
     {"port", Kind::number, 0, 65535},
     {"backlog", Kind::number, 1, INT_MAX},
-    {"subs", Kind::number, 1, 64},
     {"workers", Kind::number, 1, 64},
     {"task_capacity", Kind::number, 1, 1024},
-    {"handoff_capacity", Kind::number, 1, 1024},
-    {"max_connections", Kind::number, 1, 1024},
-    {"handoff_budget", Kind::number, 1, 1024},
+    {"max_connections", Kind::number, 1, 65536},
     {"io_attempt_budget", Kind::number, 1, 1024},
-    {"completion_capacity", Kind::number, 1, 1024},
+    {"completion_capacity", Kind::number, 1, 65536},
     {"completion_budget", Kind::number, 1, 1024},
     {"accept_attempt_budget", Kind::number, 1, 1024},
     {"max_body_bytes", Kind::number, 2, 1048576},
@@ -86,6 +83,9 @@ constexpr Field fields[] = {{"snapshot", Kind::text},
     {"cache_bytes", Kind::number, 1, 67108864},
     {"cache_max_value_bytes", Kind::number, 1, 1048576}};
 const Field &field(const std::string &key) {
+    if (key == "subs" || key == "handoff_capacity" || key == "handoff_budget")
+        reject("config.argument",
+            "单Reactor已移除subs/handoff；请迁移schema=2并显式填写总连接/结果容量，见docs/SERVER_CONFIG.md");
     for (const auto &candidate : fields)
         if (key == candidate.key)
             return candidate;
@@ -153,7 +153,7 @@ void apply(ServerSettings &s, const Field &f, const std::string &v) {
         if (key == "hmm")
             s.service.hmm = value;
         else if (key == "tcp_no_delay")
-            s.server.main.tcp_no_delay = value;
+            s.server.reactor.tcp_no_delay = value;
         else if (key == "reuse_address")
             s.server.listen.reuse_address = value;
         return;
@@ -167,42 +167,36 @@ void apply(ServerSettings &s, const Field &f, const std::string &v) {
         s.server.listen.port = static_cast<std::uint16_t>(n);
     else if (key == "backlog")
         s.server.listen.backlog = static_cast<int>(n);
-    else if (key == "subs")
-        s.server.sub_count = static_cast<std::size_t>(n);
     else if (key == "workers")
         s.server.workers = static_cast<std::size_t>(n);
     else if (key == "task_capacity")
         s.server.task_capacity = static_cast<std::size_t>(n);
-    else if (key == "handoff_capacity")
-        s.server.sub.handoff_capacity = static_cast<std::size_t>(n);
     else if (key == "max_connections")
-        s.server.sub.max_connections = static_cast<std::size_t>(n);
-    else if (key == "handoff_budget")
-        s.server.sub.handoff_budget = static_cast<std::size_t>(n);
+        s.server.connection.max_connections = static_cast<std::size_t>(n);
     else if (key == "io_attempt_budget")
-        s.server.sub.io_attempt_budget = static_cast<std::size_t>(n);
+        s.server.connection.io_attempt_budget = static_cast<std::size_t>(n);
     else if (key == "completion_capacity")
-        s.server.sub.completion_capacity = static_cast<std::size_t>(n);
+        s.server.connection.completion_capacity = static_cast<std::size_t>(n);
     else if (key == "completion_budget")
-        s.server.sub.completion_budget = static_cast<std::size_t>(n);
+        s.server.connection.completion_budget = static_cast<std::size_t>(n);
     else if (key == "accept_attempt_budget")
-        s.server.main.accept_attempt_budget = static_cast<std::size_t>(n);
+        s.server.reactor.accept_attempt_budget = static_cast<std::size_t>(n);
     else if (key == "max_body_bytes")
-        s.server.sub.max_body_bytes = static_cast<std::size_t>(n);
+        s.server.connection.max_body_bytes = static_cast<std::size_t>(n);
     else if (key == "read_byte_budget")
-        s.server.sub.read_byte_budget = static_cast<std::size_t>(n);
+        s.server.connection.read_byte_budget = static_cast<std::size_t>(n);
     else if (key == "write_byte_budget")
-        s.server.sub.write_byte_budget = static_cast<std::size_t>(n);
+        s.server.connection.write_byte_budget = static_cast<std::size_t>(n);
     else if (key == "output_low_bytes")
-        s.server.sub.output.low_bytes = static_cast<std::size_t>(n);
+        s.server.connection.output.low_bytes = static_cast<std::size_t>(n);
     else if (key == "output_high_bytes")
-        s.server.sub.output.high_bytes = static_cast<std::size_t>(n);
+        s.server.connection.output.high_bytes = static_cast<std::size_t>(n);
     else if (key == "output_hard_bytes")
-        s.server.sub.output.hard_bytes = static_cast<std::size_t>(n);
+        s.server.connection.output.hard_bytes = static_cast<std::size_t>(n);
     else if (key == "idle_timeout_ms")
-        s.server.sub.idle_timeout_ms = static_cast<std::int64_t>(n);
+        s.server.connection.idle_timeout_ms = static_cast<std::int64_t>(n);
     else if (key == "request_timeout_ms")
-        s.server.sub.request_timeout_ms = static_cast<std::int64_t>(n);
+        s.server.connection.request_timeout_ms = static_cast<std::int64_t>(n);
     else if (key == "run_ms")
         s.run_ms = n;
     else if (key == "shutdown_ms")
@@ -339,8 +333,9 @@ base::Result<ServerSettings> load_server_settings(const std::vector<std::string>
         if (!config.empty()) {
             const auto object = parse(read_file(config));
             if (!object.contains("schema_version") || !object["schema_version"].is_number_integer()
-                || object["schema_version"] != 1)
-                reject("config.json", "schema_version必须为整数1");
+                || object["schema_version"] != 2)
+                reject("config.json",
+                    "schema_version必须为整数2；旧每Sub容量须显式迁移为总容量，见docs/SERVER_CONFIG.md");
             for (auto it = object.begin(); it != object.end(); ++it) {
                 if (it.key() == "schema_version")
                     continue;
@@ -377,7 +372,7 @@ base::Result<ServerSettings> load_server_settings(const std::vector<std::string>
             reject("config.value", "资源或缓存预算不相容");
         try {
             (void)net::checked_output_watermarks(
-                settings.server.sub.max_body_bytes, settings.server.sub.output);
+                settings.server.connection.max_body_bytes, settings.server.connection.output);
         } catch (const std::invalid_argument &) {
             reject("config.value", "输出水位不相容");
         }

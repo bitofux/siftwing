@@ -11,7 +11,7 @@
 namespace siftwing::concurrency {
 namespace {
 std::size_t checked(std::size_t capacity) {
-    if (capacity == 0 || capacity > 1024)
+    if (capacity == 0 || capacity > 65536)
         throw std::invalid_argument("invalid completion queue capacity");
     return capacity;
 }

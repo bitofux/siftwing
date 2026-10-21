@@ -122,7 +122,7 @@ def run(root, parent, mode):
         return {key: ([int(n) for n in val] if isinstance(val, list) else
                       val if isinstance(val, bool) else int(val)) for key, val in last[family].items()}
     c, n, q, w = map(numbers, ('connections', 'network', 'queues', 'workers'))
-    check(c == dict(accepted=3, handed_off=3, rejected=0, admitted=3, closed=3, active=0, discarded=0), '精确连接')
+    check(c == dict(accepted=3, handed_off=0, rejected=0, admitted=3, closed=3, active=0, discarded=0), '精确连接')
     check(n['received_bytes'] == tx and n['sent_bytes'] == rx and n['protocol_errors'] == 3,
           ('精确网络/协议错误', n, tx, rx))
     check(n['input_bytes'] == n['output_bytes'] == 0 and n['input_high_bytes'] >= 26

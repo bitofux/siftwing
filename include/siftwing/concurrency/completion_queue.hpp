@@ -23,7 +23,7 @@ enum class CompletionPublishResult {
 /** @brief 单一mutex中的按值观测；不代表发布者已经返回或连接仍存活。 */
 struct CompletionQueueStatus {
     std::uint32_t reactor_id; ///< 构造冻结的目的Reactor编号，0合法。
-    std::size_t capacity; ///< 固定[1,1024]条目容量，不是Body字节/RSS或执行中任务上限。
+    std::size_t capacity; ///< 固定[1,65536]条目容量，不是Body字节/RSS或执行中任务上限。
     std::size_t size; ///< 尚未被取出的拥有结果数，陈旧结果也占容量。
     bool closed;      ///< 单向关闭发布入口；已有结果仍可取出。
 };
@@ -43,7 +43,7 @@ public:
      * @param[in] reactor_id
      *     与接收Sub身份表相同的编号；不同Sub命名空间及生命周期仍由控制者管理。
      * @param[in] capacity
-     *     固定正条目上限[1,1024]。
+     *     固定正条目上限[1,65536]。
      *
      * @throws
      *     容量非法invalid_argument，预分配bad_alloc/length_error；无部分发布对象。

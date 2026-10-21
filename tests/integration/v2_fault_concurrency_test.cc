@@ -7,7 +7,7 @@
  * IMPLEMENTATION : 真实查询与socket；静态包装仅控制执行门、fd复用和EAGAIN。
  */
 #include "siftwing/net/online_server.hpp"
-#include "../support/multi_reactor_fixture.hpp"
+#include "../support/online_server_fixture.hpp"
 #include <fcntl.h>
 #include <nlohmann/json.hpp>
 #include <sys/epoll.h>
@@ -210,19 +210,21 @@ void reset() {
     routes = {};
     route_count = 0;
 }
-std::unique_ptr<OnlineServer> create(const std::string &parent, std::size_t subs, bool reuse) {
+std::unique_ptr<OnlineServer> create(
+    const std::string &parent, std::size_t capacity_scale, bool reuse) {
     query::SearchServiceConfig resources;
     resources.parent = parent;
     auto loaded = query::SearchService::create(resources);
     if (!loaded)
         throw std::runtime_error(loaded.error().context);
     OnlineServerConfig config;
-    config.sub_count = subs;
+    config.connection.max_connections = capacity_scale * 128;
+    config.connection.completion_capacity = capacity_scale * 128;
     config.workers = reuse ? 1 : 3;
     config.task_capacity = reuse ? 1 : 64;
-    config.sub.read_byte_budget = 9;
-    config.sub.write_byte_budget = 7;
-    config.sub.io_attempt_budget = 2;
+    config.connection.read_byte_budget = 9;
+    config.connection.write_byte_budget = 7;
+    config.connection.io_attempt_budget = 2;
     auto built = OnlineServer::create(std::move(loaded).value(), config);
     if (const auto *error = std::get_if<std::error_code>(&built))
         throw std::system_error(*error);
@@ -234,13 +236,13 @@ UniqueFd attach(OnlineServer &server, std::size_t &connected) {
     await([&] {
         if (const auto error = server.run_once(0))
             throw std::system_error(error);
-        return server.report().handed_off == connected;
+        return server.report().reactor.admitted == connected;
     });
     return peer;
 }
 std::size_t stale(const OnlineServerReport &report) {
     std::size_t count = 0;
-    for (const auto &sub : report.subs)
+    for (const auto &sub : {report.reactor})
         count += sub.completion_stale;
     return count;
 }
@@ -248,22 +250,23 @@ void final_accounts(const OnlineServerReport &report, std::size_t jobs) {
     check(report.stopped && !report.first_error && report.workers.succeeded == jobs
               && report.workers.failed == 0,
         "all accepted real jobs finish before service teardown");
-    for (const auto &sub : report.subs) {
-        check(sub.state == ProtocolSubState::joined && sub.active == 0
+    for (const auto &sub : {report.reactor}) {
+        check(sub.state == ProtocolSubState::stopped && sub.active == 0
                   && sub.admitted == sub.dropped && !sub.first_error && !sub.cleanup_error,
-            "joined Sub owns no connections and local faults do not fail service");
+            "no active Reactor owns no connections and local faults do not fail service");
         check(sub.completion_received
                   == sub.completion_applied + sub.completion_rejected + sub.completion_stale,
             "every received completion has exactly one outcome");
     }
 }
-/** @brief 同fd、同Sub/slot、同关联号且新任务仍pending时交付旧结果，排除仅凭fd或id路由。 */
-void reuse(const std::string &parent, std::size_t subs) {
+/** @brief 同fd、同Reactor/slot、同关联号且新任务仍pending时交付旧结果，排除仅凭fd或id路由。 */
+void reuse(const std::string &parent, std::size_t capacity_scale) {
     reset();
     arm_job = true;
     const auto baseline = fd_count();
     {
-        auto server = create(parent, subs, true);
+        auto server = create(parent, capacity_scale, true);
+        siftwing::test::OnlineServerDriver drive(*server);
         ReleaseGate release_on_exit;
         std::size_t connected = 0;
         UniqueFd reservation(::fcntl(STDERR_FILENO, F_DUPFD_CLOEXEC, 128));
@@ -283,12 +286,10 @@ void reuse(const std::string &parent, std::size_t subs) {
                   && !old.close(),
             "real RST while original worker is held");
         await([&] {
-            return server->report().subs[0].dropped == 1 && ::fcntl(reused_fd, F_GETFD) == -1
+            return server->report().reactor.dropped == 1 && ::fcntl(reused_fd, F_GETFD) == -1
                    && errno == EBADF;
         });
-        UniqueFd other_sub;
-        if (subs == 2)
-            other_sub = attach(*server, connected); // 保持Main轮转，替换源回到原Sub。
+        // 唯一Reactor直接复用刚释放slot；不能再插入为旧Reactor轮转服务的占位连接。
         pin_next = reused_fd;
         auto replacement = attach(*server, connected);
         send_all(replacement.get(), wire(3, 11, R"({"query":"red"})") + wire(1, 33));
@@ -328,18 +329,19 @@ void reuse(const std::string &parent, std::size_t subs) {
             "old disconnected and new queued task each execute once; rejected task never runs");
         check(!server->shutdown(1000), "graceful close after reuse recovery");
         const auto report = server->report();
-        check(stale(report) == 1 && report.subs[0].completion_applied == 1,
+        check(stale(report) == 1 && report.reactor.completion_applied == 1,
             "old result is stale while replacement is live, never applied or retried");
         final_accounts(report, 2);
     }
     check(fd_count() == baseline, "reuse cycle returns every descriptor to baseline");
 }
 /** @brief 受控慢输出与两种半包持续存在时，四客户端并发执行四命令和缓存帧。 */
-void mixed(const std::string &parent, std::size_t subs) {
+void mixed(const std::string &parent, std::size_t capacity_scale) {
     reset();
     const auto baseline = fd_count();
     {
-        auto server = create(parent, subs, false);
+        auto server = create(parent, capacity_scale, false);
+        siftwing::test::OnlineServerDriver drive(*server);
         ReleaseGate release_on_exit;
         std::size_t connected = 0;
         watch_next = 1;
@@ -409,7 +411,7 @@ void mixed(const std::string &parent, std::size_t subs) {
             if (const auto error = server->run_once(0))
                 throw std::system_error(error);
             const auto report = server->report();
-            for (const auto &sub : report.subs)
+            for (const auto &sub : {report.reactor})
                 expect(sub.active <= 128 && sub.responses <= sub.requests && !sub.first_error,
                     "live report invariants during concurrent I/O");
             return done.load() == peers.size();
@@ -434,8 +436,8 @@ void mixed(const std::string &parent, std::size_t subs) {
             "partial real output resumes and cached request follows without retransmit");
         check(!server->shutdown(1000), "graceful close after mixed traffic");
         const auto report = server->report();
-        check(
-            report.accepted == connected && report.handed_off == connected && report.rejected == 0,
+        check(report.accepted == connected && report.reactor.admitted == connected
+                  && report.rejected == 0,
             "every mixed client handed off once");
         check(stale(report) == 0, "healthy parallel jobs have no stray identities");
         final_accounts(report, 24);
@@ -448,9 +450,9 @@ int main(int argc, char **argv) {
     try {
         if (argc != 3 || (std::string(argv[2]) != "1" && std::string(argv[2]) != "2"))
             throw std::runtime_error("snapshot-parent and sub-count 1/2 required");
-        const std::size_t subs = std::string(argv[2]) == "1" ? 1U : 2U;
-        reuse(argv[1], subs);
-        mixed(argv[1], subs);
+        const std::size_t capacity_scale = std::string(argv[2]) == "1" ? 1U : 2U;
+        reuse(argv[1], capacity_scale);
+        mixed(argv[1], capacity_scale);
         std::cout << checks << " V2 fault/concurrency checks passed\n";
     } catch (const std::exception &error) {
         std::cerr << "V2 fault/concurrency failed: " << error.what() << '\n';

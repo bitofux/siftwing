@@ -81,8 +81,9 @@ int main() {
         auto defaults = load_server_settings({"--snapshot", "relative", "--version", "0"});
         check(bool(defaults), "旧CLI含零版本");
         const auto &d = defaults.value();
-        check(d.service.parent == "relative" && d.server.sub_count == 2 && d.server.workers == 4
-                  && d.service.cache.capacity == 0 && d.server.sub.idle_timeout_ms == 0
+        check(d.service.parent == "relative" && d.server.connection.max_connections == 256
+                  && d.server.connection.completion_capacity == 256 && d.server.workers == 4
+                  && d.service.cache.capacity == 0 && d.server.connection.idle_timeout_ms == 0
                   && d.shutdown_ms == 1000 && d.listen_address == "127.0.0.1",
             "兼容默认值");
         check(d.log_level == siftwing::logging::Level::info && d.log_file.empty(),
@@ -109,13 +110,13 @@ int main() {
             bad({"--snapshot", "p", "--version", "0", pair.first, pair.second}, "config.value");
         const auto config = root / "config.json";
         write(config,
-            R"({"schema_version":1,"snapshot":"cwd-relative","version":"18446744073709551615",
-          "listen_address":"::1","subs":3,"workers":5,"port":12345,"task_capacity":9,
+            R"({"schema_version":2,"snapshot":"cwd-relative","version":"18446744073709551615",
+          "listen_address":"::1","workers":5,"port":12345,"task_capacity":9,
           "hmm":false,"tokenizer":"cppjieba","dictionary":"dict","model":"hmm","user_dictionary":"user",
           "stopwords":"stop","cache_capacity":17,"cache_bytes":1024,"cache_max_value_bytes":1000,
           "idle_timeout_ms":19,"request_timeout_ms":29,"run_ms":59,"shutdown_ms":79,
-          "handoff_capacity":7,"max_connections":11,"completion_capacity":13,
-          "handoff_budget":3,"completion_budget":5,"io_attempt_budget":7,"accept_attempt_budget":9,
+          "max_connections":11,"completion_capacity":13,
+          "completion_budget":5,"io_attempt_budget":7,"accept_attempt_budget":9,
           "max_body_bytes":1024,"read_byte_budget":33,"write_byte_budget":55,
           "output_low_bytes":25,"output_high_bytes":49,"output_hard_bytes":100,
           "max_query_bytes":20,"max_top_k":2,"max_work":999,"max_output_bytes":123,
@@ -138,28 +139,49 @@ int main() {
                   && c.listen.address.data() == copied.listen_address.data(),
             "移动复制后绑定拥有地址");
         check(copied.service.parent == "cwd-relative" && copied.service.version == UINT64_MAX
-                  && c.workers == 6 && c.sub_count == 3 && c.listen.port == 0
-                  && c.task_capacity == 9 && !copied.service.hmm && copied.service.user == "user"
+                  && c.workers == 6 && c.listen.port == 0 && c.task_capacity == 9
+                  && !copied.service.hmm && copied.service.user == "user"
                   && copied.service.stopwords == "stop",
             "字符串与整数覆盖");
-        check(c.sub.handoff_capacity == 7 && c.sub.max_connections == 11
-                  && c.sub.completion_capacity == 13 && c.sub.handoff_budget == 3
-                  && c.sub.completion_budget == 5 && c.sub.io_attempt_budget == 7
-                  && c.main.accept_attempt_budget == 9 && c.sub.max_body_bytes == 1024
-                  && c.sub.read_byte_budget == 33 && c.sub.write_byte_budget == 55
-                  && c.sub.output.low_bytes == 25 && c.sub.output.high_bytes == 49
-                  && c.sub.output.hard_bytes == 100,
+        check(c.connection.max_connections == 11 && c.connection.completion_capacity == 13
+                  && c.connection.completion_budget == 5 && c.connection.io_attempt_budget == 7
+                  && c.reactor.accept_attempt_budget == 9 && c.connection.max_body_bytes == 1024
+                  && c.connection.read_byte_budget == 33 && c.connection.write_byte_budget == 55
+                  && c.connection.output.low_bytes == 25 && c.connection.output.high_bytes == 49
+                  && c.connection.output.hard_bytes == 100,
             "网络容量与预算映射");
         check(copied.service.cache.capacity == 17 && copied.service.cache.bytes == 1024
-                  && copied.service.cache.max_value_bytes == 1000 && c.sub.idle_timeout_ms == 19
-                  && c.sub.request_timeout_ms == 29 && copied.run_ms == 59
-                  && copied.shutdown_ms == 79 && copied.service.query_bytes == 20
-                  && copied.service.max_k == 2 && copied.service.work == 999
-                  && copied.service.output_bytes == 123 && copied.service.snapshot_bytes == 5678
-                  && copied.service.resource_bytes == 2345 && c.listen.backlog == 17
-                  && c.listen.reuse_address && c.main.tcp_no_delay,
+                  && copied.service.cache.max_value_bytes == 1000
+                  && c.connection.idle_timeout_ms == 19 && c.connection.request_timeout_ms == 29
+                  && copied.run_ms == 59 && copied.shutdown_ms == 79
+                  && copied.service.query_bytes == 20 && copied.service.max_k == 2
+                  && copied.service.work == 999 && copied.service.output_bytes == 123
+                  && copied.service.snapshot_bytes == 5678 && copied.service.resource_bytes == 2345
+                  && c.listen.backlog == 17 && c.listen.reuse_address && c.reactor.tcp_no_delay,
             "查询缓存期限映射");
         const std::vector<std::string> base{"--snapshot", "p", "--version", "1"};
+        for (const auto *retired : {"--subs", "--handoff-capacity", "--handoff-budget"})
+            bad({"--snapshot", "p", "--version", "1", retired, "1"}, "config.argument");
+        check(bool(load_server_settings({"--snapshot",
+                  "p",
+                  "--version",
+                  "1",
+                  "--max-connections",
+                  "65536",
+                  "--completion-capacity",
+                  "65536"})),
+            "单Reactor总容量接受旧最大总预算");
+        bad({"--snapshot", "p", "--version", "1", "--max-connections", "65537"}, "config.value");
+        bad({"--snapshot", "p", "--version", "1", "--completion-capacity", "65537"},
+            "config.value");
+        write(config, R"({"schema_version":1,"snapshot":"p","version":"1"})");
+        bad({"--config", config.string()}, "config.json");
+        for (const auto *retired : {"subs", "handoff_capacity", "handoff_budget"}) {
+            write(config,
+                std::string(R"({"schema_version":2,"snapshot":"p","version":"1",")") + retired
+                    + "\":1}");
+            bad({"--config", config.string()}, "config.argument");
+        }
         for (const auto &tail :
             std::vector<std::vector<std::string>>{{"--workers", "0"},
                 {"--workers", "65"},
@@ -197,33 +219,33 @@ int main() {
                  "true",
                  "{}",
                  "{",
-                 "{\"schema_version\":1,}",
-                 "{\"schema_version\":1.0}",
+                 "{\"schema_version\":2,}",
+                 "{\"schema_version\":2.0}",
                  "{\"schema_version\":true}",
-                 "{\"schema_version\":2}",
-                 "{\"schema_version\":1,\"workers\":2,\"work\\u0065rs\":3}",
-                 "{\"schema_version\":1,\"workers\":{}}",
-                 "{\"schema_version\":1,\"workers\":[]}",
-                 "{\"schema_version\":1,\"workers\":\"2\"}",
-                 "{\"schema_version\":1,\"workers\":2.0}",
-                 "{\"schema_version\":1,\"workers\":-1}",
-                 "{\"schema_version\":1,\"workers\":null}",
-                 "{\"schema_version\":1,\"version\":1}",
-                 "{\"schema_version\":1,\"version\":\"01\"}",
-                 "{\"schema_version\":1,\"hmm\":\"off\"}",
-                 "{\"schema_version\":1,\"unknown\":1}",
-                 "{\"schema_version\":1,\"listen_address\":\"bad\"}",
-                 "{\"schema_version\":1,\"snapshot\":\"a\\u0000b\"}"}) {
+                 "{\"schema_version\":3}",
+                 "{\"schema_version\":2,\"workers\":2,\"work\\u0065rs\":3}",
+                 "{\"schema_version\":2,\"workers\":{}}",
+                 "{\"schema_version\":2,\"workers\":[]}",
+                 "{\"schema_version\":2,\"workers\":\"2\"}",
+                 "{\"schema_version\":2,\"workers\":2.0}",
+                 "{\"schema_version\":2,\"workers\":-1}",
+                 "{\"schema_version\":2,\"workers\":null}",
+                 "{\"schema_version\":2,\"version\":1}",
+                 "{\"schema_version\":2,\"version\":\"01\"}",
+                 "{\"schema_version\":2,\"hmm\":\"off\"}",
+                 "{\"schema_version\":2,\"unknown\":1}",
+                 "{\"schema_version\":2,\"listen_address\":\"bad\"}",
+                 "{\"schema_version\":2,\"snapshot\":\"a\\u0000b\"}"}) {
             write(config, text);
             auto args = base;
             args.insert(args.end(), {"--config", config.string(), "--workers", "2"});
             bad(args); // CLI不能掩盖非法文件值。
         }
-        write(config, std::string("{\"schema_version\":1,\"snapshot\":\"") + char(0xff) + "\"}");
+        write(config, std::string("{\"schema_version\":2,\"snapshot\":\"") + char(0xff) + "\"}");
         bad({"--config", config.string()}, "config.json");
         write(config, std::string(65537, ' '));
         bad({"--config", config.string()}, "config.file");
-        write(config, "{\"schema_version\":1}" + std::string(65516, ' '));
+        write(config, "{\"schema_version\":2}" + std::string(65516, ' '));
         check(std::filesystem::file_size(config) == 65536, "文件精确边界");
         check(bool(load_server_settings(
                   {"--config", config.string(), "--snapshot", "p", "--version", "0"})),
@@ -232,13 +254,13 @@ int main() {
         std::filesystem::create_directory_symlink(root, root / "dirlink");
         check(::mkfifo((root / "fifo").c_str(), 0600) == 0, "FIFO夹具");
         const auto fd_before = fds();
-        write(config, "{\"schema_version\":1}");
+        write(config, "{\"schema_version\":2}");
         read_fault = ReadFault::short_read;
         check(bool(load_server_settings(
                   {"--config", config.string(), "--snapshot", "p", "--version", "0"})),
             "短读仍完整解析");
         for (const auto fault : {ReadFault::interrupted, ReadFault::failed, ReadFault::changed}) {
-            write(config, "{\"schema_version\":1}");
+            write(config, "{\"schema_version\":2}");
             changing_path = config.string();
             read_attempts = 0;
             read_fault = fault;

@@ -166,7 +166,7 @@ def chinese(root):
 def concurrency(root):
     parent, records, resources = chinese(root)
     before = ref.inventory(root)
-    with Server(parent, [*resources, "--subs", 3, "--workers", 4]) as server:
+    with Server(parent, [*resources, "--max-connections", 384, "--completion-capacity", 384, "--workers", 4]) as server:
         # 资源已拥有，改名验证请求期间不重读；多个worker共享同一真实中文分词器。
         hidden = []
         for name in ["dict", "hmm"]:

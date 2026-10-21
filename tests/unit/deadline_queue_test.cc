@@ -37,7 +37,11 @@ std::optional<DeadlineEntry> reference_next(const std::map<std::uint64_t, Deadli
 }
 } // namespace
 int main() {
-    for (const std::size_t bad : {std::size_t{0}, std::size_t{2049}}) {
+    DeadlineQueue aggregate(65536);
+    check(aggregate.capacity() == 65536 && aggregate.upsert({65536, 7}) == DeadlineUpdate::stored
+              && aggregate.pop_due(7)->key == 65536 && aggregate.size() == 0,
+        "aggregate capacity preserves due entry and real removal");
+    for (const std::size_t bad : {std::size_t{0}, std::size_t{65537}}) {
         bool caught = false;
         try {
             DeadlineQueue queue(bad);

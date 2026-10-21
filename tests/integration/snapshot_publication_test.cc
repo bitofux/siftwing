@@ -7,7 +7,7 @@
  */
 #include "siftwing/net/online_server.hpp"
 #include "siftwing/logging/logger.hpp"
-#include "../support/multi_reactor_fixture.hpp"
+#include "../support/online_server_fixture.hpp"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <limits>
@@ -264,10 +264,12 @@ void online(const std::string &parent, const std::string &log_path) {
     auto logger = std::move(logging).value();
     net::OnlineServerConfig config;
     config.workers = 1;
-    config.sub_count = 2;
+    config.connection.max_connections = 256;
+    config.connection.completion_capacity = 256;
     config.logger = logger.get();
     auto created = net::OnlineServer::create(service(parent), config);
     auto server = std::move(std::get<std::unique_ptr<net::OnlineServer>>(created));
+    siftwing::test::OnlineServerDriver drive(*server);
     Release release;
     unsigned connected = 0;
     const auto attach = [&] {
@@ -277,7 +279,7 @@ void online(const std::string &parent, const std::string &log_path) {
             const auto e = server->run_once(0);
             if (e)
                 throw std::system_error(e);
-            return server->report().handed_off == connected;
+            return server->report().reactor.admitted == connected;
         });
         return fd;
     };
@@ -338,6 +340,7 @@ void online(const std::string &parent, const std::string &log_path) {
         "stopped server rejects load");
     check(std::get<std::error_code>(server->publish_snapshot(old)).value() == ECANCELED,
         "stopped server rejects publication");
+    drive.release();
     server.reset();
     check(!logger->failed(), "dynamic version logging valid");
     logger.reset();
@@ -363,12 +366,14 @@ void signaled_online(const std::string &parent,
     bool valid_candidate) {
     net::OnlineServerConfig config;
     config.workers = 1;
-    config.sub_count = 2;
-    config.main.termination_signals = true;
+    config.connection.max_connections = 256;
+    config.connection.completion_capacity = 256;
+    config.reactor.termination_signals = true;
     auto created = net::OnlineServer::create(service(parent), config);
     if (auto *error = std::get_if<std::error_code>(&created))
         throw std::system_error(*error);
     auto server = std::move(std::get<std::unique_ptr<net::OnlineServer>>(created));
+    siftwing::test::OnlineServerDriver drive(*server);
     Release release;
     check(server->shutdown_signal() == 0, "no signal observed before run");
     unsigned connected = 0;
@@ -378,7 +383,7 @@ void signaled_online(const std::string &parent,
         await([&] {
             if (const auto error = server->run_once(0))
                 throw std::system_error(error);
-            return server->report().handed_off == connected;
+            return server->report().reactor.admitted == connected;
         });
         return fd;
     };
@@ -416,7 +421,7 @@ void signaled_online(const std::string &parent,
         Release always_release;
         try {
             await([] {
-                return signal_drains.load() == 2;
+                return signal_drains.load() >= 1;
             });
             if (!timeout) {
                 pin_release = true;
@@ -449,8 +454,9 @@ void signaled_online(const std::string &parent,
               && !report.first_error,
         "running and queued jobs finish once, no signal failure");
     std::size_t responses = 0, timeouts = 0;
-    for (const auto &sub : report.subs) {
-        check(sub.state == net::ProtocolSubState::joined && sub.active == 0, "Sub owner joined");
+    for (const auto &sub : {report.reactor}) {
+        check(
+            sub.state == net::ProtocolSubState::stopped && sub.active == 0, "Reactor owner joined");
         responses += sub.drain_responses;
         timeouts += sub.drain_timeouts;
     }
@@ -548,14 +554,13 @@ void wrapped_loader_join(snapshot::SnapshotLoader *loader) {
     load_join = true;
     real_loader_join(loader);
 }
-std::error_code real_signal_drain(net::ProtocolSubReactor *, std::int64_t) __asm__(
-    "__real__ZN8siftwing3net18ProtocolSubReactor13request_drainEl");
-std::error_code wrapped_signal_drain(net::ProtocolSubReactor *, std::int64_t) __asm__(
-    "__wrap__ZN8siftwing3net18ProtocolSubReactor13request_drainEl");
-std::error_code wrapped_signal_drain(net::ProtocolSubReactor *sub, std::int64_t deadline) {
-    auto error = real_signal_drain(sub, deadline);
+void real_signal_drain(concurrency::WorkerPool *) __asm__(
+    "__real__ZN8siftwing11concurrency10WorkerPool12request_stopEv");
+void wrapped_signal_drain(concurrency::WorkerPool *) __asm__(
+    "__wrap__ZN8siftwing11concurrency10WorkerPool12request_stopEv");
+void wrapped_signal_drain(concurrency::WorkerPool *pool) {
+    real_signal_drain(pool); // 唯一I/O排空的实际任务准入关闭点，不再等待两个Reactor通知。
     ++signal_drains;
-    return error;
 }
 int main(int argc, char **argv) {
     if (argc != 5 && argc != 6)

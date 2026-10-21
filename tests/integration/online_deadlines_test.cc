@@ -10,7 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
-#include "../support/multi_reactor_fixture.hpp"
+#include "../support/online_server_fixture.hpp"
 #include <nlohmann/json.hpp>
 namespace {
 using namespace siftwing;
@@ -79,7 +79,7 @@ std::string response(int fd, std::uint16_t type, std::uint64_t id) {
     check(header + body == wire(type, id, body), "independent complete response header");
     return body;
 }
-void run(const std::string &parent, std::size_t subs) {
+void run(const std::string &parent, std::size_t capacity_scale) {
     const auto descriptors = fd_count();
     {
         char log_pattern[] = "/tmp/siftwing-event-hooks-XXXXXX";
@@ -99,13 +99,15 @@ void run(const std::string &parent, std::size_t subs) {
         OnlineServerConfig config;
         config.workers = 1;
         config.task_capacity = 2;
-        config.sub_count = subs;
-        config.sub.request_timeout_ms = 200;
+        config.connection.max_connections = capacity_scale * 128;
+        config.connection.completion_capacity = capacity_scale * 128;
+        config.connection.request_timeout_ms = 200;
         config.logger = logger.get();
         auto created = OnlineServer::create(std::move(loaded).value(), config);
         if (const auto *error = std::get_if<std::error_code>(&created))
             throw std::system_error(*error);
         auto server = std::move(std::get<std::unique_ptr<OnlineServer>>(created));
+        siftwing::test::OnlineServerDriver drive(*server);
         ReleaseGate release_on_exit;
         std::size_t connected = 0;
         const auto attach = [&] {
@@ -114,7 +116,7 @@ void run(const std::string &parent, std::size_t subs) {
             await([&] {
                 if (const auto error = server->run_once(0))
                     throw std::system_error(error);
-                return server->report().handed_off == connected;
+                return server->report().reactor.admitted == connected;
             });
             return peer;
         };
@@ -131,7 +133,7 @@ void run(const std::string &parent, std::size_t subs) {
         check(receive(healthy.get(), 26) == wire(0x8001, 13), "PING progresses with worker held");
         await([&] {
             std::size_t timeouts = 0;
-            for (const auto &sub : server->report().subs)
+            for (const auto &sub : {server->report().reactor})
                 timeouts += sub.request_timeouts;
             return timeouts == 2;
         });
@@ -142,7 +144,7 @@ void run(const std::string &parent, std::size_t subs) {
         released = true;
         await([&] {
             std::size_t stale = 0;
-            for (const auto &sub : server->report().subs)
+            for (const auto &sub : {server->report().reactor})
                 stale += sub.completion_stale;
             return stale == 2;
         });
@@ -159,8 +161,8 @@ void run(const std::string &parent, std::size_t subs) {
         const auto final = server->report();
         check(final.workers.succeeded == 3 && final.workers.failed == 0 && executions.load() == 3,
             "join reports three completed jobs including two expired peers");
-        for (const auto &sub : final.subs) {
-            check(!sub.first_error && sub.active == 0, "local deadlines do not fail Sub");
+        for (const auto &sub : {final.reactor}) {
+            check(!sub.first_error && sub.active == 0, "local deadlines do not fail Reactor");
             check(sub.completion_received
                       == sub.completion_applied + sub.completion_rejected + sub.completion_stale,
                 "completion outcome accounting conserved");
@@ -189,7 +191,7 @@ int main(int argc, char **argv) {
             throw std::runtime_error("snapshot-parent sub-count required");
         const std::string mode = argv[2];
         if (mode != "1" && mode != "2")
-            throw std::runtime_error("invalid Sub count");
+            throw std::runtime_error("invalid Reactor count");
         run(argv[1], mode == "1" ? 1U : 2U);
         std::cout << checks << " online deadline checks passed\n";
     } catch (const std::exception &error) {

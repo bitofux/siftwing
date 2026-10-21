@@ -2,18 +2,18 @@
 
 [DeadlineQueue](../include/siftwing/net/deadline_queue.hpp)维护固定容量期限，
 [timerfd原语](../include/siftwing/net/deadline_timer.hpp)提供Linux定时唤醒。
-正式在线服务的每个`ProtocolSubReactor`在所属线程创建一个非阻塞、CLOEXEC的
+正式在线服务的唯一Reactor在应用调用线程创建一个非阻塞、CLOEXEC的
 `CLOCK_MONOTONIC` timerfd，并在同线程注册、读取、注销和关闭。初始disarmed，
 可按固定配置启用空闲超时和请求deadline；两项默认关闭，旧立即停止策略保持；[优雅退出](GRACEFUL_SHUTDOWN.md)复用同一timerfd并取原期限与公共排空期限的最早值。
 生产入口可用`--idle-timeout-ms`/`--request-timeout-ms`或[启动配置](SERVER_CONFIG.md)启用，启动后固定。
-旧空`SubReactor`生命周期基线和单Loop probe保持原职责。
+旧独立ProtocolSubReactor/空Sub及单Loop probe暂留原组件测试；生产没有Sub线程。
 
 期限是`CLOCK_MONOTONIC`纪元起的正`int64`纳秒，不是墙钟、Unix时间、相对时长或线上字段。
 该时钟不受墙钟校时影响，Linux下不包含系统挂起时间；不假定C++ `steady_clock`与它同纪元。
 `monotonic_now()`读同一时钟并检查换算溢出；调用者自行检查加时长的溢出。
 期限等于当前时间即到期，过去的正期限可立即唤醒；0不能表示期限，空`optional`才表示disarm。
 
-容器构造容量为1..2048，预分配后不再分配；同key更新只占一个条目，真实取消立即释放容量。
+容器构造容量为1..65536，预分配后不再分配；同key更新只占一个条目，真实取消立即释放容量。
 满时拒绝新key但仍可更新已有key，非法输入与full均保持原集合。每次按`(when,key)`
 取最早值，只有`when <= now`才删除并返回；相同期限按key升序。所有操作由所属线程串行调用，
 O(capacity)有界扫描；它不拥有连接、回调或锁，不证明key代表的连接/请求仍有效。

@@ -10,7 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
-#include "../support/multi_reactor_fixture.hpp"
+#include "../support/online_server_fixture.hpp"
 #include <array>
 #include <atomic>
 #include <thread>
@@ -110,7 +110,7 @@ void eof(int fd) {
     });
     check(true, "half-closed pipeline ends in EOF");
 }
-void run(const std::string &parent, std::size_t subs) {
+void run(const std::string &parent, std::size_t capacity_scale) {
     const auto descriptors = fd_count();
     {
         char log_pattern[] = "/tmp/siftwing-event-hooks-XXXXXX";
@@ -130,13 +130,15 @@ void run(const std::string &parent, std::size_t subs) {
         OnlineServerConfig config;
         config.workers = 1;
         config.task_capacity = 1;
-        config.sub_count = subs;
-        config.sub.write_byte_budget = 7; // 固定错误和PONG都须跨多轮输出，门禁仍串行。
+        config.connection.max_connections = capacity_scale * 128;
+        config.connection.completion_capacity = capacity_scale * 128;
+        config.connection.write_byte_budget = 7; // 固定错误和PONG都须跨多轮输出，门禁仍串行。
         config.logger = logger.get();
         auto created = OnlineServer::create(std::move(loaded).value(), config);
         if (const auto *error = std::get_if<std::error_code>(&created))
             throw std::system_error(*error);
         auto server = std::move(std::get<std::unique_ptr<OnlineServer>>(created));
+        siftwing::test::OnlineServerDriver drive(*server);
         ReleaseGate release_on_exit;
         std::size_t connected = 0;
         const auto attach = [&] {
@@ -145,7 +147,7 @@ void run(const std::string &parent, std::size_t subs) {
             await([&] {
                 if (const auto error = server->run_once(0))
                     throw std::system_error(error);
-                return server->report().handed_off == connected;
+                return server->report().reactor.admitted == connected;
             });
             return socket;
         };
@@ -187,12 +189,12 @@ void run(const std::string &parent, std::size_t subs) {
         check(executions[13].load() == 0 && executions[15].load() == 0,
             "neither rejected job executes");
         await([&] {
-            for (const auto &sub : server->report().subs)
-                if (sub.requests < 8)
+            for (const auto &sub : {server->report().reactor})
+                if (sub.requests < 22)
                     return false;
             return true;
         });
-        check(!released.load(), "each configured Sub handles traffic before capacity release");
+        check(!released.load(), "single Reactor handles all 22 requests before capacity release");
         check(!server->run_once(0) && !server->report().first_error, "overload is local response");
         // 确定门控下核真实execute与排队深度，不用睡眠猜测worker状态。
         await([&] {
@@ -221,7 +223,7 @@ void run(const std::string &parent, std::size_t subs) {
                   && stable.connections.closed == connected && stable.connections.active == 0
                   && stable.requests.responses[2] == 2 && stable.shutdown.started
                   && stable.shutdown.finished,
-            "stable metrics after complete worker/Sub barriers");
+            "stable metrics after complete worker/Reactor barriers");
         const auto final = server->report();
         check(final.stopped && !final.first_error && final.workers.succeeded == 3
                   && final.workers.failed == 0 && accepted.load() == 3 && full.load() == 2,
@@ -229,9 +231,9 @@ void run(const std::string &parent, std::size_t subs) {
         for (std::size_t id = 0; id < executions.size(); ++id)
             check(executions[id].load() == ((id == 11 || id == 12 || id == 13) ? 1U : 0U),
                 "exact execution identities after worker join");
-        for (const auto &sub : final.subs)
+        for (const auto &sub : {final.reactor})
             check(sub.active == 0 && !sub.first_error,
-                "Sub releases all connections without fatal error");
+                "Reactor releases all connections without fatal error");
         check(!logger->failed(), "event logger healthy after server stop");
         std::ifstream log_input(log_root / "events");
         std::map<std::string, unsigned> events;

@@ -1,5 +1,9 @@
 # Main-Sub Reactor 线程拓扑与所有权合同
 
+> 主从架构历史/独立组件合同。生产OnlineServer已在M4.02改为应用调用线程驱动唯一Reactor＋
+> 原worker池，取消跨I/O线程fd移交，详见[当前在线服务](ONLINE_SEARCH.md)。本文后续Main/Sub
+> 图和生命周期只描述旧组件，不代表当前生产线程；无用途组件下线及全面工具核对留下一批。
+
 本文冻结职责、资源转交和生命周期边界。已有可执行网络命令包括
 [单循环协议探针](PROTOCOL_LOOP.md)与[在线搜索服务](ONLINE_SEARCH.md)；已有独立线程的[Sub生命周期](SUB_REACTOR.md)，
 已有独立[fd移交队列](FD_HANDOFF_QUEUE.md)、[eventfd唤醒组件](EVENTFD_WAKEUP.md)和[Main轮询接入组件](MAIN_REACTOR.md)；

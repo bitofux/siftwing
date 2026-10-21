@@ -36,7 +36,7 @@ def main():
                 check(select.select([proc.stdout], [], [], 20)[0], "readiness timeout")
                 check(proc.stdout.readline().startswith(b"PORT "), "production readiness")
                 tasks = list(Path(f"/proc/{proc.pid}/task").glob("*/status"))
-                check(len(tasks) == 7, "Main plus two Sub and four workers")
+                check(len(tasks) == 5, "one calling-thread Reactor plus four workers, no Sub threads")
                 for status in tasks:
                     fields = dict(line.split(":", 1) for line in status.read_text().splitlines() if ":" in line)
                     check(int(fields["SigBlk"], 16) & required == required, "all threads inherit termination mask")

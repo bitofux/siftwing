@@ -11,7 +11,7 @@
 namespace siftwing::net {
 namespace {
 std::size_t checked(std::size_t slots) {
-    if (slots == 0 || slots > 1024)
+    if (slots == 0 || slots > 65536)
         throw std::invalid_argument("invalid identity table capacity");
     return slots;
 }

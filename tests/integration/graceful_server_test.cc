@@ -3,12 +3,14 @@
  * FILE    : graceful_server_test.cc
  * AUTHOR  : bitofux
  * DATE    : 2026-10-15
- * BRIEF   : 真实Main/Sub/worker排空、共同截止与晚发布资源屏障
+ * BRIEF   : 真实Reactor/Reactor/worker排空、共同截止与晚发布资源屏障
  */
 #include "siftwing/net/online_server.hpp"
-#include "../support/multi_reactor_fixture.hpp"
+#include "../support/online_server_fixture.hpp"
 #include <nlohmann/json.hpp>
 #include <fcntl.h>
+#include "siftwing/net/deadline_timer.hpp"
+#include <sys/epoll.h>
 
 namespace {
 using namespace siftwing;
@@ -24,9 +26,9 @@ std::atomic<bool> hold_notify{false}, notify_entered{false}, release_notify{fals
 std::atomic<bool> fail_clock{false};
 std::atomic<int> notify_fd{-1};
 std::array<std::atomic<unsigned int>, 32> executions{};
-std::array<std::atomic<ProtocolSubReactor *>, 2> sub_refs{};
-std::array<std::atomic<std::int64_t>, 2> deadlines{};
-std::atomic<unsigned int> drain_calls{0};
+std::atomic<std::int64_t> network_deadline{0};
+std::atomic<bool> deadline_changed{false}, join_entered{false};
+std::atomic<int> listener_fd{-1};
 std::atomic<WorkerPool *> pool_ref{nullptr};
 void check(bool ok, const char *why) {
     ++checks;
@@ -74,30 +76,41 @@ void wrapped_pool_stop(WorkerPool *pool) {
     pool_ref = pool;
     pool_closed = true;
 }
-std::error_code real_main_close(MainReactor *) __asm__(
-    "__real__ZN8siftwing3net11MainReactor5closeEv");
-std::error_code wrapped_main_close(MainReactor *) __asm__(
-    "__wrap__ZN8siftwing3net11MainReactor5closeEv");
-std::error_code wrapped_main_close(MainReactor *main) {
-    const auto result = real_main_close(main);
-    main_closed = true;
-    return result;
+void real_join(WorkerPool *) __asm__("__real__ZN8siftwing11concurrency10WorkerPool4joinEv");
+void wrapped_join(WorkerPool *) __asm__("__wrap__ZN8siftwing11concurrency10WorkerPool4joinEv");
+void wrapped_join(WorkerPool *pool) {
+    join_entered = true; // 由原实现完整join，不用worker统计假冒最后发布已返回。
+    real_join(pool);
 }
-std::error_code real_drain(ProtocolSubReactor *, std::int64_t) __asm__(
-    "__real__ZN8siftwing3net18ProtocolSubReactor13request_drainEl");
-std::error_code wrapped_drain(ProtocolSubReactor *, std::int64_t) __asm__(
-    "__wrap__ZN8siftwing3net18ProtocolSubReactor13request_drainEl");
-std::error_code wrapped_drain(ProtocolSubReactor *sub, std::int64_t deadline) {
-    const auto result = real_drain(sub, deadline);
-    const auto index = drain_calls.load();
-    if (index < sub_refs.size()) {
-        sub_refs[index] = sub;
-        deadlines[index] = deadline;
+std::error_code real_arm(int, std::optional<DeadlineTime>) noexcept
+    __asm__("__real__ZN8siftwing3net18arm_deadline_timerEiSt8optionalIlE");
+std::error_code wrapped_arm(int, std::optional<DeadlineTime>) noexcept
+    __asm__("__wrap__ZN8siftwing3net18arm_deadline_timerEiSt8optionalIlE");
+std::error_code wrapped_arm(int fd, std::optional<DeadlineTime> when) noexcept {
+    if (pool_closed.load() && when) {
+        std::int64_t empty = 0;
+        if (!network_deadline.compare_exchange_strong(empty, *when) && empty != *when)
+            deadline_changed = true;
     }
-    ++drain_calls;
-    return result;
+    return real_arm(fd, when);
 }
 extern "C" {
+int __real_epoll_ctl(int, int, int, epoll_event *);
+int __wrap_epoll_ctl(int fd, int op, int target, epoll_event *event) {
+    // 排空先关闭任务准入，首个DEL为监听；实际close返回后才向观察线程发布关闭事实。
+    if (pool_closed.load() && op == EPOLL_CTL_DEL) {
+        int empty = -1;
+        (void)listener_fd.compare_exchange_strong(empty, target);
+    }
+    return __real_epoll_ctl(fd, op, target, event);
+}
+int __real_close(int);
+int __wrap_close(int fd) {
+    const auto result = __real_close(fd);
+    if (fd == listener_fd.load())
+        main_closed = true;
+    return result;
+}
 ssize_t __real_write(int, const void *, std::size_t);
 ssize_t __wrap_write(int fd, const void *data, std::size_t size) {
     if (worker && size == 8) {
@@ -135,26 +148,26 @@ void reset() {
     release_notify = false;
     fail_notify = false;
     notify_fd = -1;
-    drain_calls = 0;
+    network_deadline = 0;
+    deadline_changed = false;
+    join_entered = false;
+    listener_fd = -1;
     pool_ref = nullptr;
     for (auto &value : executions)
         value = 0;
-    for (auto &value : sub_refs)
-        value = nullptr;
-    for (auto &value : deadlines)
-        value = 0;
 }
-std::unique_ptr<OnlineServer> create(const std::string &parent, std::size_t subs) {
+std::unique_ptr<OnlineServer> create(const std::string &parent, std::size_t capacity_scale) {
     query::SearchServiceConfig resources;
     resources.parent = parent;
     auto loaded = query::SearchService::create(resources);
     if (!loaded)
         throw std::runtime_error(loaded.error().context);
     OnlineServerConfig config;
-    config.sub_count = subs;
+    config.connection.max_connections = capacity_scale * 128;
+    config.connection.completion_capacity = capacity_scale * 128;
     config.workers = 1;
     config.task_capacity = 2;
-    config.sub.write_byte_budget = 7;
+    config.connection.write_byte_budget = 7;
     auto created = OnlineServer::create(std::move(loaded).value(), config);
     if (const auto *error = std::get_if<std::error_code>(&created))
         throw std::system_error(*error);
@@ -183,11 +196,12 @@ std::string response(int fd, std::uint16_t type, std::uint64_t id) {
         throw std::runtime_error("independent response mismatch");
     return body;
 }
-void scenario(const std::string &parent, std::size_t subs, int mode) {
+void scenario(const std::string &parent, std::size_t capacity_scale, int mode) {
     reset();
     const auto descriptors = fd_count();
     {
-        auto server = create(parent, subs);
+        auto server = create(parent, capacity_scale);
+        siftwing::test::OnlineServerDriver drive(*server);
         ReleaseGate release_on_exit;
         const auto port = server->port();
         std::size_t connected = 0;
@@ -197,7 +211,7 @@ void scenario(const std::string &parent, std::size_t subs, int mode) {
             await([&] {
                 if (const auto error = server->run_once(0))
                     throw std::system_error(error);
-                return server->report().handed_off == connected;
+                return server->report().reactor.admitted == connected;
             });
             return peer;
         };
@@ -214,7 +228,7 @@ void scenario(const std::string &parent, std::size_t subs, int mode) {
         send_all(partial.get(), wire(1, 14).substr(0, 10));
         await([&] {
             std::size_t requests = 0, active = 0;
-            for (const auto &sub : server->report().subs) {
+            for (const auto &sub : {server->report().reactor}) {
                 requests += sub.requests;
                 active += sub.active;
             }
@@ -234,12 +248,9 @@ void scenario(const std::string &parent, std::size_t subs, int mode) {
             ReleaseGate always_release;
             try {
                 await([&] {
-                    return pool_closed.load() && main_closed.load() && drain_calls.load() == subs;
+                    return pool_closed.load() && main_closed.load() && network_deadline.load() > 0;
                 });
-                bool same = true;
-                for (std::size_t i = 0; i < subs; ++i)
-                    same = same && deadlines[i].load() == deadlines[0].load();
-                exact_deadline = same;
+                exact_deadline = !deadline_changed.load();
                 struct Unused final : WorkerTask {
                     void execute() override {
                         throw std::runtime_error("must not execute");
@@ -260,21 +271,15 @@ void scenario(const std::string &parent, std::size_t subs, int mode) {
                         == -1
                     && errno == ECONNREFUSED;
                 if (mode == 0) {
-                    for (std::size_t i = 0; i < subs; ++i)
-                        await([&] {
-                            return sub_refs[i].load()->status().drain_started;
-                        });
                     release_job = true;
                     const auto search = nlohmann::json::parse(response(running.get(), 0x8003, 11));
                     const auto suggest = nlohmann::json::parse(response(queued.get(), 0x8004, 12));
                     if (!search.at("results").empty() || suggest.at("command") != "SUGGEST")
                         throw std::runtime_error("real search/suggest result mismatch");
                 } else {
-                    for (std::size_t i = 0; i < subs; ++i)
-                        await([&] {
-                            return sub_refs[i].load()->status().state
-                                   == ProtocolSubState::quiescing;
-                        });
+                    await([] {
+                        return join_entered.load();
+                    });
                     if (mode == 1 && (executions[11].load() != 1 || executions[12].load() != 0))
                         throw std::runtime_error(
                             "worker incorrectly cancelled or queued job ran early");
@@ -295,14 +300,15 @@ void scenario(const std::string &parent, std::size_t subs, int mode) {
         observer.join();
         if (observer_error)
             std::rethrow_exception(observer_error);
-        check(!error && gate_rejected.load() && listener_closed.load() && exact_deadline.load(),
+        check(!error && gate_rejected.load() && listener_closed.load() && exact_deadline.load()
+                  && !deadline_changed.load(),
             "new tasks and accept stopped with one common absolute deadline");
         const auto report = server->report();
         std::size_t drained = 0, timed_out = 0, requests = 0;
-        for (const auto &sub : report.subs) {
-            check(sub.state == ProtocolSubState::joined && sub.active == 0 && sub.drain_started
+        for (const auto &sub : {report.reactor}) {
+            check(sub.state == ProtocolSubState::stopped && sub.active == 0 && sub.drain_started
                       && !sub.first_error,
-                "each owner drained and joined");
+                "single owner drained and stopped");
             drained += sub.drain_responses;
             timed_out += sub.drain_timeouts;
             requests += sub.requests;
@@ -324,9 +330,10 @@ void scenario(const std::string &parent, std::size_t subs, int mode) {
     }
     check(fd_count() == descriptors, "all server and peer descriptors released");
 }
-void errors(const std::string &parent, std::size_t subs) {
+void errors(const std::string &parent, std::size_t capacity_scale) {
     reset();
-    auto server = create(parent, subs);
+    auto server = create(parent, capacity_scale);
+    siftwing::test::OnlineServerDriver drive(*server);
     ReleaseGate release_on_exit;
     const auto port = server->port();
     check(server->shutdown(-1).value() == EINVAL && server->shutdown(86400001).value() == EINVAL
@@ -338,11 +345,12 @@ void errors(const std::string &parent, std::size_t subs) {
     check(server->stop().value() == EIO && server->report().stopped,
         "original clock cause remains stable");
     reset();
-    auto empty = create(parent, subs);
+    auto empty = create(parent, capacity_scale);
     check(!empty->shutdown(0) && empty->report().stopped,
         "zero duration with no in-flight tasks safely joins");
     reset();
-    auto failed = create(parent, subs);
+    auto failed = create(parent, capacity_scale);
+    siftwing::test::OnlineServerDriver failed_drive(*failed);
     auto peer = client(failed->port());
     send_all(peer.get(), wire(3, 11, R"({"query":"unknown"})"));
     await([&] {
@@ -365,10 +373,10 @@ int main(int argc, char **argv) {
     try {
         if (argc != 3 || (std::string(argv[2]) != "1" && std::string(argv[2]) != "2"))
             return 2;
-        const auto subs = std::string(argv[2]) == "1" ? 1U : 2U;
+        const auto capacity_scale = std::string(argv[2]) == "1" ? 1U : 2U;
         for (int mode = 0; mode != 3; ++mode)
-            scenario(argv[1], subs, mode);
-        errors(argv[1], subs);
+            scenario(argv[1], capacity_scale, mode);
+        errors(argv[1], capacity_scale);
         std::cout << checks << " graceful production checks passed\n";
     } catch (const std::exception &error) {
         std::cerr << "graceful production failed: " << error.what() << '\n';

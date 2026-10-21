@@ -15,7 +15,7 @@ build/release/siftwing-server --config docs/server.example.json --port 9000
 
 ## 文件与类型
 
-根必须是平面对象，`schema_version` 必须为整数 `1`。未知、重复键（包括转义后同名）、
+根必须是平面对象，`schema_version` 必须为整数 `2`。未知、重复键（包括转义后同名）、
 子对象、数组、注释、尾逗号、非法 UTF-8、类型错误、超范围值均拒绝。
 每个文件字段先独立检查，不能用 CLI 覆盖掩盖非法值；必需字段与跨字段关系在合并后检查。
 文件和 CLI 都不能提供空字符串或含 NUL 的值。
@@ -36,10 +36,10 @@ CLI 数字也必须为规范十进制。下表文件键的下划线替换为连�
 | listen_address | `127.0.0.1` | 数值 IPv4/IPv6；无 DNS、zone 或隐式双栈；IPv6 为 V6ONLY |
 | port / backlog | 0 / 128 | 0..65535（0为内核选端口）/ 1..2147483647，实际 backlog 受内核约束 |
 | reuse_address / tcp_no_delay | false / false | SO_REUSEADDR / 新连接 TCP_NODELAY |
-| subs / workers | 2 / 4 | 各 1..64，启动后固定 |
+| workers | 4 | 1..64，业务线程；I/O固定由应用调用线程推进 |
 | task_capacity | 128 | 1..1024，共享等待任务槽，不含正在执行任务 |
-| handoff_capacity / completion_capacity / max_connections | 各128 | 各 1..1024，**每个 Sub** 的条目/连接槽 |
-| handoff_budget / completion_budget / io_attempt_budget / accept_attempt_budget | 各16 | 各 1..1024，有限轮次预算 |
+| completion_capacity / max_connections | 各256 | 各 1..65536，**整个服务**的结果条目/连接槽 |
+| completion_budget / io_attempt_budget / accept_attempt_budget | 各16 | 各 1..1024，有限轮次预算 |
 | max_body_bytes | 1048576 | 2..1048576，每连接 Body 上限 |
 | read_byte_budget / write_byte_budget | 各65536 | 各 1..1048600，每连接每轮字节预算 |
 | output_low_bytes / output_high_bytes / output_hard_bytes | 各0 | 全0自动解析；否则 `0<=low<high<=hard<=24+max_body_bytes` 且 `hard>=26` |
@@ -54,7 +54,7 @@ CLI 数字也必须为规范十进制。下表文件键的下划线替换为连�
 | cache_bytes / cache_max_value_bytes | 8388608 / 262144 | 1..67108864 / 1..1048576；单值预算不得超过总预算，即使关闭缓存也验证 |
 
 查询预算不足时返回既有业务错误，不会自动缩小请求的默认 top_k；配置条目和字节预算不等于
-进程 RSS 或 CPU 的硬上限。线程数与每 Sub 连接数的乘积也不证明实际并发承载能力。
+进程 RSS 或 CPU 的硬上限。配置连接槽不证明实际并发承载能力。
 `shutdown_ms` 只限网络排空，仍安全等待 worker join，不提供进程总退出硬上限。
 
 配置文件必须为非空、至多 64KiB 的普通文件；逐路径组件拒绝符号链接与 `..`，不跟随父目录链接。
@@ -65,7 +65,7 @@ CLI 数字也必须为规范十进制。下表文件键的下划线替换为连�
 
 ```text
 argv → 读取/解析配置 → 字段准入 → CLI覆盖 → 组合检查
-     → 初始化可选日志 → 装载完整只读快照/资源 → 创建worker/Sub/Main → PORT N
+     → 初始化可选日志 → 装载完整只读快照/资源 → 建立唯一Reactor/结果目标/worker → PORT N
 ```
 
 普通参数/文件/JSON/数值/必需项错误分别报告 `config.argument`、`config.file`、`config.json`、
@@ -76,6 +76,16 @@ argv → 读取/解析配置 → 字段准入 → CLI覆盖 → 组合检查
 `ServerSettings` 拥有路径与监听字符串，可复制/移动；`online_config(settings)` 返回的监听地址
 借用源 `settings.listen_address`，应在创建服务前保持稳定，示例入口持有至服务销毁。
 worker 不读取配置文件。启动后修改文件不改变已运行配置，重载需未来独立设计。
+
+## 从旧主从配置迁移
+
+schema=1明确拒绝，不自动重解释旧默认值；schema=2和纯CLI均拒绝`subs`、
+`handoff_capacity`、`handoff_budget`及其kebab-case选项，因为不再有跨I/O线程fd交接。
+先删除这三项，再将旧每Sub容量乘旧subs得到新的总`max_connections`和`completion_capacity`，
+并显式填写schema=2。默认2×128迁移为各256，旧最大64×1024为65536。
+每轮completion_budget现在作用于唯一队列，不隐式乘旧线程数；其他字节/业务预算保持。
+队列合并不再提供每Sub分片隔离，容量相同不证明吞吐、公平性或时延相同。
+启动schema不改变线上24字节协议、业务JSON或业务索引快照版本。
 
 ## 验证入口
 

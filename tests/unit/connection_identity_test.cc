@@ -69,9 +69,15 @@ static_assert(
 static_assert(!right_getter<const RoutedSearchTask &&>::value
               && !right_getter<const RoutedCompletion &&>::value);
 int main() {
+    ConnectionIdentityTable total(0, 65536);
+    const auto last = std::get<ConnectionRegistration>(total.activate(65535));
+    require(total.capacity() == 65536 && total.matches(last.identity)
+                && total.lookup(last.poll_token) == last.identity && total.retire(last.identity)
+                && !total.lookup(last.poll_token),
+        "aggregate upper slot preserves identity retirement");
     require(!ConnectionId{}.valid() && ConnectionId{0, 0, 1}.valid(),
         "zero owner/slot valid, zero generation invalid");
-    for (auto n : {std::size_t(0), std::size_t(1025)}) {
+    for (auto n : {std::size_t(0), std::size_t(65537)}) {
         bool caught = false;
         try {
             ConnectionIdentityTable invalid(0, n);

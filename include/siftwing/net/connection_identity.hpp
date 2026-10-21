@@ -59,11 +59,11 @@ struct ConnectionRegistration final {
 class ConnectionIdentityTable final {
 public:
     /**
-     * @brief 验证[1,1024]slot容量后预分配，所有slot初始无效；reactor_id允许任意uint32
+     * @brief 验证[1,65536]slot容量后预分配，所有slot初始无效；reactor_id允许任意uint32
      * @param[in] reactor_id
      *     本表固定命名空间；跨表唯一性与重建生命周期由外部控制者保证。
      * @param[in] slots
-     *     固定容量[1,1024]，不是活跃fd/RSS或全局连接上限。
+     *     固定容量[1,65536]，不是活跃fd/RSS或全局连接上限。
      *
      * @throws
      *     非法容量invalid_argument，预分配bad_alloc/length_error；不发布半构造对象。

@@ -6,7 +6,7 @@
  * BRIEF   : 生产控制者部分启动回滚、通知失败与晚到发布者静止屏障
  */
 #include "siftwing/net/online_server.hpp"
-#include "../support/multi_reactor_fixture.hpp"
+#include "../support/online_server_fixture.hpp"
 #include <atomic>
 #include <fcntl.h>
 #include <sys/epoll.h>
@@ -26,8 +26,7 @@ std::atomic<int> allocation_countdown{0}, write_mode{0};
 std::atomic<bool> entered{false}, release_write{false}, stopping{false};
 std::atomic<int> borrowed_fd{-1};
 std::atomic<unsigned int> injections{0}, wrong_worker_io{0}, gate_entries{0};
-std::atomic<bool> worker_alloc_failure{false}, gate_workers{false}, pause_sub{false}, paused{false};
-thread_local bool io_thread = false;
+std::atomic<bool> worker_alloc_failure{false}, gate_workers{false};
 std::unique_ptr<query::SearchService> service(const std::string &parent) {
     query::SearchServiceConfig config;
     config.parent = parent;
@@ -51,7 +50,7 @@ void *__wrap__Znwm(std::size_t n) {
         ++injections;
         throw std::bad_alloc();
     }
-    if (std::this_thread::get_id() != controller && !io_thread) {
+    if (std::this_thread::get_id() != controller) {
         if (worker_alloc_failure.exchange(false)) {
             ++injections;
             throw std::bad_alloc();
@@ -64,36 +63,21 @@ void *__wrap__Znwm(std::size_t n) {
     }
     return __real__Znwm(n);
 }
-int __real_epoll_ctl(int, int, int, epoll_event *);
-int __wrap_epoll_ctl(int fd, int op, int target, epoll_event *event) {
-    if (std::this_thread::get_id() != controller)
-        io_thread = true;
-    return __real_epoll_ctl(fd, op, target, event);
-}
-int __real_epoll_wait(int, epoll_event *, int, int);
-int __wrap_epoll_wait(int fd, epoll_event *events, int count, int timeout) {
-    if (io_thread && pause_sub.load()) {
-        paused.store(true);
-        while (pause_sub.load())
-            std::this_thread::yield();
-    }
-    return __real_epoll_wait(fd, events, count, timeout);
-}
 ssize_t __real_send(int, const void *, std::size_t, int);
 ssize_t __wrap_send(int fd, const void *p, std::size_t n, int flags) {
-    if (std::this_thread::get_id() != controller && !io_thread)
+    if (std::this_thread::get_id() != controller)
         ++wrong_worker_io;
     return __real_send(fd, p, n, flags);
 }
 ssize_t __real_recv(int, void *, std::size_t, int);
 ssize_t __wrap_recv(int fd, void *p, std::size_t n, int flags) {
-    if (std::this_thread::get_id() != controller && !io_thread)
+    if (std::this_thread::get_id() != controller)
         ++wrong_worker_io;
     return __real_recv(fd, p, n, flags);
 }
 ssize_t __real_write(int, const void *, std::size_t);
 ssize_t __wrap_write(int fd, const void *p, std::size_t n) {
-    // 生产控制者/Main通知都在controller，Sub不写eventfd；该静态调用来自worker发布。
+    // 生产控制者/Reactor通知都在controller，Reactor不写eventfd；该静态调用来自worker发布。
     if (n == 8 && std::this_thread::get_id() != controller) {
         const int mode = write_mode.exchange(0);
         if (mode == 1) {
@@ -127,6 +111,7 @@ int main(int argc, char **argv) {
                 "startup allocation failure mapped without partial server");
         else {
             auto running = std::move(std::get<std::unique_ptr<OnlineServer>>(created));
+            siftwing::test::OnlineServerDriver drive(*running);
             check(!running->stop(), "unreached allocation checkpoint safely stops");
         }
         check(fd_count() == baseline, "partial startup rollback preserves fd baseline");
@@ -135,6 +120,7 @@ int main(int argc, char **argv) {
         injections.load() == 24, "every requested control allocation checkpoint actually injected");
     {
         auto running = server(parent);
+        siftwing::test::OnlineServerDriver drive(*running);
         check(running->run_once(-1).value() == EINVAL && running->port() != 0,
             "bad timeout preserves running service");
         write_mode.store(1);
@@ -154,6 +140,7 @@ int main(int argc, char **argv) {
     }
     {
         auto running = server(parent);
+        siftwing::test::OnlineServerDriver drive(*running);
         entered.store(false);
         release_write.store(false);
         stopping.store(false);
@@ -182,12 +169,13 @@ int main(int argc, char **argv) {
         const auto report = running->report();
         check(report.stopped && report.workers.succeeded == 1 && report.workers.failed == 0,
             "exactly one completed worker before release");
-        for (const auto &sub : report.subs)
-            check(sub.active == 0 && sub.state == ProtocolSubState::joined,
-                "all Sub resources joined");
+        for (const auto &sub : {report.reactor})
+            check(sub.active == 0 && sub.state == ProtocolSubState::stopped,
+                "single Reactor resources closed");
     }
     {
         auto running = server(parent);
+        siftwing::test::OnlineServerDriver drive(*running);
         worker_alloc_failure.store(true);
         auto peer = client(running->port());
         send_all(peer.get(), wire(3, 99, "{\"query\":\"red\"}"));
@@ -203,12 +191,12 @@ int main(int argc, char **argv) {
     }
     {
         OnlineServerConfig config;
-        config.sub_count = 1;
-        config.sub.completion_capacity = 1;
+        config.connection.max_connections = 128;
+        config.connection.completion_capacity = 1;
         auto created = OnlineServer::create(service(parent), config);
         auto running = std::move(std::get<std::unique_ptr<OnlineServer>>(created));
+        siftwing::test::OnlineServerDriver drive(*running);
         gate_entries.store(0);
-        paused.store(false);
         gate_workers.store(true);
         std::array<UniqueFd, 4> peers;
         for (auto &peer : peers) {
@@ -217,20 +205,18 @@ int main(int argc, char **argv) {
         }
         await([&] {
             (void)running->run_once(1);
-            return running->report().subs[0].requests == 4 && gate_entries.load() == 4;
+            return running->report().reactor.requests == 4 && gate_entries.load() == 4;
         });
-        // 所有任务已交接，worker尚未生成结果；暂停真实Sub下一次epoll，制造确定的结果容量1。
-        pause_sub.store(true);
-        await([&] {
-            return paused.load();
-        });
+        // 所有任务已交接；停止推进唯一调用线程，让真实worker确定填满容量1的结果队列。
+        const auto saved_progress = io_progress;
+        io_progress = nullptr;
         gate_workers.store(false);
         await([&] {
             return running->report().workers.succeeded == 4;
         });
         check(running->report().first_error.value() == ENOBUFS,
             "actual full completion queue records fatal cause");
-        pause_sub.store(false);
+        io_progress = saved_progress;
         check(running->run_once(1).value() == ENOBUFS && running->report().stopped,
             "full result stops whole service without retry");
         check(running->report().workers.succeeded == 4, "all four jobs execute only once");

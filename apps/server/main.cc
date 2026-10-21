@@ -17,14 +17,14 @@ int main(int argc, char **argv) {
                "默认监听127.0.0.1，可显式指定数值IPv4/IPv6；支持PING、SERVER_INFO及SEARCH/SUGGEST；固定快照，停止限时排空网络输出。\n"
                "--log-level off|debug|info|warn|error（默认info） --log-file 全新文件（启用时默认stderr）\n"
                "--log-max-bytes 2048..1073741824（默认10485760） --log-max-files 1..20（默认3份归档；仅文件输出）\n"
-               "--config JSON文件（schema_version=1；默认值→文件→CLI；启动时读取）\n"
-               "--listen-address 数值IP --port 0..65535（默认0） --subs 1..64（默认2） --workers 1..64（默认4）\n"
+               "--config JSON文件（schema_version=2；默认值→文件→CLI；启动时读取）\n"
+               "--listen-address 数值IP --port 0..65535（默认0） --workers 1..64（默认4）；唯一调用线程驱动I/O\n"
                "--task-capacity 1..1024（默认128） --run-ms 0..86400000（默认0，等停止信号）\n"
                "--shutdown-ms 0..86400000（默认1000，网络排空期限；仍须安全等待worker退出）\n"
                "--idle-timeout-ms 0..86400000 --request-timeout-ms 0..86400000（默认均0关闭）\n"
                "--cache-capacity 0..4096（默认0关闭） --cache-bytes 1..67108864 --cache-max-value-bytes 1..1048576\n"
-               "--handoff-capacity/--completion-capacity/--max-connections 1..1024（每Sub）\n"
-               "--handoff-budget/--completion-budget/--io-attempt-budget/--accept-attempt-budget 1..1024\n"
+               "--completion-capacity/--max-connections 1..65536（全局默认各256；旧subs/handoff拒绝）\n"
+               "--completion-budget/--io-attempt-budget/--accept-attempt-budget 1..1024\n"
                "--read-byte-budget/--write-byte-budget 1..1048600 --max-body-bytes 2..1048576\n"
                "--output-low-bytes/--output-high-bytes/--output-hard-bytes 0..1048600（全0自动）\n"
                "--backlog 1..2147483647 --tcp-no-delay on|off --reuse-address on|off（默认off）\n"
@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
         emit(Event::server_starting);
         auto config = siftwing::config::online_config(settings);
         config.logger = logger.get();
-        config.main.termination_signals = true;
+        config.reactor.termination_signals = true;
         const auto duration = settings.run_ms;
         const auto shutdown_ms = settings.shutdown_ms;
         // 只在进程入口装载；worker请求不携带路径，也不重新读取快照或资源。
@@ -143,12 +143,9 @@ int main(int argc, char **argv) {
         emit_metrics(); // 最终样本在全部worker/Sub/fd屏障后，仍不承诺日志送达。
         emit(Event::server_stopped);
         const auto report = server->report();
-        std::size_t requests = 0, responses = 0, active = 0;
-        for (const auto &sub : report.subs) {
-            requests += sub.requests;
-            responses += sub.responses;
-            active += sub.active;
-        }
+        const auto requests = report.reactor.requests;
+        const auto responses = report.reactor.responses;
+        const auto active = report.reactor.active;
         std::cout << "{\"accepted\":" << report.accepted << ",\"requests\":" << requests
                   << ",\"responses\":" << responses << ",\"active\":" << active
                   << ",\"workers_succeeded\":" << report.workers.succeeded

@@ -24,6 +24,8 @@
 
 namespace siftwing::test {
 using namespace net;
+// 生产单循环测试可安装所属线程推进器；旧主从独立测试保持nullptr，不改变其调度。
+inline thread_local void (*io_progress)() = nullptr;
 /** @brief 只用于原创集成测试的外部控制者；不是正式服务API或业务实现。 */
 class MultiReactorFixture final {
     std::vector<std::unique_ptr<ProtocolSubReactor>> subs_;
@@ -272,6 +274,8 @@ inline UniqueFd client(std::uint16_t port, IpFamily family = IpFamily::v4) {
 inline void send_all(int fd, std::string_view bytes) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (!bytes.empty()) {
+        if (io_progress)
+            io_progress();
         const auto n = ::send(fd, bytes.data(), bytes.size(), MSG_DONTWAIT | MSG_NOSIGNAL);
         if (n > 0)
             bytes.remove_prefix(static_cast<std::size_t>(n));
@@ -288,6 +292,8 @@ inline std::string receive(int fd, std::size_t size) {
     std::array<char, 512> block{};
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (bytes.size() < size) {
+        if (io_progress)
+            io_progress();
         const auto n =
             ::recv(fd, block.data(), std::min(block.size(), size - bytes.size()), MSG_DONTWAIT);
         if (n > 0)
@@ -305,6 +311,8 @@ template <class Predicate>
 void await(Predicate predicate) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (!predicate()) {
+        if (io_progress)
+            io_progress();
         if (std::chrono::steady_clock::now() >= deadline)
             throw std::runtime_error("state deadline");
         std::this_thread::yield();

@@ -11,7 +11,7 @@
 namespace siftwing::net {
 namespace {
 std::size_t checked_capacity(std::size_t capacity) {
-    if (capacity == 0 || capacity > 2048)
+    if (capacity == 0 || capacity > 65536)
         throw std::invalid_argument("invalid DeadlineQueue capacity");
     return capacity;
 }

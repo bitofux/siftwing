@@ -1,20 +1,23 @@
 # 在线搜索闭环
 
-`SearchService`通过[SnapshotManager](SNAPSHOT_MANAGER.md)拥有完整只读Reader，并拥有固定分词/停用资源，`OnlineServer`组合Main、固定ProtocolSubReactor及WorkerPool。查询/推荐复用V1核心，worker不持Connection、socket或身份表。公共合同见[服务](../include/siftwing/query/search_service.hpp)与[控制者](../include/siftwing/net/online_server.hpp)。
+`SearchService`通过[SnapshotManager](SNAPSHOT_MANAGER.md)拥有完整只读Reader及固定分词/停用资源。
+`OnlineServer`由应用调用线程驱动唯一生产Reactor，组合完整连接核心及原WorkerPool。
+查询/推荐复用V1核心，worker不持Connection、socket或身份表。公共合同见
+[服务](../include/siftwing/query/search_service.hpp)与[控制者](../include/siftwing/net/online_server.hpp)。
 
 ```sh
 build/release/siftwing-server --snapshot /absolute/snapshots --version 1 --port 9000
 ```
 
-生产目标`siftwing_server`生成`siftwing-server`；默认监听127.0.0.1，可由[启动配置](SERVER_CONFIG.md)或`--listen-address`显式指定数值IPv4/IPv6。默认2个Sub、4个worker、128等待任务槽，`--subs`与`--workers`可设1..64，`--task-capacity`1..1024，启动后固定。端口0选内核端口，完整就绪后stdout报告`PORT N`。SIGINT/SIGTERM请求[限时网络排空](GRACEFUL_SHUTDOWN.md)，`--shutdown-ms`为0..86400000、默认1000毫秒；`--run-ms N`可设有限运行时间（1..86400000），0为等信号。停止后输出接入/请求/响应/worker计数JSON；这些计数不证明对端收到。
+生产目标`siftwing_server`生成`siftwing-server`；默认监听127.0.0.1，可由[启动配置](SERVER_CONFIG.md)或`--listen-address`显式指定数值IPv4/IPv6。唯一调用线程Reactor、默认4个worker、128等待任务槽，总连接与结果默认各256；`--workers`可设1..64，`--task-capacity`1..1024，启动后固定。端口0选内核端口，完整就绪后stdout报告`PORT N`。SIGINT/SIGTERM请求[限时网络排空](GRACEFUL_SHUTDOWN.md)，`--shutdown-ms`为0..86400000、默认1000毫秒；`--run-ms N`可设有限运行时间（1..86400000），0为等信号。停止后输出接入/请求/响应/worker计数JSON；这些计数不证明对端收到。
 
-启动先完整校验快照八文件/两支语义，显式装载资源，所有Sub及结果目标就绪后才开放监听。版本为规范uint64十进制（0和最大值合法），不解释CURRENT或自动找最新版本；启动失败不报告PORT。入口错误退出2、装载/启动/运行/停止失败1、stdout失败3、未知异常4、正常停止0。正常关闭排空已在途响应或到期关闭；故障仍立即丢弃。排空不证明对端收到，也不保证所有已接收字节都成为请求。
+启动先完整校验快照八文件/两支语义，显式装载资源，连接核心及结果目标就绪后才开放监听。版本为规范uint64十进制（0和最大值合法），不解释CURRENT或自动找最新版本；启动失败不报告PORT。入口错误退出2、装载/启动/运行/停止失败1、stdout失败3、未知异常4、正常停止0。正常关闭排空已在途响应或到期关闭；故障仍立即丢弃。排空不证明对端收到，也不保证所有已接收字节都成为请求。
 
 控制线程可取[最小指标](METRICS.md)拥有值，info/debug日志导出周期与关闭样本；SERVER_INFO schema保持，版本及构建身份按次观察当前快照。
 
 ## 业务Body
 
-等待队列满时，Sub不等空位，向本次请求返回同ID OVERLOADED；错误输出服从连接硬限，容量释放后新请求可重新准入。合同、确定满队列及健康连接验证见[worker队列饱和](WORKER_SATURATION.md)。
+等待队列满时，Reactor不等空位，向本次请求返回同ID OVERLOADED；错误输出服从连接硬限，容量释放后新请求可重新准入。合同、确定满队列及健康连接验证见[worker队列饱和](WORKER_SATURATION.md)。
 
 沿[固定协议版本1](PROTOCOL.md)的24字节头和UTF8 JSON对象；业务字段严格检查，拒绝未知/重复键、错误类型与非整数k。请求完成后允许再次使用同一request_id；generation仍是连接身份，不是请求代次。每接纳任务至多发布一个结果。
 
@@ -42,16 +45,30 @@ k为1..服务max_top_k；窗口1..4096，context为0..window-1。降低窗口须
 拒绝响应；等待worker或部分输出时不交付下一帧。SHUT_WR保留完整请求，排空后主动继续
 缓存帧，不要求客户端另发字节；排空不表示对端收到。不同连接仍可独立推进。
 
-OnlineServer的create/run_once/port/report/stop/shutdown/析构由创建线程串行；Main在该线程只接入。各Sub提交拥有请求，每次execute持有同一份共享只读快照，贯穿响应版本、缓存键和计算；worker共享固定只读查询资源与独立mutex保护的[可选LRU](VERSIONED_LRU.md)，生成最多一个RoutedCompletion并[发布通知](COMPLETION_WAKEUP.md)，所属Sub校验完整连接身份/等待请求后复制输出并预算发送。服务及提交器生命覆盖全部worker/Sub join。
+OnlineServer的create/run_once/port/report/stop/shutdown/析构由创建线程串行调用。
+run_once统一驱动监听、全部连接、epoll、期限、结果应用及信号观察，不额外创建I/O线程。
+worker每次execute持有同一完整快照，贯穿响应版本、缓存键和计算；共享固定只读资源及
+独立mutex保护的[可选LRU](VERSIONED_LRU.md)，最多生成一个RoutedCompletion并[发布通知](COMPLETION_WAKEUP.md)。
+同一Reactor校验完整身份、请求等待状态和期限后预算发送，服务及提交器覆盖全部worker/Loader调用。
 
-立即stop先Main close/销毁返回，请求所有Sub停止并等quiescing（最后提交器调用已返回），随后关闭加载准入并排空join Loader，再WorkerPool close/drain/join，完整发布及通知都返回后撤目标、release各Sub，再join其连接/结果/fd清理。正常shutdown先关闭任务准入，向全部Sub发布同一绝对排空期限，再Main close；空闲/半包关闭，已pending响应排空或截止关闭，不读取下一帧。Sub quiescing后沿相同worker join/撤目标/release/Sub join屏障收口；网络截止不是整个退出的硬上限。quiescing报告不证明queue已经closed，closed/empty/worker统计不证明调用静止。部分启动失败按同顺序回滚；通知fd不能在晚到write前关闭。
+立即stop同线程关闭监听、任务准入、结果准入和连接，停止Loader并完整join所有worker；
+完整发布/通知返回后才撤结果目标，销毁Core并关闭timer/eventfd/signalfd/epoll。
+正常shutdown先关闭任务准入和监听，设置单一绝对排空期限，在同一线程继续逐轮处理结果和输出；
+空闲/半包关闭，pending排空或截止关闭，不读取缓存下一帧。网络排空结束再走同一完整发布者屏障。
+不存在等待Sub推进的sleep轮询；网络截止不是worker join或总退出的硬上限。
+closed/empty/worker统计不证明调用静止；部分启动失败同样回滚，晚到write前不得关闭eventfd。
+
+配置已由sub_count/sub/main迁移为connection/reactor，报告为单一reactor值，不再有subs向量或
+handed_off计数。连接报告暂复用ProtocolSubStatus值类型，生产最终状态为stopped，不表示Sub线程。
+日志module=sub是连接核心沿用的标签，不代表生产存在Sub；旧性能和主从独立组件只证明原架构，
+无用途组件下线和全面工具迁移留后续批次。测试名_1/_2暂分别选择总容量128/256，不表示I/O线程数。
 
 真实CTest覆盖生产indexer→server→TCP查询/推荐、独立数学/Unicode参考、英文稀疏身份/中文共享只读资源、参数/预算/启动失败，以及部分启动分配故障、worker分配异常固定安全响应、真实结果full、accepted后通知失败和晚到通知停止屏障。插桩范围以实际日志为准；不证明任意调度、DSO内部、真实OOM、质量或性能。
 
-空闲/请求期限已由[Sub策略](DEADLINES.md)接入，默认关闭、可通过sub配置或`--idle-timeout-ms`/`--request-timeout-ms`启用，到期关连接而不取消worker。正式SERVER_INFO按次返回当前快照公开元信息，四命令[网络客户端](NETWORK_CLIENT.md)已提供；已有显式[安全发布/回滚控制](SNAPSHOT_PUBLICATION.md)，正式CLI尚无reload入口；[signalfd终止控制](SIGNALS.md)已接入Main；取消和全局字节准入仍属后续扩展；当前优雅退出边界见[关闭合同](GRACEFUL_SHUTDOWN.md)。
+空闲/请求期限已由[连接核心策略](DEADLINES.md)接入，默认关闭、可通过connection配置或`--idle-timeout-ms`/`--request-timeout-ms`启用，到期关连接而不取消worker。正式SERVER_INFO按次返回当前快照公开元信息，四命令[网络客户端](NETWORK_CLIENT.md)已提供；已有显式[安全发布/回滚控制](SNAPSHOT_PUBLICATION.md)，正式CLI尚无reload入口；[signalfd终止控制](SIGNALS.md)已接入唯一Reactor；取消和全局字节准入仍属后续扩展；当前优雅退出边界见[关闭合同](GRACEFUL_SHUTDOWN.md)。
 
-每连接已有[输出水位与硬限策略](OUTPUT_BACKPRESSURE.md)，可由OnlineServerConfig.sub.output或[启动配置](SERVER_CONFIG.md)配置，
-命令默认使用自动值，可用`--output-low-bytes`/`--output-high-bytes`/`--output-hard-bytes`显式设置。输出过大时Sub尝试同ID固定RESOURCE_LIMIT，错误也无法容纳则局部关闭；
+每连接已有[输出水位与硬限策略](OUTPUT_BACKPRESSURE.md)，可由OnlineServerConfig.connection.output或[启动配置](SERVER_CONFIG.md)配置，
+命令默认使用自动值，可用`--output-low-bytes`/`--output-high-bytes`/`--output-hard-bytes`显式设置。输出过大时Reactor尝试同ID固定RESOURCE_LIMIT，错误也无法容纳则局部关闭；
 worker和结果邮箱的拥有、发布与停止屏障保持。低位仍不允许在响应排空前接纳下一请求。
 
 版本感知LRU已由SearchService可选配置接入，默认关闭、可通过`--cache-capacity`、`--cache-bytes`、`--cache-max-value-bytes`或[配置文件](SERVER_CONFIG.md)启用；实例缓存成功JSON Body（含空结果），错误不存，完整参数/有效Body预算隔离，详见[缓存合同](VERSIONED_LRU.md)。

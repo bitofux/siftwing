@@ -14,6 +14,7 @@ def main():
     parser.add_argument("--indexer", required=True)
     parser.add_argument("--writer", required=True)
     parser.add_argument("--native", required=True)
+    # 保留测试驱动参数名；生产已移除--subs，这里仅选择总容量128/256的回归场景。
     parser.add_argument("--subs", choices=["1", "2"], required=True)
     options = parser.parse_args()
     reference.OPTIONS = options

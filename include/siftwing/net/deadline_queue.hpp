@@ -33,7 +33,7 @@ enum class DeadlineUpdate {
  */
 class DeadlineQueue final {
 public:
-    /** @brief 容量限[1,2048]；非法抛invalid_argument，预分配可抛bad_alloc/length_error。 */
+    /** @brief 容量限[1,65536]；非法抛invalid_argument，预分配可抛bad_alloc/length_error。 */
     explicit DeadlineQueue(std::size_t capacity);
     ~DeadlineQueue() noexcept = default;
     DeadlineQueue(const DeadlineQueue &) = delete;

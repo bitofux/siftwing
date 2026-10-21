@@ -10,6 +10,7 @@
 #include "siftwing/net/main_reactor.hpp"
 #include "siftwing/net/completion_wakeup.hpp"
 #include "siftwing/net/service_info_source.hpp"
+#include "siftwing/net/protocol_connection_config.hpp"
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -20,30 +21,10 @@ class Logger;
 }
 namespace siftwing::net {
 /** @brief 启动后固定的容量/预算；不约束全局RSS、JSON CPU或调度延迟。 */
-struct ProtocolSubConfig {
+struct ProtocolSubConfig : ProtocolConnectionConfig {
     std::size_t handoff_capacity = 128; ///< [1,1024]，专用queue条目数。
-    std::size_t max_connections = 128; ///< [1,1024]，Sub内固定slot数，满时在Sub关闭新源。
-    std::size_t max_body_bytes = frame_max_body_bytes; ///< [2,frame_max_body_bytes]，每Buffer上限。
     std::size_t handoff_budget = 16; ///< [1,1024]，每轮最多pop的条目数，不按通知计数pop。
-    std::size_t read_byte_budget = 65536; ///< [1,24+frame_max_body_bytes]，每连接每轮recv字节。
-    std::size_t write_byte_budget = 65536; ///< 同上，send字节。
-    std::size_t io_attempt_budget = 16;    ///< [1,1024]，read/flush各自的尝试预算。
-    std::uint32_t reactor_id =
-        0; ///< 本地身份命名空间；0保留旧默认行为，控制者保证并存目标唯一且旧结果存活时不重用。
-    std::size_t completion_capacity = 128; ///< [1,1024]，陈旧结果也占独立结果条目容量。
-    std::size_t completion_budget = 16; ///< [1,1024]，每轮最多消费结果数，与eventfd计数无关。
-    RoutedRequestSubmitter *request_submitter =
-        nullptr; ///< 可选稳定借用，start前配置到join后存活。
-    OutputWatermarks output; ///< 可选输出水位/硬限；全0按max_body解析，非法组合在任何线程前拒绝。
-    std::int64_t idle_timeout_ms =
-        0; ///< [0,86400000]；0关闭；无pending时从接纳/排空起、recv正字节刷新。
-    std::int64_t request_timeout_ms =
-        0; ///< 同范围；完整受信帧交付起至输出排空，不因读写/结果刷新。
-    logging::Logger *logger = nullptr; ///< 可选稳定借用，覆盖全部Sub调用和join；同步日志可能阻塞。
-    std::optional<std::uint64_t> log_index_version; ///< 控制者提供实际服务版本；无服务时null。
-    std::string server_info_body; ///< 可选拥有固定JSON；空为未接入，构造前验证，启动后不变。
-    const ServiceInfoSource *service_info =
-        nullptr; ///< 可选动态只读来源，优先于固定Body/日志版本；所有者覆盖start至join及最后调用。
+    // 旧独立Sub对继承的max_connections/completion_capacity仍限制[1,1024]，其余沿连接配置。
 };
 /** @brief draining只推进已在途；quiescing停止业务等发布者；stopped已清理，joined已回收线程。 */
 enum class ProtocolSubState {

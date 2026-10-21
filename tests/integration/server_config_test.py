@@ -25,9 +25,9 @@ def check(ok, label):
 def run(root, host="127.0.0.1"):
     parent, records, frequencies = ref.golden(root)
     config = root / "server.json"
-    values = dict(schema_version=1, snapshot=parent.relative_to(root).as_posix(), version="0",
-                  listen_address=host, port=1, subs=1, workers=1, task_capacity=8,
-                  handoff_capacity=8, completion_capacity=8, max_connections=8,
+    values = dict(schema_version=2, snapshot=parent.relative_to(root).as_posix(), version="0",
+                  listen_address=host, port=1, workers=1, task_capacity=8,
+                  completion_capacity=8, max_connections=8,
                   cache_capacity=16, cache_bytes=8192, cache_max_value_bytes=4096,
                   idle_timeout_ms=300, request_timeout_ms=5000, shutdown_ms=1000,
                   tcp_no_delay=True, run_ms=1)
@@ -72,16 +72,16 @@ def run(root, host="127.0.0.1"):
           ("完整停止", process.returncode, out, err))
     # 生产入口证明错误配置在快照装载/监听之前拒绝，非法文件不受CLI掩盖。
     for body, extra, context in [
-            ('{"schema_version":1,"workers":0}', ["--workers", "1"], b"config.value"),
-            ('{"schema_version":1,"workers":1,"workers":2}', [], b"config.json"),
-            ('{"schema_version":1,"snapshot":"missing","version":"0","cache_bytes":1}', [], b"config.value"),
-            ('{"schema_version":1}', [], b"config.required")]:
+            ('{"schema_version":2,"workers":0}', ["--workers", "1"], b"config.value"),
+            ('{"schema_version":2,"workers":1,"workers":2}', [], b"config.json"),
+            ('{"schema_version":2,"snapshot":"missing","version":"0","cache_bytes":1}', [], b"config.value"),
+            ('{"schema_version":2}', [], b"config.required")]:
         config.write_text(body)
         result = subprocess.run([OPTIONS.server, "--config", "server.json", *extra], cwd=root,
                                 capture_output=True, timeout=5)
         check(result.returncode == 2 and result.stdout == b"" and context in result.stderr,
               ("配置失败无PORT", result.returncode, result.stdout, result.stderr))
-    config.write_text(json.dumps(dict(schema_version=1, snapshot="missing", version="0")))
+    config.write_text(json.dumps(dict(schema_version=2, snapshot="missing", version="0")))
     result = subprocess.run([OPTIONS.server, "--config", "server.json"], cwd=root, capture_output=True, timeout=5)
     check(result.returncode == 1 and not result.stdout, "合法配置但装载失败保持exit1")
     with open("/dev/full", "wb") as full:

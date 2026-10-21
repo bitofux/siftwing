@@ -297,8 +297,16 @@ if(BUILD_TESTING)
         set_tests_properties(net.single_inflight_${suite} PROPERTIES TIMEOUT 30)
     endforeach()
     add_executable(siftwing_online_server_failure_test tests/integration/online_server_failure_test.cc)
+    add_executable(siftwing_single_reactor_test tests/integration/single_reactor_test.cc)
+    target_link_libraries(siftwing_single_reactor_test PRIVATE siftwing_online_server)
+    target_link_options(siftwing_single_reactor_test PRIVATE -Wl,--wrap=epoll_ctl)
+    add_test(NAME net.single_reactor_wiring COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/worker_saturation_test.py"
+        --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
+        --native "$<TARGET_FILE:siftwing_single_reactor_test>" --subs 1)
+    set_tests_properties(net.single_reactor_wiring PROPERTIES TIMEOUT 60)
     target_link_libraries(siftwing_online_server_failure_test PRIVATE siftwing_online_server)
-    target_link_options(siftwing_online_server_failure_test PRIVATE -Wl,--wrap=write -Wl,--wrap=_Znwm -Wl,--wrap=epoll_ctl -Wl,--wrap=epoll_wait -Wl,--wrap=send -Wl,--wrap=recv)
+    target_link_options(siftwing_online_server_failure_test PRIVATE -Wl,--wrap=write -Wl,--wrap=_Znwm -Wl,--wrap=send -Wl,--wrap=recv)
     add_executable(siftwing_versioned_cache_test tests/integration/versioned_cache_test.cc)
     target_link_libraries(siftwing_versioned_cache_test PRIVATE siftwing_online_server siftwing_json)
     foreach(subs IN ITEMS 1 2)
@@ -346,8 +354,9 @@ if(BUILD_TESTING)
     target_link_options(siftwing_graceful_server_test PRIVATE
         -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE
         -Wl,--wrap=_ZN8siftwing11concurrency10WorkerPool12request_stopEv
-        -Wl,--wrap=_ZN8siftwing3net11MainReactor5closeEv
-        -Wl,--wrap=_ZN8siftwing3net18ProtocolSubReactor13request_drainEl
+        -Wl,--wrap=_ZN8siftwing11concurrency10WorkerPool4joinEv
+        -Wl,--wrap=_ZN8siftwing3net18arm_deadline_timerEiSt8optionalIlE
+        -Wl,--wrap=epoll_ctl -Wl,--wrap=close
         -Wl,--wrap=write -Wl,--wrap=clock_gettime)
     foreach(subs IN ITEMS 1 2)
         add_test(NAME net.graceful_server_${subs} COMMAND Python3::Interpreter -B
@@ -748,7 +757,7 @@ if(BUILD_TESTING)
     target_link_options(siftwing_snapshot_publication_test PRIVATE
         "-Wl,--wrap=_ZN8siftwing8snapshot15SnapshotManager14load_candidateERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS_4base6detail8StrongIdINSB_18SnapshotVersionTagEEERKNS0_18SnapshotReadLimitsE"
         "-Wl,--wrap=_ZN8siftwing8snapshot14SnapshotLoader4joinEv"
-        "-Wl,--wrap=_ZN8siftwing3net18ProtocolSubReactor13request_drainEl")
+        "-Wl,--wrap=_ZN8siftwing11concurrency10WorkerPool12request_stopEv")
     add_test(NAME net.signalfd_online COMMAND Python3::Interpreter -B
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_publication_test.py"
         --native "$<TARGET_FILE:siftwing_snapshot_publication_test>" --parent "${CMAKE_CURRENT_BINARY_DIR}" --signals)

@@ -6,7 +6,7 @@
  * BRIEF   : 原创真实快照上的参数/预算隔离、共享worker缓存及TCP关联号
  */
 #include "siftwing/net/online_server.hpp"
-#include "../support/multi_reactor_fixture.hpp"
+#include "../support/online_server_fixture.hpp"
 #include <nlohmann/json.hpp>
 #include <chrono>
 #include <limits>
@@ -195,24 +195,26 @@ std::string response(int fd, std::uint64_t id) {
     check(head + bytes == wire(0x8003, id, bytes), "fresh request_id in completion response");
     return bytes;
 }
-void tcp(const std::string &parent, std::size_t subs) {
+void tcp(const std::string &parent, std::size_t capacity_scale) {
     const auto descriptors = fd_count();
     {
         auto loaded = service(parent, {8, 65536, 4096});
         const auto *stats = loaded.get();
         OnlineServerConfig config;
-        config.sub_count = subs;
+        config.connection.max_connections = capacity_scale * 128;
+        config.connection.completion_capacity = capacity_scale * 128;
         auto made = OnlineServer::create(std::move(loaded), config);
         if (!std::holds_alternative<std::unique_ptr<OnlineServer>>(made))
             throw std::runtime_error("server create");
         auto server = std::get<std::unique_ptr<OnlineServer>>(std::move(made));
+        siftwing::test::OnlineServerDriver drive(*server);
         std::string first;
         for (std::size_t i = 0; i < 4; ++i) {
             auto peer = client(server->port());
             await([&] {
                 if (auto e = server->run_once(0))
                     throw std::system_error(e);
-                return server->report().handed_off == i + 1;
+                return server->report().reactor.admitted == i + 1;
             });
             send_all(peer.get(), wire(3, 17 + i, R"({"query":"red"})") + wire(1, 90 + i));
             check(::shutdown(peer.get(), SHUT_WR) == 0, "half close after cached pipeline");
@@ -223,7 +225,7 @@ void tcp(const std::string &parent, std::size_t subs) {
                 "real worker Body and next PING");
         }
         check(stats->cache_stats().hits == 3 && stats->cache_stats().misses == 1,
-            "cross worker and Sub shared service cache");
+            "cross worker and Reactor shared service cache");
         check(!server->stop() && server->report().workers.succeeded == 4,
             "cached jobs still complete through worker barrier");
     }
@@ -233,7 +235,7 @@ void tcp(const std::string &parent, std::size_t subs) {
 int main(int argc, char **argv) {
     try {
         if (argc != 4)
-            throw std::runtime_error("parent second-parent subs required");
+            throw std::runtime_error("parent second-parent capacity_scale required");
         direct(argv[1], argv[2]);
         tcp(argv[1], std::string(argv[3]) == "1" ? 1U : 2U);
         std::cout << "versioned service checks=" << checks << '\n';
