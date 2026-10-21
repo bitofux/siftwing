@@ -14,6 +14,7 @@
 #include <set>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
+#include <sys/syscall.h>
 #include <sys/timerfd.h>
 
 namespace {
@@ -235,6 +236,16 @@ int main(int argc, char **argv) {
         sigset_t original;
         check(::pthread_sigmask(SIG_BLOCK, nullptr, &original) == 0 && !block_termination_signals(),
             "block before all worker creation");
+        // 首次启动线程会惰性建立TSan辅助线程；预热后仍严格核对生产新增两个worker。
+        // join与/proc任务条目回收不是同一观察点，先等空线程条目消失再取资源基线。
+        long warmup_tid = 0;
+        std::thread runtime_warmup([&] {
+            warmup_tid = ::syscall(SYS_gettid);
+        });
+        runtime_warmup.join();
+        await([&] {
+            return !std::filesystem::exists("/proc/self/task/" + std::to_string(warmup_tid));
+        });
         const auto descriptors = fd_count(), original_threads = threads();
         OnlineServerConfig config;
         config.workers = 2;

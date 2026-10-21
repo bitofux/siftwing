@@ -54,6 +54,24 @@ ASan/UBSan 配置包含 `-DSIFTWING_ENABLE_SANITIZERS=ON`；TSan 给 C/C++ 编�
 
 TSan 使用 `setarch x86_64 -R` 仅启动该次 CTest 子进程；若内核/权限不允许或运行时初始化失败，保留原诊断并报告失败，不修改全局 ASLR、不重试到成功。地址布局与 GNU 包装、全局分配替换测试具有工具相容边界，所以没有把普通完整回归宣称为全项目插桩。现有 Clang 专项每配置有 7 条既有告警：weighted_index.cc 的逐字节 signedness 转换，以及三个 GNU ld 包装测试的 C-linkage 返回 C++ 对象。包装符号用于链接测试，不是对 C 调用者的公共接口；没有新增告警屏蔽，也不声称这些配置无编译告警。
 
+若程序刚启动便报 `FATAL: ThreadSanitizer: unexpected memory mapping`，表示运行时无法建立
+所需地址布局，尚不能据此判断项目有数据竞争。先保留直接启动的失败，再验证进程级布局调整：
+
+```sh
+setarch x86_64 -R env TSAN_OPTIONS=halt_on_error=1 build/tsan/siftwing-indexer --help
+setarch x86_64 -R env TSAN_OPTIONS=halt_on_error=1 \
+  ctest --test-dir build/tsan --output-on-failure --no-tests=error -R '^net[.]production_topology$'
+```
+
+这里的 `build/tsan` 须先按上面的独立 TSan 参数构建，并包含所选测试及其 indexer/writer 夹具程序。
+将 `setarch` 放在 CTest 外层，使它启动的 Python 和所有受测子进程继承同一设置；仅包装服务程序
+不能修复夹具程序的初始化。`Operation not permitted` 说明环境禁止该进程设置，应在允许的环境
+执行并如实报告当前未验证。不要通过忽略退出码、禁用插桩、屏蔽报告或随机重试取得通过。
+
+线程资源断言先创建并 join 一个空线程，等待其 `/proc/self/task` 条目消失，再采集基线。
+这让 TSan 惰性创建的辅助线程进入基线；仍严格检查生产只增加配置的 worker 数、唯一 I/O
+归属及停止后恢复基线，不按线程名称过滤，也不放宽线程数量。
+
 ## 格式与静态检查
 
 ```sh
