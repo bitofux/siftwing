@@ -1,7 +1,11 @@
 # fd 有界移交队列
 
+> 历史资料：以下描述迁移前Main/Sub架构及当时组件/测试，相关公开API和纯旧拓扑测试已退役，
+> 不保留兼容层。当前实现/测试/调试请读[单Reactor拓扑](THREAD_TOPOLOGY.md)、
+> [在线服务](ONLINE_SEARCH.md)及[测试指南](TESTING.md)。原历史实现由迁移前commit定位，旧成绩不代表新架构。
+
 `FdHandoffQueue` 是独立的固定容量组件，公共合同见
-[头文件](../include/siftwing/net/fd_handoff_queue.hpp)。它实现
+[头文件](https://github.com/bitofux/siftwing/blob/0d8b145852fc0e0c973ed0c541fe47efbf9784d4/include/siftwing/net/fd_handoff_queue.hpp)。它实现
 [线程拓扑合同](THREAD_TOPOLOGY.md)中的 fd 所有权提交；已有独立
 [eventfd通知组合函数](EVENTFD_WAKEUP.md)，并由[Main](MAIN_REACTOR.md)与
 [ProtocolSubReactor](MULTI_REACTOR.md)用于连接移交；空Sub生命周期基线保持独立。

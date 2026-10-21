@@ -10,15 +10,15 @@ activate 对空 slot 建立下一代身份及全表单调 epoll token。拒绝�
 
 retire 仅精确匹配当前 reactor、slot、非零 generation 才撤销绑定，重复、陈旧或外表身份不会撤销新连接。关闭后保留代次，复用同 slot 得到下一代。lookup 只从当前非零 epoll token 返回身份值；DEL 不会清空已取出的事件批次，旧 token 必须拒绝。matches 只证明表中当前注册，不证明 fd 仍打开、请求仍 pending、request_id 合法或 deadline 未过。
 
-控制者配置固定且同时可回投的不同 Reactor 编号；旧结果或旧 epoll 批次可能存在时，不能重用 Reactor 命名空间或重建身份表。`ProtocolSubConfig::reactor_id` 默认零保持旧调用行为，组件不自动全球分配编号，也不检测其他实例。启动一次的 Sub 不重启；正式服务控制者接入时仍须保证编号唯一和生产者生命周期。测试多 Sub 控制者按 base+i 配置并拒绝编号溢出。
+唯一生产Reactor使用固定命名空间0；不同独立目的地仍须区分编号。旧结果或旧epoll批次可能存在时，不能重用命名空间/重建身份表；组件不负责全局分配，生命周期由拥有者保证。
 
-## 保持协议行为的 Sub 迁移
+## 唯一连接核心接入
 
-以下描述原独立Sub接入历史。当前生产由应用调用线程的唯一Core使用同一身份门禁，
+当前生产由应用调用线程的唯一Core使用身份门禁，
 固定reactor_id=0，总连接默认256/最大65536；控制fd共用保留token0，连接非零token不压缩。
-旧独立ProtocolSubReactor仍限制单Sub至1024。扩界不重置代次、不改变陈旧结果判定或算法。
+旧主从公开组件已退役。扩界不重置代次、不改变陈旧结果判定或算法。
 
-`ProtocolSubReactor` 内 Sessions 的固定 slot 仍独占 Connection；现在用身份表建立注册元数据，成功 ADD 后保存 ConnectionRegistration，ADD 失败 retire；drop 先撤销身份，再 DEL/close。事件仍携带原有单调 uint64 token，查表得到身份后核当前 slot 绑定才派发，不用复用 fd 数字猜目的地。
+`ProtocolConnectionCore` 的固定slot 仍独占 Connection；现在用身份表建立注册元数据，成功 ADD 后保存 ConnectionRegistration，ADD 失败 retire；drop 先撤销身份，再 DEL/close。事件仍携带原有单调 uint64 token，查表得到身份后核当前 slot 绑定才派发，不用复用 fd 数字猜目的地。
 
 PING/PONG、受信错误响应、读写预算、缓存继续、停止与发布者静止屏障保持。可选请求提交与结果应用见[回投说明](COMPLETION_WAKEUP.md)，真实查询业务已由[在线服务](ONLINE_SEARCH.md)接入；没有公开 Connection 借用。独立 ProtocolLoop 保留原有单调 token 的单循环基线；该路径未接跨线程结果，不扩大为身份框架。
 
@@ -30,10 +30,10 @@ PING/PONG、受信错误响应、读写预算、缓存继续、停止与发布�
 
 包装不可复制、移动不抛，自移动保持；移空身份全零且载荷为空。route() 返回身份值；左值 payload() 仅借用到移动、赋值或析构，右值 getter 删除。移动不建立线程间同步，拥有载荷须经同步队列交接。响应在任务销毁后仍有效，但路由可能已经失效。
 
-独立[CompletionQueue](COMPLETION_QUEUE.md)已提供结果归属、容量和关闭排空；[eventfd通知与所属Sub结果应用](COMPLETION_WAKEUP.md)已有接入，校验身份、等待状态及既有Connection关联门禁；真实查询已由[在线服务](ONLINE_SEARCH.md)接入，[期限策略](DEADLINES.md)在Sub检查，正式服务已支持[优雅退出](GRACEFUL_SHUTDOWN.md)，排空期间仍须校验完整身份。本组件测试中的apply仅示范身份门禁与既有Connection的组合，生产回投证据见上述组合文档。
+独立[CompletionQueue](COMPLETION_QUEUE.md)已提供结果归属、容量和关闭排空；[eventfd通知与所属Reactor结果应用](COMPLETION_WAKEUP.md)已有接入，校验身份、等待状态及既有Connection关联门禁；真实查询已由[在线服务](ONLINE_SEARCH.md)接入，[期限策略](DEADLINES.md)在Core检查，正式服务已支持[优雅退出](GRACEFUL_SHUTDOWN.md)，排空期间仍须校验完整身份。本组件测试中的apply仅示范身份门禁与既有Connection的组合，生产回投证据见上述组合文档。
 
 ## 验证边界
 
-三项真实 CTest 覆盖完整字段/slot 复用/注册回滚/旧 token/旧身份拒绝、预分配故障与激活零分配、拥有包装与局部错误；多生产者验证身份及 Body 经 worker 交接后完整独立。Linux 64 轮复用确知已释放的同一数字 fd、同 slot、同 request_id，旧 Completion 在输出缓冲之前被拒绝且无 peer 字节，新身份结果正常发送。既有多 Sub 测试继续验证实际迁移后的迟到事件、fd 复用、协议及关闭行为。
+三项真实 CTest 覆盖完整字段/slot 复用/注册回滚/旧 token/旧身份拒绝、预分配故障与激活零分配、拥有包装与局部错误；多生产者验证身份及 Body 经 worker 交接后完整独立。Linux 64 轮复用确知已释放的同一数字 fd、同 slot、同 request_id，旧 Completion 在输出缓冲之前被拒绝且无 peer 字节，新身份结果正常发送。连接核心及生产测试继续验证迟到结果、fd复用、协议和关闭；纯旧主从交接测试已退役。
 
 Debug/Release 全量及 ASan/UBSan、独立 TSan 的范围和结果读取验证日志。未进行 2^64 次耗尽、真实 OOM、所有调度或生产性能实验；溢出拒绝分支经作者源码审读，不冒称运行验证。本节身份专项测试不证明正式业务；结果回投的独立接入与证据边界见[回投说明](COMPLETION_WAKEUP.md)。

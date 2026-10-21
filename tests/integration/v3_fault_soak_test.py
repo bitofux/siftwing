@@ -22,7 +22,7 @@ def main():
     parser.add_argument("--native", required=True)
     parser.add_argument("--parent", required=True)
     parser.add_argument("--suite", choices=("faults", "soak"), required=True)
-    parser.add_argument("--subs", type=int, choices=(1, 2), default=2)
+    parser.add_argument("--capacity-scale", type=int, choices=(1, 2), default=2)
     parser.add_argument("--seconds", type=int, default=2)
     args = parser.parse_args()
     if not 1 <= args.seconds <= 3600:
@@ -31,7 +31,7 @@ def main():
     inputs, evidence = root / "inputs", root / "evidence"
     inputs.mkdir()
     evidence.mkdir()
-    command = [args.native, str(inputs), args.suite, str(args.subs), str(args.seconds)]
+    command = [args.native, str(inputs), args.suite, str(args.capacity_scale), str(args.seconds)]
     try:
         for name in ("valid", "alias", "incomplete", "sha", "semantic"):
             (inputs / name).mkdir()

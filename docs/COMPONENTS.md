@@ -341,4 +341,4 @@ CTest注册v1.golden、v1.rejection、v1.lifecycle；原始fixture保持只读�
 已有当前文件或配置范围内的归档时启动拒绝；文件输出自动使用spdlog大小轮转，默认10MiB、3份归档加当前文件。
 日志目录须当前用户拥有且不允许组/其他用户写入，本文件族由实例独占管理；同步输出可能阻塞，写入/轮转失败停用该实例并让业务继续，不提供持久化或性能保证。
 
-进程终止采用[线程创建前屏蔽与Main signalfd](SIGNALS.md)，SIGINT/SIGTERM沿原优雅关闭流程；不触发快照reload。
+进程终止采用[线程创建前屏蔽与唯一Reactor signalfd](SIGNALS.md)，SIGINT/SIGTERM沿原优雅关闭流程；不触发快照reload。

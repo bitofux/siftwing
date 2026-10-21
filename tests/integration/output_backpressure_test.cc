@@ -3,7 +3,7 @@
  * FILE    : output_backpressure_test.cc
  * AUTHOR  : bitofux
  * DATE    : 2026-10-15
- * BRIEF   : 精确水位、原子硬限拒绝、所属Sub局部策略与真实TCP慢读隔离
+ * BRIEF   : 精确水位、原子硬限拒绝、所属连接核心局部策略与真实TCP慢读隔离
  * IMPLEMENTATION : 独立黄金字节，真实前缀send配合确定EAGAIN；TCP专项不注入发送结果。
  */
 #include "../support/completion_fixture.hpp"
@@ -47,17 +47,15 @@ void ping(int fd, std::uint64_t id) {
     send_all(fd, wire(1, id));
     check(receive(fd, 26) == wire(0x8001, id), "other connection continues PING");
 }
-UniqueFd attached(ProtocolSubReactor &sub, std::string_view packet) {
+UniqueFd attached(ConnectionHarness &sub, std::string_view packet) {
     int fds[2];
     if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, fds))
         throw std::system_error(errno, std::generic_category());
     UniqueFd source(fds[0]), peer(fds[1]);
     observe(source.get());
     send_all(peer.get(), packet);
-    const auto target = std::get<MainReactorTarget>(sub.target());
-    const auto result = try_handoff_and_notify(*target.queue, source, target.wakeup_fd);
-    check(result.handoff == FdHandoffResult::accepted && !result.notification_error,
-        "watched source handed to real Sub");
+    const auto result = sub.adopt(source);
+    check(!result, "watched source handed to real 连接核心");
     return peer;
 }
 }
@@ -133,16 +131,16 @@ void limits() {
         }
         check(rejected && source.get() == fds[0] && ::fcntl(source.get(), F_GETFD) >= 0,
             "invalid output config leaves source fd untouched");
-        ProtocolSubConfig config;
+        ProtocolConnectionConfig config;
         config.max_body_bytes = 512;
         config.output = value;
         rejected = false;
         try {
-            ProtocolSubReactor sub(config);
+            ConnectionHarness sub(config);
         } catch (const std::invalid_argument &) {
             rejected = true;
         }
-        check(rejected, "Sub rejects same invalid config before start");
+        check(rejected, "连接核心 rejects same invalid config before start");
     }
     bool rejected = false;
     try {
@@ -245,13 +243,13 @@ void limits() {
 }
 void sub_policy() {
     CaptureSubmitter sink;
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.max_body_bytes = 512;
     config.output = {16, 48, 96};
     config.request_submitter = &sink;
     config.write_byte_budget = 5;
-    ProtocolSubReactor sub(config);
-    check(!sub.start(), "policy Sub ready");
+    ConnectionHarness sub(config);
+    check(!sub.start(), "policy 连接核心 ready");
     const auto target = std::get<CompletionTarget>(sub.completion_target());
     send_ceiling = 7;
     const auto packet = wire(3, 77) + wire(4, 77) + wire(1, 78);
@@ -294,12 +292,12 @@ void sub_policy() {
     check(receive(peer.get(), 122) == wire(0x8004, 77, body(72)) + wire(0x8001, 78),
         "hard boundary then PING ordered");
     eof(peer.get());
-    stop_sub(sub);
+    stop_core(sub);
     watched = -1;
     const auto status = sub.status();
     check(status.output_limit_rejections == 1 && status.output_limit_closes == 0
               && status.completion_applied == 2 && !status.first_error,
-        "local refusal accounted without Sub failure");
+        "local refusal accounted without 连接核心 failure");
     // hard=26只容纳PONG，固定ERROR也不适配：异步结果、Body拒绝、full、closed分别局部关闭。
     for (unsigned int scenario = 0; scenario < 4; ++scenario) {
         CaptureSubmitter rejected_sink;
@@ -309,8 +307,8 @@ void sub_policy() {
             rejected_sink.refusal = TaskSubmitResult::closed;
         config.output = {0, 20, 26};
         config.request_submitter = &rejected_sink;
-        ProtocolSubReactor small(config);
-        check(!small.start(), "small hard Sub ready");
+        ConnectionHarness small(config);
+        check(!small.start(), "small hard 连接核心 ready");
         auto limited = attach(small);
         auto healthy = attach(small);
         send_all(limited.get(), wire(3, 91, scenario == 1 ? "[]" : "{}"));
@@ -329,18 +327,18 @@ void sub_policy() {
                   && report.first_connection_error.value() == EMSGSIZE && !report.first_error
                   && report.active == 1,
             "only offending connection closed, PONG still fits");
-        stop_sub(small);
+        stop_core(small);
     }
 }
 void tcp_slow_reader() {
     CaptureSubmitter sink;
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.max_body_bytes = 300000;
     config.write_byte_budget = 280000; // 大于本响应，避免先耗尽预算而根本没有机会观察真实EAGAIN。
     config.output = {32768, 65536, 280000};
     config.request_submitter = &sink;
-    MultiReactorFixture fixture(1, config);
-    check(!fixture.start(), "real TCP Main/Sub ready");
+    ConnectionHarness fixture(config);
+    check(!fixture.start(true), "real TCP 连接核心 ready");
     watch_accept = true;
     send_ceiling = SIZE_MAX;
     auto peer = client(fixture.port());
@@ -354,8 +352,7 @@ void tcp_slow_reader() {
     auto task = take_request(sink);
     const auto payload = body(262144);
     const auto expected = wire(0x8003, 77, payload);
-    publish(
-        std::get<CompletionTarget>(fixture.sub(0).completion_target()), completion(*task, payload));
+    publish(std::get<CompletionTarget>(fixture.completion_target()), completion(*task, payload));
     // 无注入：真实小发送缓存/暂不读取对端产生EAGAIN，不用固定睡眠猜测拥塞。
     await([&] {
         return blocked.load() != 0 && interest.load() == EPOLLOUT;
@@ -367,17 +364,16 @@ void tcp_slow_reader() {
         ping(healthy.get(), id);
     // PONG可先于本轮status发布；先等待报告追上八次真实往返，再断言暂停期计数。
     await([&] {
-        return fixture.sub(0).status().requests == 9;
+        return fixture.status().requests == 9;
     });
-    check(fixture.sub(0).status().requests == 9 && read_calls.load() == reads
-              && !sink.requests.try_pop(),
+    check(fixture.status().requests == 9 && read_calls.load() == reads && !sink.requests.try_pop(),
         "slow TCP peer bounded, healthy peer progresses");
     check(receive(peer.get(), expected.size() + 26) == expected + wire(0x8001, 78),
         "reading resumes exact TCP suffix and cached PING");
     eof(peer.get());
-    check(!fixture.stop(), "all Main handoff and completion calls quiescent before close");
+    check(!fixture.stop(), "all 监听器 handoff and completion calls quiescent before close");
     watched = -1;
-    const auto report = fixture.sub(0).status();
+    const auto report = fixture.status();
     check(report.responses == 10 && report.output_limit_rejections == 0 && report.active == 0,
         "slow response completes once, all resources reclaimed");
 }

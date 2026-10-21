@@ -11,12 +11,12 @@ Ubuntu 24.04的全新runner。工作流只需要公开源码与原创fixture，�
 | 独立job | 编译与检查 | 范围 |
 |---|---|---|
 | GCC Debug / Release | Ninja完整构建、完整CTest | 开启`SIFTWING_BUILD_BENCHMARKS`，包括工具合同测试；不运行性能容量矩阵 |
-| Clang 18 ASan/UBSan | 独立Debug、内存/未定义行为检查 | 下列12项真实CTest，启用泄漏检查并在诊断时失败 |
-| Clang 18 TSan | 独立Debug、线程检查 | 同12项；仅子进程`setarch x86_64 -R`，不改全局ASLR，不失败重试 |
+| Clang 18 ASan/UBSan | 独立Debug、内存/未定义行为检查 | 下列13项真实CTest，启用泄漏检查并在诊断时失败 |
+| Clang 18 TSan | 独立Debug、线程检查 | 同13项；仅子进程`setarch x86_64 -R`，不改全局ASLR，不失败重试 |
 | LLVM 18静态质量 | 格式门禁、有限clang-tidy | 全部自有C++文件的格式检查，以及8个明确生产翻译单元 |
 
 消毒器专项为：`v3.fault_recovery`、`v3.soak_1`、`v3.soak_2`、`v3.shutdown_races`、
-`snapshot.manager`、`snapshot.loader`、`snapshot.publication`、`net.signalfd_online`、
+`snapshot.manager`、`snapshot.loader`、`snapshot.publication`、`net.signalfd_online`、`net.production_topology`、
 `concurrency.worker_pool_concurrency`、`concurrency.completion_queue_concurrency`、
 `cache.versioned_lru_concurrency_test`、`benchmark.loadgen_contract`。
 这覆盖快照失败恢复/发布、关闭竞态、线程/队列、LRU及负载端；不把它称作全项目插桩覆盖。

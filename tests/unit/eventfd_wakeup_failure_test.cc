@@ -3,7 +3,7 @@
  * FILE    : eventfd_wakeup_failure_test.cc
  * AUTHOR  : bitofux
  * DATE    : 2026-10-14
- * BRIEF   : 系统调用注入验证有限重试、部分进展与提交后通知失败的所有权
+ * BRIEF   : 系统调用注入验证eventfd有限重试、部分进展与关闭所有权
  */
 #include "siftwing/net/eventfd_wakeup.hpp"
 #include <array>
@@ -48,11 +48,6 @@ ssize_t injected() {
         return -1;
     }
     return static_cast<ssize_t>(-code - 1); // -1为0字节，-4为3字节。
-}
-UniqueFd resource() {
-    UniqueFd fd(::open("/dev/null", O_RDONLY | O_CLOEXEC));
-    require(static_cast<bool>(fd), "independent resource");
-    return fd;
 }
 } // namespace
 extern "C" {
@@ -168,49 +163,7 @@ int main() {
     require(drained.state == EventFdDrainState::failed && drained.successful_reads == 1
                 && drained.error.value() == EIO,
         "partial progress retained on error");
-    {
-        FdHandoffQueue queue(1);
-        auto source = resource();
-        const int original = source.get();
-        program(false, EIO);
-        const auto result = try_handoff_and_notify(queue, source, watched);
-        require(result.handoff == FdHandoffResult::accepted
-                    && result.notification_error.value() == EIO && !source && calls == 1,
-            "notification error never revokes accepted ownership");
-        auto rejected = resource();
-        const int kept = rejected.get();
-        calls = 0;
-        require(try_handoff_and_notify(queue, rejected, watched).handoff == FdHandoffResult::full
-                    && rejected.get() == kept && calls == 0,
-            "full never notifies and retains source");
-        UniqueFd empty;
-        require(try_handoff_and_notify(queue, empty, watched).handoff == FdHandoffResult::invalid_fd
-                    && calls == 0,
-            "invalid never notifies");
-        queue.close();
-        const auto closed = try_handoff_and_notify(queue, rejected, watched);
-        require(closed.handoff == FdHandoffResult::closed && !closed.notification_error
-                    && rejected.get() == kept && calls == 0,
-            "closed never notifies");
-        auto item = queue.try_pop();
-        require(item && item->get() == original && !item->close(),
-            "queue retains exactly one accepted owner after notify error");
-    }
-    {
-        FdHandoffQueue queue(1);
-        auto source = resource();
-        const int original = source.get();
-        calls = 0;
-        lock_error = EAGAIN;
-        bool failed = false;
-        try {
-            (void)try_handoff_and_notify(queue, source, watched);
-        } catch (const std::system_error &error) {
-            failed = error.code().value() == EAGAIN;
-        }
-        require(failed && source.get() == original && calls == 0 && queue.status().size == 0,
-            "mutex exception before commit never notifies");
-    }
+
     close_eintr = true;
     closes = 0;
     require(wakeup.close().value() == EINTR && !wakeup && closes == 1,

@@ -24,7 +24,7 @@ pool 关闭与 `try_submit` 使用原队列同步边界；关闭前 accepted 的
 此后拒绝且保持提交源；所有网络提交也在当前线程，进入shutdown前的提交调用已经返回。
 报告`drain_started`表示Core已观察截止且不再读取新请求。
 未进入完整帧交付的请求、空闲连接与半包直接关闭，不额外分配一轮 STOPPING 响应。
-生产不存在handoff队列或未注册移交残留；旧独立Sub的request_drain与队列语义仅保留组件测试。
+生产不存在handoff队列或未注册移交残留；旧独立Sub及fd交接专属测试已退役，适用排空断言由连接核心测试继续覆盖。
 
 每连接最多保留一个已pending请求。唯一Reactor继续验证完整身份并应用completion，沿原
 [输出预算](OUTPUT_BACKPRESSURE.md)发送；输出排空后 finish 并关闭，不处理缓存或新到的
@@ -60,7 +60,7 @@ timerfd/时钟失败记录首因并停止服务；通知失败仍保留排空请
 
 ## 验证入口
 
-真实注册的 `net.graceful_sub_*` 用独立黄金线字节、受控同钟和真实 timer 验证排空、慢输出、
+真实注册的 `net.connection_core_drain_*` 用独立黄金线字节、受控同钟和真实 timer 验证排空、慢输出、
 等号、重复收紧、原请求期限、时钟/设时/通知故障和资源屏障。
 `net.graceful_server_1/2`选择总容量128/256，使用真实indexer快照、单Reactor/worker及查询结果验证执行中和
 等待任务、共同绝对截止、拒绝新任务/accept、缓存帧不续读、晚到完整通知及原首因。

@@ -140,14 +140,14 @@ int main() {
     }
     {
         // 单个聚合通知对应64条目；completion_budget=1，余量必须主动继续。
-        ProtocolSubConfig config;
+        ProtocolConnectionConfig config;
         config.reactor_id = 7;
         config.completion_capacity = 64;
         config.completion_budget = 1;
-        ProtocolSubReactor sub(config);
+        ConnectionHarness sub(config);
         paused = true;
         wait_entered = false;
-        check(!sub.start(), "budget observer Sub ready");
+        check(!sub.start(), "budget observer 连接核心 ready");
         await([] {
             return wait_entered.load();
         });
@@ -167,15 +167,15 @@ int main() {
         observed_queue = nullptr;
         check(illegal_wait == 0 && nonblocking_wait >= 62,
             "nonempty queue never blocks after notification drain");
-        stop_sub(sub);
+        stop_core(sub);
     }
     {
         CaptureSubmitter sink;
-        ProtocolSubConfig config;
+        ProtocolConnectionConfig config;
         config.reactor_id = 7;
         config.request_submitter = &sink;
-        ProtocolSubReactor sub(config);
-        check(!sub.start(), "notification failure fallback Sub ready");
+        ConnectionHarness sub(config);
+        check(!sub.start(), "notification failure fallback 连接核心 ready");
         auto target = std::get<CompletionTarget>(sub.completion_target());
         watched_fd = target.wakeup_fd;
         auto peer = attach(sub);
@@ -187,18 +187,18 @@ int main() {
         write_error = 0;
         check(receipt.publish == CompletionPublishResult::accepted
                   && receipt.notification_error.value() == EIO && !result,
-            "Sub queue commit survives real notification failure");
+            "连接核心 queue commit survives real notification failure");
         const auto expected = wire(0x8003, 77, "{\"test\":true}");
         check(receive(peer.get(), expected.size()) == expected,
             "finite wait fallback consumes result even without notification");
         watched_fd = -1;
-        stop_sub(sub);
+        stop_core(sub);
     }
     {
-        ProtocolSubConfig config;
+        ProtocolConnectionConfig config;
         config.reactor_id = 7;
-        ProtocolSubReactor sub(config);
-        check(!sub.start(), "late notification Sub ready");
+        ConnectionHarness sub(config);
+        check(!sub.start(), "late notification 连接核心 ready");
         auto target = std::get<CompletionTarget>(sub.completion_target());
         watched_fd = target.wakeup_fd;
         late_entered = false;
@@ -218,8 +218,7 @@ int main() {
         });
         check(!sub.request_stop(), "stop after commit but before full publish call returns");
         await([&] {
-            return sub.status().state == ProtocolSubState::quiescing
-                   && target.queue->status().closed;
+            return sub.status().state == ReactorState::quiescing && target.queue->status().closed;
         });
         check(::fcntl(target.wakeup_fd, F_GETFD) >= 0 && target.queue->status().closed,
             "closed queue does not allow notification fd close before producer barrier");
@@ -233,7 +232,7 @@ int main() {
         const auto report = sub.status();
         check(report.completion_received + report.completion_discarded == 1
                   && report.completion_applied == 0,
-            "late result consumed or discarded exactly once on Sub");
+            "late result consumed or discarded exactly once on 连接核心");
         check(::fcntl(target.wakeup_fd, F_GETFD) == -1 && errno == EBADF,
             "notification fd closed only after barrier");
     }

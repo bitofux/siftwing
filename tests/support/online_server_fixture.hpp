@@ -6,7 +6,7 @@
  * BRIEF   : 测试调用线程等待peer/worker时显式推进唯一生产I/O循环
  */
 #pragma once
-#include "multi_reactor_fixture.hpp"
+#include "net_test_support.hpp"
 #include "siftwing/net/online_server.hpp"
 
 namespace siftwing::test {

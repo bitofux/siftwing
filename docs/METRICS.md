@@ -58,3 +58,5 @@ shutdown耗时不是网络deadline，也不是退出硬上限。
 真实CTest入口`metrics.contract`验证端点、饱和、8线程聚合、部分发送、分配/同步异常与行界限；
 `metrics.production`用原创快照与独立网络编码核周期/最终样本、字节和业务计数、过滤及坏输出；
 `net.worker_saturation_1/2`在确定门控下核busy和等待深度。这些检查不证明容量、无阻塞或生产性能。
+
+唯一Reactor的C++报告为ReactorReport/ReactorState。旧schema中的handed_off、handoff和未注册fd交接discarded字段继续退役恒0，不将其改作直接准入；真实准入看accepted/admitted/rejected。

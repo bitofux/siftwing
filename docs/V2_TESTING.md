@@ -1,5 +1,9 @@
 # V2 故障与并发测试
 
+> 历史资料：以下描述迁移前Main/Sub架构及当时组件/测试，相关公开API和纯旧拓扑测试已退役，
+> 不保留兼容层。当前实现/测试/调试请读[单Reactor拓扑](THREAD_TOPOLOGY.md)、
+> [在线服务](ONLINE_SEARCH.md)及[测试指南](TESTING.md)。原历史实现由迁移前commit定位，旧成绩不代表新架构。
+
 测试组合真实 Main/Sub、worker 和 SearchService；输入使用公开原创夹具建立的真实快照，
 响应以独立24字节大端参考和 JSON 断言验证。实际通过范围以对应运行日志为准，测试存在
 本身不证明已通过。所有行为断言在 Release 中仍执行。

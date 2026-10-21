@@ -17,7 +17,7 @@ SUFFIXES = {".cc", ".cpp", ".h", ".hpp"}
 TIDY_FILES = (
     "src/net/unique_fd.cc",
     "src/net/signalfd_source.cc",
-    "src/net/fd_handoff_queue.cc",
+    "src/net/eventfd_wakeup.cc",
     "src/net/completion_wakeup.cc",
     "src/concurrency/worker_pool.cc",
     "src/concurrency/completion_queue.cc",

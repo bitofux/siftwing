@@ -20,7 +20,7 @@ ctest --test-dir build/release --output-on-failure --no-tests=error
 
 Debug 与 Release 使用独立目录；行为验证在 Release 下仍有效，不依赖被 NDEBUG 消除的 assert。`--no-tests=error` 防止空测试列表被当作成功；配置、构建和 CTest 都必须分别检查退出码。默认启用 CTest；`-DBUILD_TESTING=OFF` 仅构建产品，不能用来报告测试通过。
 
-当前默认注册 223 项；配置 `-DSIFTWING_BUILD_BENCHMARKS=ON` 另加负载工具合同，共 224 项。实际选择仍须核对当前源码与配置，不把本文数字当作测试已执行：
+M4.03已退役纯旧主从专属测试并迁移有效连接行为；启用负载工具会另注册其合同测试。实际数量以当前源码和配置查询为准，不把文档数字当作执行结果：
 
 ```sh
 ctest --test-dir build/debug --show-only=json-v1
@@ -48,7 +48,7 @@ ctest --test-dir build/debug --output-on-failure --no-tests=error -R '^snapshot\
 
 ## 消毒器的独立范围
 
-ASan/UBSan 与 TSan 分别使用全新 Debug 目录和 Clang 18。不要复用普通目录或把两类插桩叠加。完整参数、8 个目标与精确 12 项选择式直接以[公开 workflow](../.github/workflows/ci.yml)和[CI 说明](CI.md)为准；复制 sanitizer job 的安装后步骤，在仓库根执行并分别更换其 `build/ci` 路径。
+ASan/UBSan 与 TSan 分别使用全新 Debug 目录和 Clang 18。不要复用普通目录或把两类插桩叠加。完整参数、明确目标与精确13项选择式直接以[公开 workflow](../.github/workflows/ci.yml)和[CI 说明](CI.md)为准；复制 sanitizer job 的安装后步骤，在仓库根执行并分别更换其 `build/ci` 路径。
 
 ASan/UBSan 配置包含 `-DSIFTWING_ENABLE_SANITIZERS=ON`；TSan 给 C/C++ 编译及可执行链接分别设置 `-fsanitize=thread`，编译加 `-fno-omit-frame-pointer`。前者设置 `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1`、`UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1`，后者设置 `TSAN_OPTIONS=halt_on_error=1`。
 
@@ -62,7 +62,7 @@ python3 -B tools/check_quality.py tidy --build-dir build/debug
 git diff --check
 ```
 
-需要 clang-format-18 / clang-tidy-18。脚本只读，缺工具、错版本、缺编译数据库或诊断非零即失败。格式基线绑定 `.clang-format` SHA 与 155 份旧文件的精确字节；新增/修改文件须整体符合格式，不能扩充豁免来消除失败。tidy 仅分析 8 个明确生产翻译单元，并检查数据库属于当前源码树。单文件排版可先执行 `clang-format-18 --style=file 文件` 预览，审查后再用 `-i`；不要修改第三方、生成物或原创输入。
+需要 clang-format-18 / clang-tidy-18。脚本只读，缺工具、错版本、缺编译数据库或诊断非零即失败。格式基线绑定 `.clang-format` SHA 与 当前仍存在的历史违规文件的精确字节；新增/修改文件须整体符合格式，不能扩充豁免来消除失败。tidy 仅分析 8 个明确生产翻译单元，并检查数据库属于当前源码树。单文件排版可先执行 `clang-format-18 --style=file 文件` 预览，审查后再用 `-i`；不要修改第三方、生成物或原创输入。
 
 ## 保存结果与解释失败
 

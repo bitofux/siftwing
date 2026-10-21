@@ -56,18 +56,14 @@ add_library(siftwing_full STATIC
     src/net/deadline_timer.cc
     src/net/epoll_ops.cc
     src/net/eventfd_wakeup.cc
-    src/net/fd_handoff_queue.cc
     src/net/frame_codec.cc
     src/net/frame_decoder.cc
     src/net/listener.cc
-    src/net/main_reactor.cc
     src/net/online_server.cc
     src/net/protocol_loop.cc
     src/net/protocol_connection_core.cc
-    src/net/protocol_sub_reactor.cc
     src/net/signalfd_source.cc
     src/net/socket_ops.cc
-    src/net/sub_reactor.cc
     src/net/unique_fd.cc
     src/query/search_service.cc
     src/snapshot/loader.cc
@@ -126,12 +122,9 @@ foreach(component IN ITEMS
     siftwing_listener
     siftwing_epoll
     siftwing_worker_pool
-    siftwing_sub_reactor
-    siftwing_fd_handoff_queue
     siftwing_eventfd_wakeup
     siftwing_deadline
     siftwing_signalfd
-    siftwing_main_reactor
     siftwing_buffer
     siftwing_frame_decoder
     siftwing_metrics
@@ -142,7 +135,6 @@ foreach(component IN ITEMS
     siftwing_completion_queue
     siftwing_connection_identity
     siftwing_routed_payload
-    siftwing_protocol_sub_reactor
     siftwing_completion_wakeup
     siftwing_protocol_loop
     siftwing_snapshot_manager

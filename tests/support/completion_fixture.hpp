@@ -6,7 +6,7 @@
  * BRIEF   : 原创结果回投测试的捕获提交器、拥有载荷与本地socket入口
  */
 #pragma once
-#include "multi_reactor_fixture.hpp"
+#include "connection_harness.hpp"
 #include "siftwing/concurrency/worker_pool.hpp"
 #include <fcntl.h>
 
@@ -40,7 +40,7 @@ inline std::unique_ptr<RoutedCompletion> completion(
     auto result = RoutedCompletion::success(task, body);
     return std::make_unique<RoutedCompletion>(std::get<RoutedCompletion>(std::move(result)));
 }
-inline UniqueFd attach(ProtocolSubReactor &sub, int reserved_number = -1) {
+inline UniqueFd attach(ConnectionHarness &sub, int reserved_number = -1) {
     int pair[2];
     if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, pair))
         throw std::system_error(errno, std::generic_category());
@@ -53,9 +53,7 @@ inline UniqueFd attach(ProtocolSubReactor &sub, int reserved_number = -1) {
         (void)source.close();
         source = UniqueFd(reserved_number);
     }
-    auto target = std::get<MainReactorTarget>(sub.target());
-    if (try_handoff_and_notify(*target.queue, source, target.wakeup_fd).handoff
-        != FdHandoffResult::accepted)
+    if (sub.adopt(source))
         throw std::runtime_error("test source refused");
     return peer;
 }
@@ -65,7 +63,7 @@ inline void publish(CompletionTarget target, std::unique_ptr<RoutedCompletion> r
         || result)
         throw std::runtime_error("test completion refused");
 }
-inline void stop_sub(ProtocolSubReactor &sub) {
+inline void stop_core(ConnectionHarness &sub) {
     if (const auto error = sub.request_stop())
         throw std::system_error(error);
     // 调用者在此函数前已等待所有外部完整发布及最后通知返回。

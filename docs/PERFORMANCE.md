@@ -81,3 +81,7 @@ LRU charge不能当作RSS，峰值也不是内存上界或泄漏证明。客户�
 机器/虚拟化、宿主争用、CPU亲和性、cgroup、日志profile与采样长度都要随数字说明；
 当前工具不修改系统配置，不自动调优、切快照或定位锁热点。故障/持续正确性验证见
 [V3可靠性验证](V3_RELIABILITY.md)，服务合同见[在线搜索](ONLINE_SEARCH.md)。
+
+## 单Reactor迁移边界
+
+当前编排工具显式使用总max_connections=256、completion_capacity=256和workers=4，不再传已退役的subs。每轮server-topology.json保存启动schema=2与声明拓扑；线程/RSS采样不是完整I/O归属证明。迁移前归档数据属于Main/Sub架构，不重写、不作为当前成绩；smoke只验证工具链，不能宣称吞吐改善。

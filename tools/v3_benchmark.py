@@ -123,12 +123,18 @@ class Server:
     def __init__(self, options, directory, mode):
         self.directory = directory
         self.argv = [options.server, "--snapshot", str(options.output / "snapshot"), "--version", "1",
-                     "--subs", "2", "--workers", "4", "--task-capacity", "128",
+                     "--max-connections", "256", "--completion-capacity", "256", "--workers", "4", "--task-capacity", "128",
                      "--cache-capacity", str({"off": 0, "hot": 256, "evict": 16}[mode]),
                      "--cache-bytes", "8388608", "--cache-max-value-bytes", "262144",
                      "--log-level", "info", "--log-file", str(directory / "events.jsonl"),
                      "--log-max-bytes", "65536", "--log-max-files", "1", "--shutdown-ms", "1000"]
         save(directory / "server.argv.json", self.argv)
+        save(directory / "server-topology.json", {
+            "startup_schema_version": 2, "declared_topology": "single_reactor_worker_pool",
+            "io_driver": "application_calling_thread", "workers": 4,
+            "max_connections": 256, "completion_capacity": 256,
+            "evidence_boundary": "启动配置身份；线程采样不能单独证明全部I/O归属",
+        })
         self.error_file = (directory / "server.stderr").open("wb")
         self.process = subprocess.Popen(self.argv, stdout=subprocess.PIPE, stderr=self.error_file, bufsize=0)
         self.lines = []

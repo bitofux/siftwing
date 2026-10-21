@@ -12,7 +12,7 @@ def main():
     parser = argparse.ArgumentParser()
     for name in ["indexer", "writer", "native"]:
         parser.add_argument("--" + name, required=True)
-    parser.add_argument("--subs", choices=["1", "2"], required=True)
+    parser.add_argument("--capacity-scale", choices=["1", "2"], required=True)
     options = parser.parse_args()
     reference.OPTIONS = options
     root = Path(tempfile.mkdtemp(prefix="siftwing-versioned-cache-"))
@@ -20,7 +20,7 @@ def main():
         parent, _, _ = reference.golden(root)
         changed = reference.write(root, "changed.txt", "red changed body")
         second = reference.build(root, [("txt", changed)], version=2**64-1)
-        result = subprocess.run([options.native, str(parent), str(second), options.subs],
+        result = subprocess.run([options.native, str(parent), str(second), options.capacity_scale],
                                 capture_output=True, text=True, timeout=30)
         print(result.stdout, end="")
         print(result.stderr, end="")

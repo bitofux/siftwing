@@ -1,13 +1,17 @@
 # 多 Sub 协议集成
 
-[ProtocolSubReactor](../include/siftwing/net/protocol_sub_reactor.hpp)将专用 fd 队列、eventfd、
+> 历史资料：以下描述迁移前Main/Sub架构及当时组件/测试，相关公开API和纯旧拓扑测试已退役，
+> 不保留兼容层。当前实现/测试/调试请读[单Reactor拓扑](THREAD_TOPOLOGY.md)、
+> [在线服务](ONLINE_SEARCH.md)及[测试指南](TESTING.md)。原历史实现由迁移前commit定位，旧成绩不代表新架构。
+
+[ProtocolSubReactor](https://github.com/bitofux/siftwing/blob/0d8b145852fc0e0c973ed0c541fe47efbf9784d4/include/siftwing/net/protocol_sub_reactor.hpp)将专用 fd 队列、eventfd、
 LT epoll 和 Connection 组合在一个固定 Sub 线程中。所有 Sub 完整就绪后，
 [MainReactor](MAIN_REACTOR.md)在另一个所属线程创建监听并轮询移交。
 真实链路为 TCP → Main accept → 目标 queue → eventfd → Sub Connection → codec → 响应 send。
 Main 不读取业务，Connection 从构造到释放始终归属同一个 Sub。
 
 原 [SubReactor](SUB_REACTOR.md)空生命周期和 [ProtocolLoop](PROTOCOL_LOOP.md)单线程基线保持。
-新类型提供独立接口；测试专用[组合控制者](../tests/support/multi_reactor_fixture.hpp)展示启动、
+新类型提供独立接口；历史测试专用[组合控制者](https://github.com/bitofux/siftwing/blob/0d8b145852fc0e0c973ed0c541fe47efbf9784d4/tests/support/multi_reactor_fixture.hpp)展示启动、
 运行错误汇总和停止顺序。已通过[在线搜索闭环](ONLINE_SEARCH.md)提供生产查询命令；正式服务已有[优雅退出](GRACEFUL_SHUTDOWN.md)，旧测试fixture仍使用立即停止。
 默认只响应 PING/PONG 和受信 ERROR，其他合法业务请求返回 INVALID_REQUEST；可选请求提交器及worker结果应用见[回投说明](COMPLETION_WAKEUP.md)。
 

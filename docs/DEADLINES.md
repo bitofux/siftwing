@@ -6,7 +6,7 @@
 `CLOCK_MONOTONIC` timerfd，并在同线程注册、读取、注销和关闭。初始disarmed，
 可按固定配置启用空闲超时和请求deadline；两项默认关闭，旧立即停止策略保持；[优雅退出](GRACEFUL_SHUTDOWN.md)复用同一timerfd并取原期限与公共排空期限的最早值。
 生产入口可用`--idle-timeout-ms`/`--request-timeout-ms`或[启动配置](SERVER_CONFIG.md)启用，启动后固定。
-旧独立ProtocolSubReactor/空Sub及单Loop probe暂留原组件测试；生产没有Sub线程。
+旧主从公开组件已退役，生产没有Sub线程；独立协议probe不是生产驱动。
 
 期限是`CLOCK_MONOTONIC`纪元起的正`int64`纳秒，不是墙钟、Unix时间、相对时长或线上字段。
 该时钟不受墙钟校时影响，Linux下不包含系统挂起时间；不假定C++ `steady_clock`与它同纪元。
@@ -30,20 +30,18 @@ O(capacity)有界扫描；它不拥有连接、回调或锁，不证明key代表
 读取的成功与EINTR均占有限预算，EAGAIN才表示本次观察暂时无计数，短读/EOF为EIO。
 不提供硬实时响应、任务取消或线程安全承诺。
 
-timerfd和eventfd都使用控制token 0，控制就绪时清timer、下一轮清eventfd；非零连接token
+timerfd和eventfd都使用控制token 0，生产循环在wait前后有限读取控制源；非零连接token
 空间完整保留。重设/取消可以清掉内核旧计数，已取得的epoll批次仍可能含陈旧就绪，读到
-EAGAIN是正常情况。生产资源失败沿现有Sub首因停止/启动回滚处理，清理诊断独立保留。
-正式Sub用真实连接状态驱动固定容器，生命周期策略和即时门禁见下文。
+EAGAIN是正常情况。生产资源失败沿现有Reactor首因停止/启动回滚处理，清理诊断独立保留。
+连接核心用真实连接状态驱动固定容器，生命周期策略和即时门禁见下文。
 
 真实CTest：`net.deadline_queue`用独立map参考验证集合行为；`net.deadline_timer`验证
 真实绝对设时、提前/推迟最小期限、取消、同期限多个条目与一个内核通知、fd 0及有限读取；
-`net.sub_timer`验证两个正式Sub、真实TCP PING、单timer归属、真实到期读取和创建/注册/
-读取/清理失败。故障通过测试静态链接GNU符号包装注入，没有增加生产测试接口。
-基础测试证明范围仅限上述机制；连接策略由下列独立专项证明，不外推任意调度或延迟上界。
+`net.production_topology`验证生产唯一timer、控制注册失败回滚和DEL/close归属；原多Sub计数/线程专属测试已退役。
 
 ## 两类时间语义
 
-`ProtocolSubConfig`末尾新增`idle_timeout_ms`和`request_timeout_ms`，均为有符号毫秒，
+`ProtocolConnectionConfig`末尾新增`idle_timeout_ms`和`request_timeout_ms`，均为有符号毫秒，
 范围0..86400000（一天）；0关闭该策略，负数或超范围在任何线程启动前抛`invalid_argument`。
 `OnlineServerConfig::sub`原样传递；命令行默认关闭，可用`--idle-timeout-ms`/`--request-timeout-ms`或[启动配置](SERVER_CONFIG.md)启用。
 时长转纳秒及与当前时钟相加均检查边界，溢出不截断或回绕。
@@ -57,7 +55,7 @@ EAGAIN是正常情况。生产资源失败沿现有Sub首因停止/启动回滚�
 部分输入不启动request计时；缓存解析、EAGAIN、控制唤醒不刷新idle。SHUT_WR不撤完整请求，
 仍受request期限约束；响应排空后继续缓存和EOF观察。request_id完成后仍可复用。
 
-期限满足`when <= now`即到期。Sub在wait前后扫描实际集合，每次服务前、发送前后以及
+期限满足`when <= now`即到期。Core在wait前后扫描实际集合，每次服务前、发送前后以及
 completion应用前独立判时，因此不依赖timer与结果/I/O在epoll批次中的先后。
 非阻塞send和有限预算仍可跨过期限；发送后检查发现到期时不宣告及时finish，
 但已经交给内核的字节无法撤回。此设施不抢占系统调用、回调或worker，不提供硬实时延迟保证。
@@ -65,29 +63,30 @@ completion应用前独立判时，因此不依赖timer与结果/I/O在epoll批�
 到期先真实删除条目、撤销完整ConnectionId，再注销/关闭连接；不追加TIMEOUT ERROR。
 已发送的部分响应可能被丢弃后缀，客户端须按帧完整性和断连处理。若追加错误并保留连接，
 还需处理部分帧及请求代次的额外合同，当前不采用。已提交worker继续执行或排队，
-结果由所属Sub按身份/期限门禁拒绝；连接关闭后同slot下一代不会接收旧结果。
+结果由所属Reactor按身份/期限门禁拒绝；连接关闭后同slot下一代不会接收旧结果。
 仍要求每accepted任务至多发布一次，不能识别违反此合同且跨合法同ID复用的旧副本。
 
 ## 所有权、预算与失败
 
-每个Sessions预分配一个容量为`max_connections`的`DeadlineQueue`，每slot最多一个idle或request条目。
+连接核心预分配一个容量为`max_connections`的`DeadlineQueue`，每slot最多一个idle或request条目。
 key为slot下标+1；重设同key原位更新，drop真实删除后才复用slot，不积累旧期限，也不持任务/连接指针。
 每轮最多取`max_connections`个到期条目，再按当前最小期限arm；空集合disarm。
-单次容器操作O(capacity)，一轮清理最坏O(capacity²)，当前连接上限1024，存储和工作量均有界，
-没有性能或任意调度公平性声明。两项关闭时不读时钟或额外调用settime，timer资源仍按基础合同存在。
+单次容器操作O(capacity)，一轮清理最坏O(capacity²)，当前生产连接容量默认256、上限65536。
+数量有界不等于大容量下延迟可接受；上限不是性能承诺，高容量期限扫描成本须另测，不能据此宣称公平或实时。
+两项关闭时不读连接期限时钟或额外调用settime，timer资源仍按基础合同存在。
 
 `idle_timeouts`、`request_timeouts`只计真实到期关闭；局部`first_connection_error`记录ETIMEDOUT，
-不自动停止服务。时钟、时间换算、容器不变量或设时失败是定时基础设施首因，停止所属Sub并由
+不自动停止服务。时钟、时间换算、容器不变量或设时失败是定时基础设施首因，停止所属Reactor并由
 正式OnlineServer协调停机，沿原发布者静止屏障清理；不会把基础故障伪装成普通客户端超时。
 结果received仍按applied/stale/rejected精确分类；应用后发送失败不重复记为rejected。
 
 ## 策略验证入口
 
-`net.sub_deadlines`使用真实Sub和流socket，静态链接包装时钟给出独立绝对边界：部分帧刷新、
+`net.connection_core_deadlines`使用真实连接核心和流socket，静态链接包装时钟给出独立绝对边界：部分帧刷新、
 完整帧起点、严格早于/等于期限、completion先于到期扫描、send跨期限、pending暂停idle、
 排空后重启idle、半关闭、真实EAGAIN、slot复用和同期限多条目，以及时钟/设时失败和加法溢出。
-另用不包装时间的真实TCP双Sub验证timer主动关闭空闲连接。
-`net.online_deadlines_1/2`用公开原创夹具的真实SearchService、WorkerPool、TCP和一/双Sub，
+另用不包装时间的单循环的两个真实TCP连接验证timer主动关闭空闲连接。
+`net.online_deadlines_1/2`用公开原创夹具的真实SearchService、WorkerPool、TCP和总容量128/256的单Reactor场景，
 暂停首个真实execute，证明执行中与排队请求均到期、健康PING推进、worker未被取消、
 迟到结果被丢弃，以及新连接复用request_id后业务和缓存PING正常完成。
 GNU包装仅用于测试，不增加生产测试接口；真实查询仍执行。

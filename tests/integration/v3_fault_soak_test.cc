@@ -7,6 +7,7 @@
  * IMPLEMENTATION : 独立快照与黄金帧作为参考；不用生产hook，不把运行时长当性能数据。
  */
 #include "siftwing/net/online_server.hpp"
+#include "siftwing/net/signalfd_source.hpp"
 #include "../support/online_server_fixture.hpp"
 #include <csignal>
 #include <fcntl.h>
@@ -130,7 +131,7 @@ void stopped(const net::OnlineServer &s) {
     const auto report = s.report();
     check(report.stopped && !report.first_error && report.workers.failed == 0, "clean stop report");
     for (const auto &sub : {report.reactor})
-        check(sub.state == net::ProtocolSubState::stopped && sub.active == 0,
+        check(sub.state == net::ReactorState::stopped && sub.active == 0,
             "no active Reactor connection");
 }
 // 只降低当前隔离子进程的软限；异常先关填充fd再恢复原限，不改变硬限/主机配置。

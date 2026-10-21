@@ -59,9 +59,9 @@ worker每次execute持有同一完整快照，贯穿响应版本、缓存键和�
 closed/empty/worker统计不证明调用静止；部分启动失败同样回滚，晚到write前不得关闭eventfd。
 
 配置已由sub_count/sub/main迁移为connection/reactor，报告为单一reactor值，不再有subs向量或
-handed_off计数。连接报告暂复用ProtocolSubStatus值类型，生产最终状态为stopped，不表示Sub线程。
-日志module=sub是连接核心沿用的标签，不代表生产存在Sub；旧性能和主从独立组件只证明原架构，
-无用途组件下线和全面工具迁移留后续批次。测试名_1/_2暂分别选择总容量128/256，不表示I/O线程数。
+handed_off计数。连接报告使用独立ReactorReport/ReactorState，生产最终状态为stopped。
+连接日志module=reactor；旧主从API不保留兼容层，历史日志和旧性能仍只证明原架构，
+无用途的主从生产组件已下线；测试名_1/_2分别选择总容量128/256，不表示I/O线程数。
 
 真实CTest覆盖生产indexer→server→TCP查询/推荐、独立数学/Unicode参考、英文稀疏身份/中文共享只读资源、参数/预算/启动失败，以及部分启动分配故障、worker分配异常固定安全响应、真实结果full、accepted后通知失败和晚到通知停止屏障。插桩范围以实际日志为准；不证明任意调度、DSO内部、真实OOM、质量或性能。
 

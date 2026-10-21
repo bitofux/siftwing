@@ -4,7 +4,7 @@
  * AUTHOR  : bitofux
  * DATE    : 2026-10-15
  * BRIEF   : 单连接等待worker、部分输出与错误响应期间的确定门禁证明
- * IMPLEMENTATION : 真实Sub/WorkerPool，静态系统调用观察和独立黄金线字节。
+ * IMPLEMENTATION : 真实连接核心/WorkerPool，静态系统调用观察和独立黄金线字节。
  */
 #include "../support/completion_fixture.hpp"
 #include <sys/epoll.h>
@@ -59,8 +59,8 @@ extern "C" ssize_t __wrap_send(int fd, const void *bytes, size_t size, int flags
 }
 
 namespace {
-/** @brief 观测fd在移交前设置，直到Sub join才撤销；peer仍由控制者独占。 */
-UniqueFd attach_watched(ProtocolSubReactor &sub, std::string_view initial = {}) {
+/** @brief 观测fd在移交前设置，直到连接核心 join才撤销；peer仍由控制者独占。 */
+UniqueFd attach_watched(ConnectionHarness &sub, std::string_view initial = {}) {
     int pair[2];
     if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, pair))
         throw std::system_error(errno, std::generic_category());
@@ -73,10 +73,7 @@ UniqueFd attach_watched(ProtocolSubReactor &sub, std::string_view initial = {}) 
     received_bytes = 0;
     if (!initial.empty())
         send_all(peer.get(), initial);
-    const auto target = std::get<MainReactorTarget>(sub.target());
-    check(try_handoff_and_notify(*target.queue, source, target.wakeup_fd).handoff
-              == FdHandoffResult::accepted,
-        "watched stream handed to real Sub");
+    check(!sub.adopt(source), "watched stream handed to real 连接核心");
     return peer;
 }
 void eof(int fd) {
@@ -89,11 +86,11 @@ void eof(int fd) {
     });
     check(true, "EOF follows all complete responses without extra byte");
 }
-/** @brief 另一连接的PING往返证明同一Sub仍在服务；与被观察流的业务进度无关。 */
+/** @brief 另一连接的PING往返证明同一连接核心仍在服务；与被观察流的业务进度无关。 */
 void checkpoint(int fd, std::uint64_t id) {
     send_all(fd, wire(1, id));
     const auto expected = wire(0x8001, id);
-    check(receive(fd, expected.size()) == expected, "other connection progresses on same Sub");
+    check(receive(fd, expected.size()) == expected, "other connection progresses on same 连接核心");
 }
 /** @brief 真实worker持有唯一任务；控制者释放前不能构造或发布完成。 */
 class PausedJob final : public WorkerTask {
@@ -119,12 +116,12 @@ private:
 void worker_gate() {
     std::atomic<bool> entered{false}, release{false}; // 生命覆盖pool析构中的失败清理join。
     CaptureSubmitter sink;
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.request_submitter = &sink;
     config.reactor_id = 25;
-    ProtocolSubReactor sub(config);
+    ConnectionHarness sub(config);
     WorkerPool pool(1, 2);
-    check(!sub.start(), "worker gate Sub ready");
+    check(!sub.start(), "worker gate 连接核心 ready");
     const auto target = std::get<CompletionTarget>(sub.completion_target());
     auto peer = attach_watched(sub);
     auto control = attach(sub);
@@ -146,7 +143,7 @@ void worker_gate() {
         checkpoint(control.get(), n);
     check(read_calls.load() == reads && !sink.requests.try_pop(),
         "waiting worker performs no recv or second submission");
-    // 在途上限属于连接；同Sub另一连接仍可向提交器交付业务。
+    // 在途上限属于连接；同连接核心另一连接仍可向提交器交付业务。
     send_all(control.get(), wire(3, 77));
     auto independent = take_request(sink);
     check(independent->route() != route, "other connection business is independently admitted");
@@ -165,21 +162,21 @@ void worker_gate() {
     const auto tail = wire(0x8004, 77, "{\"next\":2}") + wire(0x8001, UINT64_MAX);
     check(receive(peer.get(), tail.size()) == tail, "kernel tail and PING remain ordered");
     eof(peer.get());
-    pool.join(); // 覆盖完整publish/notify；随后才允许Sub撤目标和close。
+    pool.join(); // 覆盖完整publish/notify；随后才允许连接核心撤目标和close。
     check(pool.report().succeeded == 1 && pool.report().failed == 0,
         "real worker completed exactly once");
-    stop_sub(sub);
+    stop_core(sub);
     watched = -1;
 }
 void output_gate() {
     CaptureSubmitter sink;
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.request_submitter = &sink;
     config.max_body_bytes = 65536;
     config.write_byte_budget = 5;
     config.io_attempt_budget = 2;
-    ProtocolSubReactor sub(config);
-    check(!sub.start(), "output gate Sub ready");
+    ConnectionHarness sub(config);
+    check(!sub.start(), "output gate 连接核心 ready");
     const auto target = std::get<CompletionTarget>(sub.completion_target());
     hold_output = true;
     const auto packet = wire(3, 77) + wire(4, 77) + wire(1, 78);
@@ -229,7 +226,7 @@ void output_gate() {
     check(receive(peer.get(), tail.size()) == tail, "buffered order after drain");
     check(::shutdown(peer.get(), SHUT_WR) == 0, "half close after output gate");
     eof(peer.get());
-    stop_sub(sub);
+    stop_core(sub);
     watched = -1;
 }
 void error_gates() {
@@ -239,10 +236,10 @@ void error_gates() {
             sink.refusal = TaskSubmitResult::full;
         if (scenario == 2)
             sink.refusal = TaskSubmitResult::closed;
-        ProtocolSubConfig config;
+        ProtocolConnectionConfig config;
         config.request_submitter = &sink;
-        ProtocolSubReactor sub(config);
-        check(!sub.start(), "error gate Sub ready");
+        ConnectionHarness sub(config);
+        check(!sub.start(), "error gate 连接核心 ready");
         const auto target = std::get<CompletionTarget>(sub.completion_target());
         hold_output = true;
         auto peer = attach_watched(sub);
@@ -287,7 +284,7 @@ void error_gates() {
                 "valid request continues after error drain");
         }
         eof(peer.get());
-        stop_sub(sub);
+        stop_core(sub);
         watched = -1;
     }
 }
@@ -305,6 +302,7 @@ int main(int argc, char **argv) {
         error_gates();
     else
         return 2;
-    check(fd_count() == baseline, "all watched connections, worker and Sub resources reclaimed");
+    check(
+        fd_count() == baseline, "all watched connections, worker and 连接核心 resources reclaimed");
     std::cout << "single inflight " << suite << " checks=" << checks << " failures=0\n";
 }

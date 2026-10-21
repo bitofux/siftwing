@@ -8,7 +8,7 @@ timerfd及全部客户端注册到同一个LT epoll；没有Sub线程、额外�
 一次 epoll 批先检查控制来源，再决定是否 accept。同批信号和监听就绪时不再接入；
 第一条受管信号保存在shutdown_signal()，后续合法run_once保留它且不继续accept。
 信号请求保持结果目标开放，不提前撤销；I/O/发布故障仍沿原故障路径。
-旧独立MainReactor仍保留MainReactorStop::shutdown_requested组件合同，不是生产装配。
+旧MainReactor接口已退役，不保留兼容层。
 
 `OnlineServer::run_once` 对正常信号返回空 error_code，创建线程须同时观察
 `shutdown_signal()`（0 或首个 SIGINT/SIGTERM），再自行选择
@@ -18,11 +18,10 @@ timerfd及全部客户端注册到同一个LT epoll；没有Sub线程、额外�
 
 ## 库调用者与所有权
 
-`OnlineServerConfig::reactor.termination_signals`默认false。独立Main使用原配置。两者都不修改
+`OnlineServerConfig::reactor.termination_signals`默认false，不修改
 调用者信号掩码；显式启用前，调用者须保证所有可能接收进程信号的线程已经屏蔽两信号并保持。
 适配层仅能预检当前线程，不能证明其他线程正确；在线程启动后补屏蔽主线程不足以满足合同。
 接口与有限读取边界见[适配层](../include/siftwing/net/signalfd_source.hpp)、
-[Main](../include/siftwing/net/main_reactor.hpp)和
 [OnlineServer](../include/siftwing/net/online_server.hpp)。
 
 Reactor在所属线程注销、关闭自己的signalfd一次，不交给worker。读取最多64次，
@@ -41,8 +40,7 @@ pending 信号；自动恢复掩码可能触发默认终止，因此入口不使
 
 ## 验证入口
 
-`net.signalfd` 使用真实进程信号、TCP和可控系统错误，验证 mask、继承、fd0、有限读取、
-同批优先、单调请求、错误优先、失败回滚及 DEL/close。
+`net.signalfd`保留mask、继承、fd0、有限读取和原语错误；`net.production_topology`使用真实OnlineServer验证同批信号/监听优先、I/O错误优先、控制注册/定时器创建回滚与DEL/close。
 `net.signalfd_online` 验证执行中/排队查询和暂停中的真实加载遇信号后，仍沿原排空、Loader
 及worker完整发布/join、控制fd回收屏障收口，加载完成不自动发布。
 `net.signalfd_process` 检查真实服务所有线程的 `/proc` 掩码、退出及日志，并用同一入口源码

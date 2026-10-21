@@ -37,7 +37,7 @@ flowchart LR
 epoll、Completion/eventfd、timerfd和signalfd；监听与客户端socket均非阻塞，不再移交fd。
 worker仍是另一组固定线程，不轮询或发送socket；可选Loader独立机制保持。
 关闭时同线程主动推进网络排空，完整worker发布/通知与join后才释放通知资源，见[在线服务](ONLINE_SEARCH.md)。
-[旧线程拓扑](THREAD_TOPOLOGY.md)保留主从组件合同，全面下线核对属于后续迁移批次，不能据旧图判断当前生产线程。
+[线程拓扑](THREAD_TOPOLOGY.md)说明当前唯一Reactor与worker边界；旧主从公开组件已退役，旧图/成绩不代表当前生产实现。
 
 PING、SERVER_INFO在Reactor内处理。SEARCH/SUGGEST经单在途门禁提交拥有请求，由worker执行查询或推荐，
 发布拥有响应；同一Reactor校验ConnectionId、generation、request_id、等待状态及期限后应用。

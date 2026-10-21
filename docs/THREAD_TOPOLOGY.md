@@ -1,8 +1,32 @@
-# Main-Sub Reactor 线程拓扑与所有权合同
+# 单 Reactor＋业务线程池：线程与所有权
 
-> 主从架构历史/独立组件合同。生产OnlineServer已在M4.02改为应用调用线程驱动唯一Reactor＋
-> 原worker池，取消跨I/O线程fd移交，详见[当前在线服务](ONLINE_SEARCH.md)。本文后续Main/Sub
-> 图和生命周期只描述旧组件，不代表当前生产线程；无用途组件下线及全面工具核对留下一批。
+## 当前生产合同
+
+应用创建线程逐轮调用[OnlineServer](../include/siftwing/net/online_server.hpp)::run_once，独占一个LT epoll、
+Listener、全部连接/Core/身份/期限、一个结果eventfd、一个timerfd和可选signalfd。
+accept4取得NONBLOCK/CLOEXEC源后直接注册，没有Main→Sub交接，不保留旧主从公开API兼容层。
+默认调用线程＋4个worker；可选Loader另加线程。单Reactor不是整个进程单线程。
+
+```text
+客户端 ⇄ 唯一Reactor / Core ⇄ 拥有任务 → 原worker → Completion队列＋eventfd → 同一Core
+可选Loader → 完整候选 → 调用线程显式发布（不自动切换）
+```
+
+SEARCH/SUGGEST、查询缓存、摘要与序列化仍由worker执行；worker不借Connection，不操作客户端socket。
+总连接/Completion条目默认各256、范围1..65536；控制token0和非零连接token分开，完整身份/等待/期限门禁保持。
+报告是独立[ReactorReport/ReactorState](../include/siftwing/net/reactor_report.hpp)，由创建线程串行观察；
+idle→running→draining/quiescing→stopped，不再有Sub starting/joined。连接日志module为reactor；旧日志不回写。
+
+shutdown在同线程主动推进已在途网络至无连接或绝对期限，再完整停止Loader/worker、等待最后发布和通知，
+最后撤目标及销毁Core/控制fd。网络期限不取消已接纳任务，不是总退出硬上限；closed/empty或busy=0不代替静止。
+新`net.production_topology`观测真实生产I/O/worker归属、唯一epoll/timer/eventfd、信号优先和资源失败收口；
+`net.single_reactor_wiring`覆盖全局256预算与不调用run_once不推进。测试中的ConnectionHarness只用于
+真实Core的隔离故障/协议测试，不是另一生产框架；具体运行是否通过须读当前构建和CTest证据。
+
+## 历史资料：旧Main/Sub（以下不是当前API或操作指南）
+
+以下正文保留原架构的概念/生命周期说明；对应公开实现及专属测试已退役，旧代码由迁移前commit定位。
+旧性能只证明原架构，不能据此声称新架构吞吐改善。
 
 本文冻结职责、资源转交和生命周期边界。已有可执行网络命令包括
 [单循环协议探针](PROTOCOL_LOOP.md)与[在线搜索服务](ONLINE_SEARCH.md)；已有独立线程的[Sub生命周期](SUB_REACTOR.md)，

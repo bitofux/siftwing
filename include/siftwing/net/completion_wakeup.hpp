@@ -3,7 +3,7 @@
  * FILE    : completion_wakeup.hpp
  * AUTHOR  : bitofux
  * DATE    : 2026-10-14
- * BRIEF   : 拥有结果的两阶段发布通知与所属Sub的请求提交边界
+ * BRIEF   : 拥有结果的两阶段发布通知与所属Reactor的请求提交边界
  */
 #pragma once
 #include "siftwing/concurrency/completion_queue.hpp"
@@ -11,10 +11,10 @@
 #include "siftwing/net/eventfd_wakeup.hpp"
 
 namespace siftwing::net {
-/** @brief 同一Sub的稳定发布借用；不授予Connection或身份表访问，release后失效。 */
+/** @brief 同一Reactor的稳定发布借用；不授予Connection或身份表访问，release后失效。 */
 struct CompletionTarget {
     concurrency::CompletionQueue *queue; ///< 真实结果存储；控制者保证整个发布调用期间存活。
-    int wakeup_fd; ///< 所属Sub的非阻塞普通eventfd；须等所有发布及通知返回后才关闭。
+    int wakeup_fd; ///< 所属Reactor的非阻塞普通eventfd；须等所有发布及通知返回后才关闭。
 };
 /** @brief 入队与通知独立；通知失败不能撤销accepted，也不能重投已消费的源。 */
 struct CompletionWakeupResult {
@@ -45,10 +45,10 @@ struct CompletionWakeupResult {
 /**
  * @brief 所属I/O线程调用的可选提交接口；只交接拥有请求，不执行查询或等待空位
  * @note
- *     控制者在start前配置，并保证到Sub join返回才销毁。实现可组合WorkerPool，
+ *     控制者在创建连接核心前配置，并保证到服务完整停止返回才销毁。实现可组合WorkerPool，
  *     accepted须移空source，拒绝保持，异常只能发生在提交前；每个接纳任务至多发布一个结果。
  *     worker只持任务/结果/CompletionTarget，不持Connection、socket或身份表借用。
- *     不向Sub同步回调应用结果，不从try_submit停止/join同一Sub。生产查询适配由接入模块定义。
+ *     不向Reactor同步回调应用结果，不从try_submit停止/join同一Reactor。生产查询适配由接入模块定义。
  *     当前协议允许重复request_id；同连接同ID再次使用后无法识别违反“至多一个结果”合同的旧副本。
  */
 class RoutedRequestSubmitter {
@@ -57,12 +57,12 @@ public:
     /**
      * @brief 以TaskSubmitResult表达接纳，所有拒绝均保持源
      * @param[in,out] source
-     *     有效独占请求，成功交接后为空，失败由Sub释放或生成受信错误。
+     *     有效独占请求，成功交接后为空，失败由Reactor释放或生成受信错误。
      *
      * @return
      *     accepted/full/closed/invalid_task；不等待容量，可能等待实现的mutex。
      * @throws
-     *     提交前分配/锁异常传播，Sub关闭该连接，不泄露异常文本到线协议。
+     *     提交前分配/锁异常传播，Reactor关闭该连接，不泄露异常文本到线协议。
      */
     [[nodiscard]] virtual concurrency::TaskSubmitResult try_submit(
         std::unique_ptr<concurrency::RoutedSearchTask> &source) = 0;

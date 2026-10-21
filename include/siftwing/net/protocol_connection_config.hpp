@@ -16,7 +16,7 @@ class Logger;
 namespace siftwing::net {
 /**
  * @brief 所属I/O线程的连接预算与稳定协作借用；不创建线程或fd移交队列
- * @note OnlineServer将总连接/结果默认设置为256；旧独立Sub仍默认128且限制至1024。
+ * @note OnlineServer将总连接/结果默认设置为256；独立连接核心配置默认128。
  *     全部字段启动前冻结，元信息借用覆盖Core全部调用；容量不是RSS/CPU硬限。
  */
 struct ProtocolConnectionConfig {

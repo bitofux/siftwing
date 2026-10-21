@@ -270,8 +270,8 @@ const char *module_name(Module module) {
     switch (module) {
         case Module::server:
             return "server";
-        case Module::sub:
-            return "sub";
+        case Module::reactor:
+            return "reactor";
         case Module::worker:
             return "worker";
         case Module::cache:

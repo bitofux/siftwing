@@ -78,7 +78,7 @@ class ProtocolConnectionCore::Impl final {
     int epoll_;
     int timer_; // 外层I/O拥有的timerfd借用，覆盖Core完整生命周期。
     const ProtocolConnectionConfig &config_;
-    ProtocolSubStatus &report_;
+    ReactorReport &report_;
     metrics::ConnectionIo closed_io_; // 关闭前只合并一次，后续采样再加仍活跃连接，避免重复累计。
     const std::atomic<std::int64_t> &drain_requested_; // 控制者只发布期限，连接仍由此线程处理。
     DeadlineTime drain_deadline_ = 0;
@@ -94,7 +94,7 @@ class ProtocolConnectionCore::Impl final {
             return;
         logging::Record record;
         record.level = level;
-        record.module = logging::Module::sub;
+        record.module = logging::Module::reactor;
         record.event = event;
         record.code = reason;
         record.connection = identity;
@@ -441,7 +441,7 @@ public:
     Impl(int epoll,
         int timer,
         const ProtocolConnectionConfig &config,
-        ProtocolSubStatus &report,
+        ReactorReport &report,
         const std::atomic<std::int64_t> &drain_requested)
         : slots_(config.max_connections), epoll_(epoll), timer_(timer), config_(config),
           report_(report), drain_requested_(drain_requested), deadlines_(config.max_connections),
@@ -454,7 +454,7 @@ public:
         const bool beginning = !drain_deadline_;
         drain_deadline_ = requested;
         report_.drain_started = true;
-        report_.state = ProtocolSubState::draining;
+        report_.state = ReactorState::draining;
         const bool expired = now() >= drain_deadline_;
         if (!beginning && !expired)
             return;
@@ -547,33 +547,7 @@ public:
                 service(slot);
         }
     }
-    void tick(int timeout) {
-        const bool scheduled = prepare_round();
-        std::array<epoll_event, 64> events{};
-        const int count = ::epoll_wait(
-            epoll_, events.data(), static_cast<int>(events.size()), scheduled ? 0 : timeout);
-        if (count < 0) {
-            if (errno != EINTR)
-                throw std::system_error(code(errno));
-            return;
-        }
-        if (count > static_cast<int>(events.size()))
-            throw std::system_error(code(EIO));
-        check_deadlines(); // 同钟裁决先于I/O，事件顺序不决定超时胜负。
-        for (int i = 0; i < count; ++i) {
-            const auto token = events[static_cast<std::size_t>(i)].data.u64;
-            if (token == 0) {
-                if (events[static_cast<std::size_t>(i)].events & (EPOLLERR | EPOLLHUP))
-                    throw std::system_error(code(EIO));
-                // 两种控制fd共用0，不侵占Connection非零token；陈旧就绪读到EAGAIN正常。
-                const auto timer = drain_deadline_timer(timer_);
-                if (timer.state == TimerDrainState::failed)
-                    throw std::system_error(timer.error);
-                continue; // eventfd下轮清通知；实际条目已按同钟时间检查。
-            }
-            dispatch(token, events[static_cast<std::size_t>(i)].events);
-        }
-    }
+
     void complete(const concurrency::RoutedCompletion &result) {
         observe_drain();
         increment_counter(report_.completion_received);
@@ -647,7 +621,7 @@ public:
 ProtocolConnectionCore::ProtocolConnectionCore(int epoll,
     int timer,
     const ProtocolConnectionConfig &config,
-    ProtocolSubStatus &report,
+    ReactorReport &report,
     const std::atomic<std::int64_t> &drain_requested)
     : impl_(std::make_unique<Impl>(epoll, timer, config, report, drain_requested)) {}
 ProtocolConnectionCore::~ProtocolConnectionCore() noexcept = default;
@@ -657,9 +631,7 @@ bool ProtocolConnectionCore::drained() {
 void ProtocolConnectionCore::admit(UniqueFd &source) {
     impl_->admit(source);
 }
-void ProtocolConnectionCore::tick(int timeout) {
-    impl_->tick(timeout);
-}
+
 bool ProtocolConnectionCore::prepare_round() {
     return impl_->prepare_round();
 }

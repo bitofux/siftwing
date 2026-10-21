@@ -3,7 +3,7 @@
  * FILE    : completion_wakeup_test.cc
  * AUTHOR  : bitofux
  * DATE    : 2026-10-14
- * BRIEF   : 真实Sub应用门禁、半关闭/缓存继续及确定同fd代次复用的独立字节参考
+ * BRIEF   : 真实连接核心应用门禁、半关闭/缓存继续及确定同fd代次复用的独立字节参考
  */
 #include "../support/completion_fixture.hpp"
 #include <sys/eventfd.h>
@@ -23,11 +23,12 @@ int main() {
     const auto baseline = fd_count();
     for (const auto capacity : {0U, 1025U}) {
         for (bool budget : {false, true}) {
-            ProtocolSubConfig config;
-            (budget ? config.completion_budget : config.completion_capacity) = capacity;
+            ProtocolConnectionConfig config;
+            (budget ? config.completion_budget : config.completion_capacity) =
+                (!budget && capacity == 1025U) ? 65537U : capacity;
             bool rejected = false;
             try {
-                ProtocolSubReactor bad(config);
+                ConnectionHarness bad(config);
             } catch (const std::invalid_argument &) {
                 rejected = true;
             }
@@ -61,7 +62,7 @@ int main() {
     }
     {
         CaptureSubmitter sink;
-        ProtocolSubConfig config;
+        ProtocolConnectionConfig config;
         config.reactor_id = 7;
         config.request_submitter = &sink;
         config.read_byte_budget = 7;
@@ -69,19 +70,19 @@ int main() {
         config.io_attempt_budget = 1;
         config.completion_budget = 1;
         config.completion_capacity = 16;
-        ProtocolSubReactor sub(config);
+        ConnectionHarness sub(config);
         check(std::holds_alternative<std::error_code>(sub.completion_target()),
             "no completion target before ready");
-        check(!sub.start(), "async Sub ready");
+        check(!sub.start(), "async 连接核心 ready");
         auto target = std::get<CompletionTarget>(sub.completion_target());
-        check(target.wakeup_fd == std::get<MainReactorTarget>(sub.target()).wakeup_fd,
+        check(target.wakeup_fd == sub.wakeup_fd(),
             "fd handoff and results share one notification fd");
         auto peer = attach(sub);
         send_all(peer.get(), wire(3, 77) + wire(1, 78) + wire(4, 79));
         check(::shutdown(peer.get(), SHUT_WR) == 0, "request half-close keeps response direction");
         auto request = take_request(sink);
         check(request->payload()->request()->request_id == 77 && request->route().reactor_id == 7,
-            "Sub submits actual owned request and route");
+            "连接核心 submits actual owned request and route");
         auto wrong_id = fabricated_task(request->route(), 99);
         publish(target, completion(*wrong_id));
         auto wrong_type = fabricated_task(request->route(), 77, MessageType::suggest_request);
@@ -103,7 +104,7 @@ int main() {
         publish(target, completion(*suggestion, "{\"suggest\":true}"));
         const auto expected = wire(0x8004, 79, "{\"suggest\":true}");
         check(receive(peer.get(), expected.size()) == expected,
-            "suggest result returns on owning Sub");
+            "suggest result returns on owning 连接核心");
         await([&] {
             return sub.status().responses == 3 && sub.status().active == 0;
         });
@@ -111,19 +112,19 @@ int main() {
         check(report.completion_received == 5 && report.completion_applied == 2
                   && report.completion_rejected == 3 && !report.first_error,
             "wrong/duplicate results preserve current request");
-        stop_sub(sub);
+        stop_core(sub);
         check(std::holds_alternative<std::error_code>(sub.completion_target()),
             "released completion target unavailable");
     }
     {
         CaptureSubmitter sink;
-        ProtocolSubConfig config;
+        ProtocolConnectionConfig config;
         config.reactor_id = 31;
         config.request_submitter = &sink;
         config.max_connections = 1;
         config.completion_budget = 1;
-        ProtocolSubReactor sub(config);
-        check(!sub.start(), "reuse Sub ready");
+        ConnectionHarness sub(config);
+        check(!sub.start(), "reuse 连接核心 ready");
         const auto target = std::get<CompletionTarget>(sub.completion_target());
         UniqueFd placeholder(::open("/dev/null", O_RDONLY | O_CLOEXEC));
         const int reserved = ::fcntl(placeholder.get(), F_DUPFD_CLOEXEC, 160);
@@ -173,16 +174,16 @@ int main() {
         check(report.completion_received == 48 && report.completion_stale == 32
                   && report.completion_applied == 16,
             "generation oracle independent of arrival order");
-        stop_sub(sub);
+        stop_core(sub);
     }
     for (const auto refusal : {TaskSubmitResult::full, TaskSubmitResult::closed}) {
         CaptureSubmitter sink;
         sink.refusal = refusal;
-        ProtocolSubConfig config;
+        ProtocolConnectionConfig config;
         config.request_submitter = &sink;
         config.max_body_bytes = 128;
-        ProtocolSubReactor sub(config);
-        check(!sub.start(), "refusal Sub ready");
+        ConnectionHarness sub(config);
+        check(!sub.start(), "refusal 连接核心 ready");
         auto peer = attach(sub);
         send_all(peer.get(), wire(3, 77));
         const auto expected = refusal == TaskSubmitResult::full
@@ -190,7 +191,7 @@ int main() {
                                   : wire(0xffff, 77, "{\"message\":\"stopping\"}", 3);
         check(receive(peer.get(), expected.size()) == expected,
             "submission refusal has bounded safe error");
-        stop_sub(sub);
+        stop_core(sub);
     }
     check(fd_count() == baseline, "all ready/reuse/refusal resources reclaimed");
     std::cout << "completion wakeup checks=" << checks << '\n';

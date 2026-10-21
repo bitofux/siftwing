@@ -5,7 +5,8 @@
  * DATE    : 2026-10-16
  * BRIEF   : 真实信号与可控系统错误证明有限读取、同批优先及资源回滚
  */
-#include "siftwing/net/main_reactor.hpp"
+#include "siftwing/net/signalfd_source.hpp"
+#include "siftwing/net/eventfd_wakeup.hpp"
 #include <arpa/inet.h>
 #include <csignal>
 #include <cstdlib>
@@ -46,18 +47,7 @@ UniqueFd signal_fd() {
     check(std::holds_alternative<UniqueFd>(r), "real signal source");
     return std::move(std::get<UniqueFd>(r));
 }
-UniqueFd notify_fd() {
-    auto r = create_eventfd_wakeup();
-    check(std::holds_alternative<UniqueFd>(r), "borrowed target eventfd");
-    return std::move(std::get<UniqueFd>(r));
-}
-std::unique_ptr<MainReactor> main_loop(FdHandoffQueue &queue, int wakeup) {
-    MainReactorConfig config;
-    config.termination_signals = true;
-    auto r = MainReactor::create({{&queue, wakeup}}, {}, config);
-    check(std::holds_alternative<std::unique_ptr<MainReactor>>(r), "complete signal Main");
-    return std::move(std::get<std::unique_ptr<MainReactor>>(r));
-}
+
 void clear_pending() {
     auto fd = signal_fd();
     check(drain_termination_signalfd(fd.get()).state == SignalFdDrainState::drained,
@@ -157,22 +147,6 @@ int main() {
     const auto baseline = fd_count();
     check(std::get<std::error_code>(create_termination_signalfd()).value() == EINVAL,
         "reject missing mask");
-    {
-        FdHandoffQueue queue(1);
-        auto notification = notify_fd();
-        auto main = MainReactor::create({{&queue, notification.get()}});
-        check(std::holds_alternative<std::unique_ptr<MainReactor>>(main),
-            "default Main needs no mask");
-        sigset_t mask;
-        ::pthread_sigmask(SIG_BLOCK, nullptr, &mask);
-        check(::sigismember(&mask, SIGTERM) == 0 && ::sigismember(&mask, SIGUSR1) == 1,
-            "default Main preserves mask");
-        MainReactorConfig config;
-        config.termination_signals = true;
-        const auto refused = MainReactor::create({{&queue, notification.get()}}, {}, config);
-        check(std::get<std::error_code>(refused).value() == EINVAL && !queue.status().closed,
-            "enabled Main refuses before target mutation");
-    }
     mask_error = EAGAIN;
     check(block_termination_signals().value() == EAGAIN, "pthread direct error beats errno");
     check(std::get<std::error_code>(create_termination_signalfd()).value() == EAGAIN,
@@ -252,7 +226,7 @@ int main() {
         read_error = 0;
     }
     watched = -1;
-    // fd0在本单线程测试中临时借槽，恢复stdin后再进行Main验证。
+    // fd0在本单线程测试中临时借槽，恢复stdin后结束原语验证；生产组合另测。
     const int saved = ::fcntl(STDIN_FILENO, F_DUPFD_CLOEXEC, 3);
     check(saved >= 0 && ::close(STDIN_FILENO) == 0, "save stdin");
     {
@@ -261,88 +235,9 @@ int main() {
     }
     watched = -1;
     check(::dup2(saved, STDIN_FILENO) == 0 && ::close(saved) == 0, "restore stdin");
-    for (int failure = 0; failure < 3; ++failure) {
-        FdHandoffQueue queue(1);
-        auto notification = notify_fd();
-        const auto before = fd_count();
-        adds = 0;
-        ctl_failure = failure;
-        MainReactorConfig config;
-        config.termination_signals = true;
-        auto r = MainReactor::create({{&queue, notification.get()}}, {}, config);
-        ctl_failure = -1;
-        watched = -1;
-        check(std::get<std::error_code>(r).value() == ENOSPC && fd_count() == before
-                  && !queue.status().closed && !notify_eventfd(notification.get()),
-            "every ADD failure rolls back owned fds, keeps borrowed target");
-    }
-    for (const int signo : {SIGTERM, SIGINT}) {
-        FdHandoffQueue queue(1);
-        auto notification = notify_fd();
-        auto main = main_loop(queue, notification.get());
-        UniqueFd peer(::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
-        sockaddr_in address{};
-        address.sin_family = AF_INET;
-        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        address.sin_port = htons(main->port());
-        check(::connect(peer.get(), reinterpret_cast<sockaddr *>(&address), sizeof(address)) == 0
-                  && ::kill(::getpid(), signo) == 0,
-            "listener and signal both ready");
-        const auto r = main->run_once(100);
-        check(r.events == 2 && r.stop == MainReactorStop::shutdown_requested
-                  && r.signal_number == signo && !r.accept_attempts && !r.accepted
-                  && !queue.status().closed,
-            "same batch signal precedes accept without closing target");
-        const auto waited = waits, read = reads;
-        for (int n = 0; n < 3; ++n) {
-            const auto again = main->run_once(0);
-            check(again.stop == MainReactorStop::shutdown_requested && again.signal_number == signo
-                      && !again.events && !again.accept_attempts && reads == read
-                      && waits == waited,
-                "monotonic repeat has no wait/read/accept");
-        }
-        check(main->run_once(-1).stop == MainReactorStop::invalid_timeout,
-            "invalid timeout keeps original priority");
-        check(::kill(::getpid(), signo == SIGINT ? SIGTERM : SIGINT) == 0,
-            "pending repeated termination");
-        deletes = closes = 0;
-        close_order = true;
-        check(!main->close() && !main->close() && deletes == 1 && closes == 1 && close_order,
-            "DEL before exactly one close");
-        check(main->run_once(0).stop == MainReactorStop::closed && queue.status().closed
-                  && !notify_eventfd(notification.get()),
-            "explicit close supersedes request, borrowed fd remains");
-        watched = -1;
-        clear_pending();
-    }
-    for (int mode = 0; mode < 4; ++mode) {
-        FdHandoffQueue queue(1);
-        auto notification = notify_fd();
-        auto main = main_loop(queue, notification.get());
-        check(::kill(::getpid(), SIGTERM) == 0, "send before stop/error");
-        if (mode == 0)
-            check(!main->request_stop(), "immediate stop");
-        if (mode == 1)
-            read_error = EIO;
-        if (mode == 2)
-            corrupt_batch = true;
-        if (mode == 3)
-            wait_error = EBADF;
-        const auto r = main->run_once(100);
-        read_error = 0;
-        corrupt_batch = false;
-        wait_error = 0;
-        check(mode == 0 ? r.stop == MainReactorStop::closed
-                        : r.stop == MainReactorStop::failed
-                              && r.error.value() == (mode == 3 ? EBADF : EIO),
-            "stop and I/O failures outrank normal signal");
-        check(!r.signal_number && queue.status().closed,
-            "failure never masquerades as graceful request");
-        watched = -1;
-        clear_pending();
-    }
+    clear_pending();
     check(fd_count() == baseline, "all descriptors reclaimed");
     check(::pthread_sigmask(SIG_SETMASK, &original, nullptr) == 0,
         "restore test-only mask after draining pending");
-    std::cout << checks << " signal source and Main checks passed\n";
+    std::cout << checks << " signal source checks passed\n";
 }

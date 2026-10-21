@@ -10,18 +10,29 @@ if(SIFTWING_BUILD_CODEC_FUZZER AND
     message(FATAL_ERROR "Codec libFuzzer requires BUILD_TESTING, Clang and SIFTWING_ENABLE_SANITIZERS")
 endif()
 if(BUILD_TESTING)
+    add_executable(siftwing_production_topology_test tests/integration/production_topology_test.cc)
+    target_link_libraries(siftwing_production_topology_test PRIVATE siftwing_online_server siftwing_json)
+    target_link_options(siftwing_production_topology_test PRIVATE
+        -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE
+        -Wl,--wrap=epoll_create1 -Wl,--wrap=epoll_ctl -Wl,--wrap=epoll_wait -Wl,--wrap=eventfd
+        -Wl,--wrap=timerfd_create -Wl,--wrap=accept4 -Wl,--wrap=recv -Wl,--wrap=send -Wl,--wrap=read -Wl,--wrap=close)
+    add_test(NAME net.production_topology COMMAND Python3::Interpreter -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/worker_saturation_test.py"
+        --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
+        --native "$<TARGET_FILE:siftwing_production_topology_test>" --capacity-scale 1)
+    set_tests_properties(net.production_topology PROPERTIES TIMEOUT 60)
     foreach(kind IN ITEMS test concurrency_test failure_test)
         add_executable(siftwing_versioned_lru_${kind} tests/unit/versioned_lru_${kind}.cc)
         target_link_libraries(siftwing_versioned_lru_${kind} PRIVATE siftwing_versioned_lru)
         add_test(NAME cache.versioned_lru_${kind} COMMAND siftwing_versioned_lru_${kind})
         set_tests_properties(cache.versioned_lru_${kind} PROPERTIES TIMEOUT 30)
     endforeach()
-    add_executable(siftwing_sub_deadlines_test tests/integration/sub_deadlines_test.cc)
-    target_link_libraries(siftwing_sub_deadlines_test PRIVATE siftwing_protocol_sub_reactor)
-    target_link_options(siftwing_sub_deadlines_test PRIVATE
+    add_executable(siftwing_connection_core_deadlines_test tests/integration/connection_core_deadlines_test.cc)
+    target_link_libraries(siftwing_connection_core_deadlines_test PRIVATE siftwing_online_server)
+    target_link_options(siftwing_connection_core_deadlines_test PRIVATE
         -Wl,--wrap=clock_gettime -Wl,--wrap=timerfd_settime -Wl,--wrap=recv -Wl,--wrap=send -Wl,--wrap=epoll_wait)
-    add_test(NAME net.sub_deadlines COMMAND siftwing_sub_deadlines_test)
-    set_tests_properties(net.sub_deadlines PROPERTIES TIMEOUT 45)
+    add_test(NAME net.connection_core_deadlines COMMAND siftwing_connection_core_deadlines_test)
+    set_tests_properties(net.connection_core_deadlines PROPERTIES TIMEOUT 45)
     add_executable(siftwing_deadline_queue_test tests/unit/deadline_queue_test.cc)
     target_link_libraries(siftwing_deadline_queue_test PRIVATE siftwing_deadline)
     add_test(NAME net.deadline_queue COMMAND siftwing_deadline_queue_test)
@@ -30,21 +41,16 @@ if(BUILD_TESTING)
     target_link_options(siftwing_deadline_timer_test PRIVATE
         -Wl,--wrap=timerfd_create -Wl,--wrap=timerfd_settime -Wl,--wrap=clock_gettime -Wl,--wrap=read)
     add_test(NAME net.deadline_timer COMMAND siftwing_deadline_timer_test)
-    add_executable(siftwing_sub_timer_test tests/integration/sub_timer_test.cc)
-    target_link_libraries(siftwing_sub_timer_test PRIVATE siftwing_protocol_sub_reactor)
-    target_link_options(siftwing_sub_timer_test PRIVATE
-        -Wl,--wrap=timerfd_create -Wl,--wrap=epoll_ctl -Wl,--wrap=read -Wl,--wrap=close)
-    add_test(NAME net.sub_timer COMMAND siftwing_sub_timer_test)
-    set_tests_properties(net.deadline_queue net.deadline_timer net.sub_timer PROPERTIES TIMEOUT 30)
+    set_tests_properties(net.deadline_queue net.deadline_timer  PROPERTIES TIMEOUT 30)
     add_executable(siftwing_completion_wakeup_test tests/integration/completion_wakeup_test.cc)
-    target_link_libraries(siftwing_completion_wakeup_test PRIVATE siftwing_protocol_sub_reactor)
+    target_link_libraries(siftwing_completion_wakeup_test PRIVATE siftwing_online_server)
     add_test(NAME net.completion_wakeup COMMAND siftwing_completion_wakeup_test)
     add_executable(siftwing_completion_wakeup_concurrency_test tests/integration/completion_wakeup_concurrency_test.cc)
-    target_link_libraries(siftwing_completion_wakeup_concurrency_test PRIVATE siftwing_protocol_sub_reactor siftwing_worker_pool)
+    target_link_libraries(siftwing_completion_wakeup_concurrency_test PRIVATE siftwing_online_server siftwing_worker_pool)
     target_link_options(siftwing_completion_wakeup_concurrency_test PRIVATE -Wl,--wrap=send -Wl,--wrap=recv -Wl,--wrap=epoll_ctl)
     add_test(NAME net.completion_wakeup_concurrency COMMAND siftwing_completion_wakeup_concurrency_test)
     add_executable(siftwing_completion_wakeup_failure_test tests/integration/completion_wakeup_failure_test.cc)
-    target_link_libraries(siftwing_completion_wakeup_failure_test PRIVATE siftwing_protocol_sub_reactor)
+    target_link_libraries(siftwing_completion_wakeup_failure_test PRIVATE siftwing_online_server)
     target_link_options(siftwing_completion_wakeup_failure_test PRIVATE -Wl,--wrap=write -Wl,--wrap=pthread_mutex_lock -Wl,--wrap=epoll_wait)
     add_test(NAME net.completion_wakeup_failures COMMAND siftwing_completion_wakeup_failure_test)
     set_tests_properties(net.completion_wakeup net.completion_wakeup_concurrency net.completion_wakeup_failures PROPERTIES TIMEOUT 45)
@@ -109,79 +115,23 @@ if(BUILD_TESTING)
     add_test(NAME concurrency.task_queue_failures COMMAND siftwing_task_queue_failure_test)
     set_tests_properties(concurrency.task_queue concurrency.task_queue_concurrency
         concurrency.task_queue_failures PROPERTIES TIMEOUT 30)
-    add_executable(siftwing_multi_reactor_test tests/integration/multi_reactor_test.cc)
-    target_link_libraries(siftwing_multi_reactor_test PRIVATE siftwing_protocol_sub_reactor)
-    target_link_options(siftwing_multi_reactor_test PRIVATE
-        -Wl,--wrap=accept4 -Wl,--wrap=epoll_ctl -Wl,--wrap=recv -Wl,--wrap=send -Wl,--wrap=close)
-    add_test(NAME net.multi_reactor COMMAND siftwing_multi_reactor_test)
-    add_executable(siftwing_multi_reactor_concurrency_test tests/integration/multi_reactor_concurrency_test.cc)
-    target_link_libraries(siftwing_multi_reactor_concurrency_test PRIVATE siftwing_protocol_sub_reactor)
-    add_test(NAME net.multi_reactor_concurrency COMMAND siftwing_multi_reactor_concurrency_test)
-    add_executable(siftwing_multi_reactor_failure_test tests/integration/multi_reactor_failure_test.cc)
-    target_link_libraries(siftwing_multi_reactor_failure_test PRIVATE siftwing_protocol_sub_reactor)
-    target_link_options(siftwing_multi_reactor_failure_test PRIVATE
-        -Wl,--wrap=epoll_create1 -Wl,--wrap=eventfd -Wl,--wrap=socket -Wl,--wrap=accept4
-        -Wl,--wrap=epoll_ctl -Wl,--wrap=epoll_wait -Wl,--wrap=write -Wl,--wrap=recv -Wl,--wrap=close -Wl,--wrap=_Znwm)
-    add_test(NAME net.multi_reactor_failures COMMAND siftwing_multi_reactor_failure_test)
-    set_tests_properties(net.multi_reactor net.multi_reactor_concurrency net.multi_reactor_failures PROPERTIES TIMEOUT 45)
     add_executable(siftwing_signalfd_test tests/unit/signalfd_test.cc)
-    target_link_libraries(siftwing_signalfd_test PRIVATE siftwing_main_reactor)
+    target_link_libraries(siftwing_signalfd_test PRIVATE siftwing_signalfd siftwing_eventfd_wakeup)
     target_link_options(siftwing_signalfd_test PRIVATE -Wl,--wrap=pthread_sigmask -Wl,--wrap=signalfd
         -Wl,--wrap=read -Wl,--wrap=epoll_ctl -Wl,--wrap=epoll_wait -Wl,--wrap=close)
     add_test(NAME net.signalfd COMMAND siftwing_signalfd_test)
     set_tests_properties(net.signalfd PROPERTIES TIMEOUT 30)
 
-    add_executable(siftwing_main_reactor_test tests/unit/main_reactor_test.cc)
-    target_link_libraries(siftwing_main_reactor_test PRIVATE siftwing_main_reactor)
-    add_test(NAME net.main_reactor COMMAND siftwing_main_reactor_test)
-    add_executable(siftwing_main_reactor_concurrency_test tests/unit/main_reactor_concurrency_test.cc)
-    target_link_libraries(siftwing_main_reactor_concurrency_test PRIVATE siftwing_main_reactor)
-    target_link_options(siftwing_main_reactor_concurrency_test PRIVATE -Wl,--wrap=write -Wl,--wrap=epoll_wait)
-    add_test(NAME net.main_reactor_concurrency COMMAND siftwing_main_reactor_concurrency_test)
-    add_executable(siftwing_main_reactor_failure_test tests/unit/main_reactor_failure_test.cc)
-    target_link_libraries(siftwing_main_reactor_failure_test PRIVATE siftwing_main_reactor)
-    target_link_options(siftwing_main_reactor_failure_test PRIVATE
-        -Wl,--wrap=socket -Wl,--wrap=epoll_create1 -Wl,--wrap=epoll_ctl -Wl,--wrap=eventfd
-        -Wl,--wrap=epoll_wait -Wl,--wrap=accept4 -Wl,--wrap=setsockopt -Wl,--wrap=write
-        -Wl,--wrap=close -Wl,--wrap=pthread_mutex_lock -Wl,--wrap=_Znwm)
-    add_test(NAME net.main_reactor_failures COMMAND siftwing_main_reactor_failure_test)
-    set_tests_properties(net.main_reactor net.main_reactor_concurrency
-        net.main_reactor_failures PROPERTIES TIMEOUT 30)
     add_executable(siftwing_eventfd_wakeup_test tests/unit/eventfd_wakeup_test.cc)
     target_link_libraries(siftwing_eventfd_wakeup_test PRIVATE siftwing_eventfd_wakeup siftwing_epoll)
     add_test(NAME net.eventfd_wakeup COMMAND siftwing_eventfd_wakeup_test)
-    add_executable(siftwing_eventfd_wakeup_concurrency_test tests/unit/eventfd_wakeup_concurrency_test.cc)
-    target_link_libraries(siftwing_eventfd_wakeup_concurrency_test PRIVATE siftwing_eventfd_wakeup siftwing_epoll)
-    add_test(NAME net.eventfd_wakeup_concurrency COMMAND siftwing_eventfd_wakeup_concurrency_test)
     add_executable(siftwing_eventfd_wakeup_failure_test tests/unit/eventfd_wakeup_failure_test.cc)
     target_link_libraries(siftwing_eventfd_wakeup_failure_test PRIVATE siftwing_eventfd_wakeup)
     target_link_options(siftwing_eventfd_wakeup_failure_test PRIVATE
         -Wl,--wrap=eventfd -Wl,--wrap=read -Wl,--wrap=write -Wl,--wrap=close -Wl,--wrap=pthread_mutex_lock)
     add_test(NAME net.eventfd_wakeup_failures COMMAND siftwing_eventfd_wakeup_failure_test)
-    set_tests_properties(net.eventfd_wakeup net.eventfd_wakeup_concurrency
+    set_tests_properties(net.eventfd_wakeup
         net.eventfd_wakeup_failures PROPERTIES TIMEOUT 30)
-    add_executable(siftwing_fd_handoff_queue_test tests/unit/fd_handoff_queue_test.cc)
-    target_link_libraries(siftwing_fd_handoff_queue_test PRIVATE siftwing_fd_handoff_queue)
-    add_test(NAME net.fd_handoff_queue COMMAND siftwing_fd_handoff_queue_test)
-    add_executable(siftwing_fd_handoff_queue_concurrency_test tests/unit/fd_handoff_queue_concurrency_test.cc)
-    target_link_libraries(siftwing_fd_handoff_queue_concurrency_test PRIVATE siftwing_fd_handoff_queue)
-    add_test(NAME net.fd_handoff_queue_concurrency COMMAND siftwing_fd_handoff_queue_concurrency_test)
-    add_executable(siftwing_fd_handoff_queue_failure_test tests/unit/fd_handoff_queue_failure_test.cc)
-    target_link_libraries(siftwing_fd_handoff_queue_failure_test PRIVATE siftwing_fd_handoff_queue)
-    target_link_options(siftwing_fd_handoff_queue_failure_test PRIVATE
-        -Wl,--wrap=close -Wl,--wrap=_Znwm -Wl,--wrap=pthread_mutex_lock)
-    add_test(NAME net.fd_handoff_queue_failures COMMAND siftwing_fd_handoff_queue_failure_test)
-    set_tests_properties(net.fd_handoff_queue net.fd_handoff_queue_concurrency
-        net.fd_handoff_queue_failures PROPERTIES TIMEOUT 30)
-    add_executable(siftwing_sub_reactor_test tests/unit/sub_reactor_test.cc)
-    target_link_libraries(siftwing_sub_reactor_test PRIVATE siftwing_sub_reactor)
-    add_test(NAME net.sub_reactor COMMAND siftwing_sub_reactor_test)
-    add_executable(siftwing_sub_reactor_failure_test tests/unit/sub_reactor_failure_test.cc)
-    target_link_libraries(siftwing_sub_reactor_failure_test PRIVATE siftwing_sub_reactor)
-    target_link_options(siftwing_sub_reactor_failure_test PRIVATE
-        -Wl,--wrap=epoll_create1 -Wl,--wrap=epoll_wait -Wl,--wrap=close -Wl,--wrap=_Znwm)
-    add_test(NAME net.sub_reactor_failures COMMAND siftwing_sub_reactor_failure_test)
-    set_tests_properties(net.sub_reactor net.sub_reactor_failures PROPERTIES TIMEOUT 30)
     add_executable(siftwing_protocol_loop_test tests/unit/protocol_loop_test.cc)
     target_link_libraries(siftwing_protocol_loop_test PRIVATE siftwing_protocol_loop)
     add_test(NAME net.protocol_loop COMMAND siftwing_protocol_loop_test)
@@ -283,14 +233,14 @@ if(BUILD_TESTING)
         set_tests_properties(benchmark.loadgen_contract PROPERTIES TIMEOUT 45)
     endif()
     add_executable(siftwing_output_backpressure_test tests/integration/output_backpressure_test.cc)
-    target_link_libraries(siftwing_output_backpressure_test PRIVATE siftwing_protocol_sub_reactor)
+    target_link_libraries(siftwing_output_backpressure_test PRIVATE siftwing_online_server)
     target_link_options(siftwing_output_backpressure_test PRIVATE -Wl,--wrap=recv -Wl,--wrap=send -Wl,--wrap=epoll_ctl -Wl,--wrap=accept4)
     foreach(suite IN ITEMS limits sub tcp)
         add_test(NAME net.output_backpressure_${suite} COMMAND siftwing_output_backpressure_test ${suite})
         set_tests_properties(net.output_backpressure_${suite} PROPERTIES TIMEOUT 30)
     endforeach()
     add_executable(siftwing_single_inflight_test tests/integration/single_inflight_test.cc)
-    target_link_libraries(siftwing_single_inflight_test PRIVATE siftwing_protocol_sub_reactor siftwing_worker_pool)
+    target_link_libraries(siftwing_single_inflight_test PRIVATE siftwing_online_server siftwing_worker_pool)
     target_link_options(siftwing_single_inflight_test PRIVATE -Wl,--wrap=recv -Wl,--wrap=send -Wl,--wrap=epoll_ctl)
     foreach(suite IN ITEMS worker output errors)
         add_test(NAME net.single_inflight_${suite} COMMAND siftwing_single_inflight_test ${suite})
@@ -303,29 +253,29 @@ if(BUILD_TESTING)
     add_test(NAME net.single_reactor_wiring COMMAND Python3::Interpreter -B
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/worker_saturation_test.py"
         --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
-        --native "$<TARGET_FILE:siftwing_single_reactor_test>" --subs 1)
+        --native "$<TARGET_FILE:siftwing_single_reactor_test>" --capacity-scale 1)
     set_tests_properties(net.single_reactor_wiring PROPERTIES TIMEOUT 60)
     target_link_libraries(siftwing_online_server_failure_test PRIVATE siftwing_online_server)
     target_link_options(siftwing_online_server_failure_test PRIVATE -Wl,--wrap=write -Wl,--wrap=_Znwm -Wl,--wrap=send -Wl,--wrap=recv)
     add_executable(siftwing_versioned_cache_test tests/integration/versioned_cache_test.cc)
     target_link_libraries(siftwing_versioned_cache_test PRIVATE siftwing_online_server siftwing_json)
-    foreach(subs IN ITEMS 1 2)
-        add_test(NAME cache.service_${subs} COMMAND Python3::Interpreter -B
+    foreach(scale IN ITEMS 1 2)
+        add_test(NAME cache.service_${scale} COMMAND Python3::Interpreter -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/versioned_cache_test.py"
             --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
-            --native "$<TARGET_FILE:siftwing_versioned_cache_test>" --subs ${subs})
-        set_tests_properties(cache.service_${subs} PROPERTIES TIMEOUT 60)
+            --native "$<TARGET_FILE:siftwing_versioned_cache_test>" --capacity-scale ${scale})
+        set_tests_properties(cache.service_${scale} PROPERTIES TIMEOUT 60)
     endforeach()
     add_executable(siftwing_online_deadlines_test tests/integration/online_deadlines_test.cc)
     target_link_libraries(siftwing_online_deadlines_test PRIVATE siftwing_online_server siftwing_json)
     target_link_options(siftwing_online_deadlines_test PRIVATE
         -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE)
-    foreach(subs IN ITEMS 1 2)
-        add_test(NAME net.online_deadlines_${subs} COMMAND Python3::Interpreter -B
+    foreach(scale IN ITEMS 1 2)
+        add_test(NAME net.online_deadlines_${scale} COMMAND Python3::Interpreter -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/worker_saturation_test.py"
             --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
-            --native "$<TARGET_FILE:siftwing_online_deadlines_test>" --subs ${subs})
-        set_tests_properties(net.online_deadlines_${subs} PROPERTIES TIMEOUT 60)
+            --native "$<TARGET_FILE:siftwing_online_deadlines_test>" --capacity-scale ${scale})
+        set_tests_properties(net.online_deadlines_${scale} PROPERTIES TIMEOUT 60)
     endforeach()
     add_executable(siftwing_v2_fault_concurrency_test tests/integration/v2_fault_concurrency_test.cc)
     target_link_libraries(siftwing_v2_fault_concurrency_test PRIVATE siftwing_online_server siftwing_json)
@@ -334,20 +284,20 @@ if(BUILD_TESTING)
         -Wl,--wrap=_ZN8siftwing11concurrency10WorkerPool10try_submitERSt10unique_ptrINS0_10WorkerTaskESt14default_deleteIS3_EE
         -Wl,--wrap=_ZN8siftwing11concurrency16RoutedSearchTask6createENS_3net12ConnectionIdERNS0_10SearchTaskE
         -Wl,--wrap=accept4 -Wl,--wrap=send -Wl,--wrap=recv -Wl,--wrap=epoll_ctl)
-    foreach(subs IN ITEMS 1 2)
-        add_test(NAME net.v2_fault_concurrency_${subs} COMMAND Python3::Interpreter -B
+    foreach(scale IN ITEMS 1 2)
+        add_test(NAME net.v2_fault_concurrency_${scale} COMMAND Python3::Interpreter -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/worker_saturation_test.py"
             --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
-            --native "$<TARGET_FILE:siftwing_v2_fault_concurrency_test>" --subs ${subs})
-        set_tests_properties(net.v2_fault_concurrency_${subs} PROPERTIES TIMEOUT 60)
+            --native "$<TARGET_FILE:siftwing_v2_fault_concurrency_test>" --capacity-scale ${scale})
+        set_tests_properties(net.v2_fault_concurrency_${scale} PROPERTIES TIMEOUT 60)
     endforeach()
-    add_executable(siftwing_graceful_sub_test tests/integration/graceful_sub_test.cc)
-    target_link_libraries(siftwing_graceful_sub_test PRIVATE siftwing_protocol_sub_reactor)
-    target_link_options(siftwing_graceful_sub_test PRIVATE
+    add_executable(siftwing_connection_core_drain_test tests/integration/connection_core_drain_test.cc)
+    target_link_libraries(siftwing_connection_core_drain_test PRIVATE siftwing_online_server)
+    target_link_options(siftwing_connection_core_drain_test PRIVATE
         -Wl,--wrap=clock_gettime -Wl,--wrap=send -Wl,--wrap=write -Wl,--wrap=timerfd_settime -Wl,--wrap=epoll_wait)
     foreach(suite IN ITEMS drain boundaries faults timer)
-        add_test(NAME net.graceful_sub_${suite} COMMAND siftwing_graceful_sub_test ${suite})
-        set_tests_properties(net.graceful_sub_${suite} PROPERTIES TIMEOUT 30)
+        add_test(NAME net.connection_core_drain_${suite} COMMAND siftwing_connection_core_drain_test ${suite})
+        set_tests_properties(net.connection_core_drain_${suite} PROPERTIES TIMEOUT 30)
     endforeach()
     add_executable(siftwing_graceful_server_test tests/integration/graceful_server_test.cc)
     target_link_libraries(siftwing_graceful_server_test PRIVATE siftwing_online_server siftwing_json)
@@ -358,12 +308,12 @@ if(BUILD_TESTING)
         -Wl,--wrap=_ZN8siftwing3net18arm_deadline_timerEiSt8optionalIlE
         -Wl,--wrap=epoll_ctl -Wl,--wrap=close
         -Wl,--wrap=write -Wl,--wrap=clock_gettime)
-    foreach(subs IN ITEMS 1 2)
-        add_test(NAME net.graceful_server_${subs} COMMAND Python3::Interpreter -B
+    foreach(scale IN ITEMS 1 2)
+        add_test(NAME net.graceful_server_${scale} COMMAND Python3::Interpreter -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/worker_saturation_test.py"
             --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
-            --native "$<TARGET_FILE:siftwing_graceful_server_test>" --subs ${subs})
-        set_tests_properties(net.graceful_server_${subs} PROPERTIES TIMEOUT 60)
+            --native "$<TARGET_FILE:siftwing_graceful_server_test>" --capacity-scale ${scale})
+        set_tests_properties(net.graceful_server_${scale} PROPERTIES TIMEOUT 60)
     endforeach()
     add_executable(siftwing_signalfd_server_probe apps/server/main.cc tests/support/signalfd_server_probe.cc)
     target_link_libraries(siftwing_signalfd_server_probe PRIVATE siftwing_server_settings)
@@ -384,12 +334,12 @@ if(BUILD_TESTING)
     target_link_options(siftwing_worker_saturation_test PRIVATE
         -Wl,--wrap=_ZNK8siftwing5query13SearchService7executeB5cxx11ERKNS_11concurrency10SearchTaskEPNS0_16CacheObservationEPSt8optionalImE
         -Wl,--wrap=_ZN8siftwing11concurrency10WorkerPool10try_submitERSt10unique_ptrINS0_10WorkerTaskESt14default_deleteIS3_EE)
-    foreach(subs IN ITEMS 1 2)
-        add_test(NAME net.worker_saturation_${subs} COMMAND Python3::Interpreter -B
+    foreach(scale IN ITEMS 1 2)
+        add_test(NAME net.worker_saturation_${scale} COMMAND Python3::Interpreter -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/worker_saturation_test.py"
             --indexer "$<TARGET_FILE:siftwing_indexer>" --writer "$<TARGET_FILE:siftwing_writer_probe>"
-            --native "$<TARGET_FILE:siftwing_worker_saturation_test>" --subs ${subs})
-        set_tests_properties(net.worker_saturation_${subs} PROPERTIES TIMEOUT 60)
+            --native "$<TARGET_FILE:siftwing_worker_saturation_test>" --capacity-scale ${scale})
+        set_tests_properties(net.worker_saturation_${scale} PROPERTIES TIMEOUT 60)
     endforeach()
     add_executable(siftwing_network_client_test tests/unit/network_client_test.cc)
     target_link_libraries(siftwing_network_client_test PRIVATE siftwing_client Threads::Threads)
@@ -768,12 +718,12 @@ if(BUILD_TESTING)
     add_test(NAME v3.fault_recovery COMMAND Python3::Interpreter -B
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/v3_fault_soak_test.py"
         --native "$<TARGET_FILE:siftwing_v3_fault_soak_test>" --parent "${CMAKE_CURRENT_BINARY_DIR}" --suite faults)
-    foreach(subs IN ITEMS 1 2)
-        add_test(NAME v3.soak_${subs} COMMAND Python3::Interpreter -B
+    foreach(scale IN ITEMS 1 2)
+        add_test(NAME v3.soak_${scale} COMMAND Python3::Interpreter -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/v3_fault_soak_test.py"
             --native "$<TARGET_FILE:siftwing_v3_fault_soak_test>" --parent "${CMAKE_CURRENT_BINARY_DIR}"
-            --suite soak --subs ${subs} --seconds 2)
-        set_tests_properties(v3.soak_${subs} PROPERTIES TIMEOUT 120 LABELS "v3;soak")
+            --suite soak --capacity-scale ${scale} --seconds 2)
+        set_tests_properties(v3.soak_${scale} PROPERTIES TIMEOUT 120 LABELS "v3;soak")
     endforeach()
     add_test(NAME v3.shutdown_races COMMAND Python3::Interpreter -B
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_publication_test.py"

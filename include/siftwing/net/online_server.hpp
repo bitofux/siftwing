@@ -6,7 +6,10 @@
  * BRIEF   : 应用调用线程驱动的唯一生产Reactor与现有业务线程池
  */
 #pragma once
-#include "siftwing/net/protocol_sub_reactor.hpp"
+#include "siftwing/net/reactor_report.hpp"
+#include "siftwing/net/protocol_connection_config.hpp"
+#include "siftwing/net/listener.hpp"
+#include <atomic>
 #include "siftwing/query/search_service.hpp"
 #include "siftwing/concurrency/worker_pool.hpp"
 
@@ -36,8 +39,7 @@ struct OnlineServerReport {
     std::size_t accepted = 0,
                 rejected = 0; ///< accept成功/注册前接入设施拒绝；连接容量拒绝另见reactor。
     concurrency::WorkerPoolReport workers; ///< 只证明execute返回，不证明网络送达。
-    ProtocolSubStatus
-        reactor; ///< 复用连接核心计数值类型，不表示拥有Sub线程；状态最终stopped而非joined。
+    ReactorReport reactor; ///< 唯一Reactor的连接计数；stopped表示完整停止屏障已完成。
     std::error_code first_error; ///< Reactor/结果发布首因；局部业务错误不在此计入。
     bool stopped = false;        ///< stop或shutdown已完成静止屏障和资源清理。
 };

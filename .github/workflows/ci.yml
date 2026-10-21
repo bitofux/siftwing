@@ -92,12 +92,12 @@ jobs:
           cmake -S . -B build/ci -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSIFTWING_BUILD_BENCHMARKS=ON "${flags[@]}" 2>&1 | tee evidence/configure.log
       - name: 构建专项目标
         run: |
-          cmake --build build/ci --parallel 2 --target siftwing_v3_fault_soak_test siftwing_snapshot_publication_test siftwing_snapshot_manager_test siftwing_snapshot_loader_test siftwing_worker_pool_concurrency_test siftwing_completion_queue_concurrency_test siftwing_versioned_lru_concurrency_test siftwing_benchmark_loadgen 2>&1 | tee evidence/build.log
+          cmake --build build/ci --parallel 2 --target siftwing_v3_fault_soak_test siftwing_snapshot_publication_test siftwing_snapshot_manager_test siftwing_snapshot_loader_test siftwing_worker_pool_concurrency_test siftwing_completion_queue_concurrency_test siftwing_versioned_lru_concurrency_test siftwing_benchmark_loadgen siftwing_production_topology_test siftwing_indexer siftwing_writer_probe 2>&1 | tee evidence/build.log
       - name: 运行明确的消毒器专项
         run: |
-          selection='^(v3[.](fault_recovery|soak_[12]|shutdown_races)|snapshot[.](manager|loader|publication)|net[.]signalfd_online|concurrency[.](worker_pool_concurrency|completion_queue_concurrency)|cache[.]versioned_lru_concurrency_test|benchmark[.]loadgen_contract)$'
+          selection='^(v3[.](fault_recovery|soak_[12]|shutdown_races)|snapshot[.](manager|loader|publication)|net[.](signalfd_online|production_topology)|concurrency[.](worker_pool_concurrency|completion_queue_concurrency)|cache[.]versioned_lru_concurrency_test|benchmark[.]loadgen_contract)$'
           ctest --test-dir build/ci --show-only=json-v1 -R "$selection" > evidence/selected-tests.json
-          python3 -c 'import json; tests=json.load(open("evidence/selected-tests.json"))["tests"]; assert len(tests)==12, "消毒器专项必须发现12项测试"'
+          python3 -c 'import json; tests=json.load(open("evidence/selected-tests.json"))["tests"]; assert len(tests)==13, "消毒器专项必须发现13项测试"'
           command=(ctest --test-dir build/ci --output-on-failure --no-tests=error --parallel 1 -R "$selection")
           if [[ '${{ matrix.mode }}' == tsan ]]; then
             setarch x86_64 -R "${command[@]}" 2>&1 | tee evidence/ctest.log

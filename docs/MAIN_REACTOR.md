@@ -1,6 +1,10 @@
 # Main Reactor 轮询分配
 
-独立[MainReactor接口](../include/siftwing/net/main_reactor.hpp)在所属I/O线程拥有Listener、LT epoll与自己的停止eventfd。
+> 历史资料：以下描述迁移前Main/Sub架构及当时组件/测试，相关公开API和纯旧拓扑测试已退役，
+> 不保留兼容层。当前实现/测试/调试请读[单Reactor拓扑](THREAD_TOPOLOGY.md)、
+> [在线服务](ONLINE_SEARCH.md)及[测试指南](TESTING.md)。原历史实现由迁移前commit定位，旧成绩不代表新架构。
+
+独立[MainReactor接口](https://github.com/bitofux/siftwing/blob/0d8b145852fc0e0c973ed0c541fe47efbf9784d4/include/siftwing/net/main_reactor.hpp)在所属I/O线程拥有Listener、LT epoll与自己的停止eventfd。
 调用方在该线程create、重复run_once、close和析构；组件不创建线程，不读取或发送客户端业务数据，不构造Connection。
 它组合[监听接入](LISTENER.md)、[fd队列](FD_HANDOFF_QUEUE.md)和[eventfd通知](EVENTFD_WAKEUP.md)。
 旧Sub生命周期和单Loop保持；[多Sub协议集成](MULTI_REACTOR.md)使用独立ProtocolSubReactor组合Main，验证Connection固定归属。

@@ -14,14 +14,14 @@ def main():
     parser.add_argument("--indexer", required=True)
     parser.add_argument("--writer", required=True)
     parser.add_argument("--native", required=True)
-    # 保留测试驱动参数名；生产已移除--subs，这里仅选择总容量128/256的回归场景。
-    parser.add_argument("--subs", choices=["1", "2"], required=True)
+    # 仅选择总容量128/256的回归场景，不表示网络线程数量。
+    parser.add_argument("--capacity-scale", choices=["1", "2"], required=True)
     options = parser.parse_args()
     reference.OPTIONS = options
     root = Path(tempfile.mkdtemp(prefix="siftwing-worker-saturation-"))
     try:
         parent, _, _ = reference.golden(root)
-        result = subprocess.run([options.native, str(parent), options.subs],
+        result = subprocess.run([options.native, str(parent), options.capacity_scale],
                                 capture_output=True, text=True, timeout=30)
         print(result.stdout, end="")
         print(result.stderr, end="")

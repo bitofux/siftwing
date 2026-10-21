@@ -75,10 +75,10 @@ struct Snapshot final {
     struct Connections {
         std::uint64_t accepted = 0, handed_off = 0, rejected = 0, admitted = 0;
         std::uint64_t closed = 0, active = 0, discarded = 0;
-    } connections; ///< rejected合并Main拒绝和Sub注册前拒绝，discarded为未注册移交残留。
+    } connections; ///< rejected为监听准入或连接注册前拒绝；旧移交计数字段保持恒0。
     struct Network {
         ConnectionIo io;
-        std::uint64_t input_bytes = 0, output_bytes = 0; ///< 已发布Sub快照中的当前缓冲字节总量。
+        std::uint64_t input_bytes = 0, output_bytes = 0; ///< Reactor最近观测的当前缓冲字节总量。
         std::uint64_t protocol_errors = 0; ///< 坏头/截帧/Body准入拒绝；不含业务schema错误。
     } network;
     struct Requests {
@@ -102,6 +102,6 @@ struct Snapshot final {
         bool started = false, finished = false;
         std::uint64_t elapsed_us = 0, drain_timeouts = 0, drain_responses = 0;
         std::uint64_t stale_completions = 0, discarded_completions = 0;
-    } shutdown; ///< elapsed包括完整worker/Sub屏障，不是网络deadline或总退出上限。
+    } shutdown; ///< elapsed包括完整worker发布者屏障，不是网络deadline或总退出上限。
 };
 } // namespace siftwing::metrics

@@ -35,7 +35,7 @@ python3 -m json.tool "$siftwing_demo/local-suggest.json"
 
 ```sh
 build/release/siftwing-server --snapshot "$siftwing_demo" --version 1 \
-  --port 0 --subs 2 --workers 4 --task-capacity 128 --shutdown-ms 1000 \
+  --port 0 --workers 4 --max-connections 256 --completion-capacity 256 --task-capacity 128 --shutdown-ms 1000 \
   > "$siftwing_demo/server.stdout" 2> "$siftwing_demo/server.stderr" &
 siftwing_server_pid=$!
 printf '演示目录: %s\n服务 PID: %s\n' "$siftwing_demo" "$siftwing_server_pid"

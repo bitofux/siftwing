@@ -318,7 +318,7 @@ struct OnlineServer::Impl {
         if (const auto error = epoll_add(epoll.get(), listener.get(), EPOLLIN, 0))
             throw std::system_error(error);
         listener_registered = true;
-        totals.reactor.state = ProtocolSubState::running;
+        totals.reactor.state = ReactorState::running;
     }
     void controls() {
         const auto notification = drain_eventfd(wakeup.get());
@@ -426,7 +426,7 @@ struct OnlineServer::Impl {
             return totals.first_error;
         begin_shutdown();
         close_listener();
-        totals.reactor.state = ProtocolSubState::quiescing;
+        totals.reactor.state = ReactorState::quiescing;
         totals.reactor.stop_requested = true;
         if (pool)
             pool->request_stop();
@@ -454,7 +454,7 @@ struct OnlineServer::Impl {
         release_fd(wakeup, wakeup_registered);
         cleanup(epoll.close());
         record(totals.reactor.cleanup_error);
-        totals.reactor.state = ProtocolSubState::stopped;
+        totals.reactor.state = ReactorState::stopped;
         totals.stopped = true;
         shutdown_us =
             static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
@@ -603,7 +603,7 @@ metrics::Snapshot OnlineServer::metrics() const {
         out.connections.rejected = metrics::add(out.connections.rejected, report.rejected);
         out.connections.closed = metrics::add(out.connections.closed, report.dropped);
         out.connections.active = metrics::add(out.connections.active, report.active);
-        out.connections.discarded = metrics::add(out.connections.discarded, report.discarded);
+        out.connections.discarded = 0; // 旧fd交接残留指标退役，不重解释为连接关闭。
         out.network.io.received_bytes =
             metrics::add(out.network.io.received_bytes, report.io.received_bytes);
         out.network.io.sent_bytes = metrics::add(out.network.io.sent_bytes, report.io.sent_bytes);

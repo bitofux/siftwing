@@ -1,6 +1,6 @@
 /*
  * PROJECT : SIFTWING
- * FILE    : sub_deadlines_test.cc
+ * FILE    : connection_core_deadlines_test.cc
  * AUTHOR  : bitofux
  * DATE    : 2026-10-15
  * BRIEF   : 独立同钟边界、真实timer唤醒、请求/输出期限与旧结果隔离
@@ -91,28 +91,28 @@ std::int64_t freeze() {
     fake_time = base;
     return base;
 }
-void pulse(ProtocolSubReactor &sub) {
+void pulse(ConnectionHarness &sub) {
     // arm发生在wait前；两轮唤醒保证前一轮业务与报告发布都完成。
     for (int round = 0; round < 2; ++round) {
         const auto previous = arms.load();
-        check(!notify_eventfd(std::get<MainReactorTarget>(sub.target()).wakeup_fd), "wake owner");
+        check(!notify_eventfd(sub.wakeup_fd()), "wake owner");
         await([&] {
             return arms.load() > previous;
         });
     }
 }
-void admitted(ProtocolSubReactor &sub, std::size_t count = 1) {
+void admitted(ConnectionHarness &sub, std::size_t count = 1) {
     await([&] {
         return sub.status().admitted == count;
     });
 }
 void idle_progress() {
     const auto base = freeze();
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.idle_timeout_ms = 1000;
     config.max_connections = 2;
-    ProtocolSubReactor sub(config);
-    check(!sub.start(), "idle Sub ready");
+    ConnectionHarness sub(config);
+    check(!sub.start(), "idle 连接核心 ready");
     auto peer = attach(sub);
     admitted(sub);
     fake_time = base + 500 * millisecond;
@@ -127,7 +127,7 @@ void idle_progress() {
     check(sub.status().active == 1 && sub.status().requests == 0,
         "partial recv refreshes idle, not request");
     fake_time = base + 1500 * millisecond;
-    check(!notify_eventfd(std::get<MainReactorTarget>(sub.target()).wakeup_fd), "wake equality");
+    check(!notify_eventfd(sub.wakeup_fd()), "wake equality");
     await([&] {
         return sub.status().idle_timeouts == 1;
     });
@@ -139,16 +139,16 @@ void idle_progress() {
     send_all(fresh.get(), wire(1, 8));
     check(receive(fresh.get(), 26) == wire(0x8001, 8),
         "reused slot stays healthy after old idle timeout");
-    stop_sub(sub);
+    stop_core(sub);
 }
 void request_window() {
     const auto base = freeze();
     CaptureSubmitter sink;
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.request_timeout_ms = 1000;
     config.request_submitter = &sink;
-    ProtocolSubReactor sub(config);
-    check(!sub.start(), "request Sub ready");
+    ConnectionHarness sub(config);
+    check(!sub.start(), "request 连接核心 ready");
     auto target = std::get<CompletionTarget>(sub.completion_target());
     auto peer = attach(sub);
     admitted(sub);
@@ -195,16 +195,16 @@ void request_window() {
     send_all(healthy.get(), wire(1, 88));
     check(receive(healthy.get(), 26) == wire(0x8001, 88),
         "other/new connection progresses after request timeout");
-    stop_sub(sub);
+    stop_core(sub);
 }
 void pending_and_half_close() {
     const auto base = freeze();
     CaptureSubmitter sink;
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.idle_timeout_ms = 100;
     config.request_timeout_ms = 1000;
     config.request_submitter = &sink;
-    ProtocolSubReactor sub(config);
+    ConnectionHarness sub(config);
     check(!sub.start(), "two timers configured");
     auto peer = attach(sub);
     admitted(sub);
@@ -225,18 +225,18 @@ void pending_and_half_close() {
     });
     check(sub.status().idle_timeouts == 0 && sub.status().request_timeouts == 0,
         "EOF cancels timer without timeout");
-    stop_sub(sub);
+    stop_core(sub);
 }
 void slow_output() {
     const auto base = freeze();
     CaptureSubmitter sink;
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.request_timeout_ms = 1000;
     config.request_submitter = &sink;
     config.write_byte_budget = 300000;
     config.io_attempt_budget = 64;
-    ProtocolSubReactor sub(config);
-    check(!sub.start(), "slow output Sub ready");
+    ConnectionHarness sub(config);
+    check(!sub.start(), "slow output 连接核心 ready");
     int pair[2];
     check(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, pair) == 0,
         "slow peer pair");
@@ -244,10 +244,7 @@ void slow_output() {
     int size = 4096;
     check(::setsockopt(source.get(), SOL_SOCKET, SO_SNDBUF, &size, sizeof(size)) == 0,
         "small sender buffer");
-    auto destination = std::get<MainReactorTarget>(sub.target());
-    check(try_handoff_and_notify(*destination.queue, source, destination.wakeup_fd).handoff
-              == FdHandoffResult::accepted,
-        "slow source admitted");
+    check(!sub.adopt(source), "slow source admitted");
     admitted(sub);
     send_all(peer.get(), wire(3, 31) + wire(1, 32));
     auto task = take_request(sink);
@@ -263,23 +260,23 @@ void slow_output() {
     });
     check(sub.status().responses == 0, "result application is not output completion");
     fake_time = base + 1000 * millisecond;
-    check(!notify_eventfd(destination.wakeup_fd), "wake stalled output deadline");
+    check(!notify_eventfd(sub.wakeup_fd()), "wake stalled output deadline");
     await([&] {
         return sub.status().request_timeouts == 1;
     });
     check(sub.status().responses == 0 && sub.status().requests == 1 && sub.status().active == 0,
         "partial output times out, cached next frame never admitted");
-    stop_sub(sub);
+    stop_core(sub);
 }
 // 固定在wait返回后暂停：本批timer扫描观察期限前一刻，下一次complete独立观察等号。
 void completion_before_timer() {
     const auto base = freeze();
     CaptureSubmitter sink;
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.request_timeout_ms = 1000;
     config.request_submitter = &sink;
-    ProtocolSubReactor sub(config);
-    check(!sub.start(), "completion order Sub ready");
+    ConnectionHarness sub(config);
+    check(!sub.start(), "completion order 连接核心 ready");
     auto peer = attach(sub);
     admitted(sub);
     send_all(peer.get(), wire(3, 51));
@@ -288,8 +285,7 @@ void completion_before_timer() {
     waiting = false;
     release_wait = false;
     pause_wait = true;
-    auto destination = std::get<MainReactorTarget>(sub.target());
-    check(!notify_eventfd(destination.wakeup_fd), "pause returning control wait");
+    check(!notify_eventfd(sub.wakeup_fd()), "pause returning control wait");
     await([] {
         return waiting.load();
     });
@@ -303,17 +299,17 @@ void completion_before_timer() {
     check(sub.status().completion_rejected == 1 && sub.status().completion_applied == 0
               && sub.status().request_timeouts == 1,
         "completion gate enforces equality before timer scan sees due");
-    stop_sub(sub);
+    stop_core(sub);
 }
 void drain_and_idle_restart() {
     const auto base = freeze();
     CaptureSubmitter sink;
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.idle_timeout_ms = 100;
     config.request_timeout_ms = 1000;
     config.request_submitter = &sink;
-    ProtocolSubReactor sub(config);
-    check(!sub.start(), "idle restart Sub ready");
+    ConnectionHarness sub(config);
+    check(!sub.start(), "idle restart 连接核心 ready");
     auto peer = attach(sub);
     admitted(sub);
     send_all(peer.get(), wire(3, 61));
@@ -330,20 +326,19 @@ void drain_and_idle_restart() {
     pulse(sub);
     check(sub.status().active == 1, "new idle deadline starts at drain");
     fake_time = base + 600 * millisecond;
-    check(!notify_eventfd(std::get<MainReactorTarget>(sub.target()).wakeup_fd),
-        "wake new idle equality");
+    check(!notify_eventfd(sub.wakeup_fd()), "wake new idle equality");
     await([&] {
         return sub.status().idle_timeouts == 1;
     });
     check(sub.status().request_timeouts == 0, "completed request no longer has request deadline");
-    stop_sub(sub);
+    stop_core(sub);
 }
 void send_crosses_deadline() {
     const auto base = freeze();
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.request_timeout_ms = 1000;
-    ProtocolSubReactor sub(config);
-    check(!sub.start(), "send crossing Sub ready");
+    ConnectionHarness sub(config);
+    check(!sub.start(), "send crossing 连接核心 ready");
     auto peer = attach(sub);
     admitted(sub);
     advance_after_send = base + 1000 * millisecond;
@@ -353,59 +348,57 @@ void send_crosses_deadline() {
     });
     check(sub.status().responses == 0 && sub.status().active == 0,
         "send crossing equality cannot report timely finish even if bytes reached kernel");
-    stop_sub(sub);
+    stop_core(sub);
 }
 void same_time_batch() {
     const auto base = freeze();
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.idle_timeout_ms = 1000;
     config.max_connections = 3;
-    ProtocolSubReactor sub(config);
-    check(!sub.start(), "bounded batch Sub ready");
+    ConnectionHarness sub(config);
+    check(!sub.start(), "bounded batch 连接核心 ready");
     auto first = attach(sub), second = attach(sub), third = attach(sub);
     admitted(sub, 3);
     fake_time = base + 1000 * millisecond;
-    check(!notify_eventfd(std::get<MainReactorTarget>(sub.target()).wakeup_fd),
-        "wake equal deadline batch");
+    check(!notify_eventfd(sub.wakeup_fd()), "wake equal deadline batch");
     await([&] {
         return sub.status().idle_timeouts == 3;
     });
     check(sub.status().active == 0, "one control wake consumes all due entries within capacity");
-    stop_sub(sub);
+    stop_core(sub);
 }
 void real_timer() {
     fake_time = 0;
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.idle_timeout_ms = 50;
-    MultiReactorFixture fixture(2, config);
-    check(!fixture.start(), "real timer TCP fixture ready");
+    ConnectionHarness fixture(config);
+    check(!fixture.start(true), "real timer TCP fixture ready");
     auto first = client(fixture.port()), second = client(fixture.port());
     await([&] {
-        return fixture.sub(0).status().idle_timeouts + fixture.sub(1).status().idle_timeouts == 2;
+        return fixture.status().idle_timeouts == 2;
     });
-    check(fixture.sub(0).status().active + fixture.sub(1).status().active == 0,
+    check(fixture.status().active == 0,
         "two real TCP idle connections expire without injected control wake");
     check(!fixture.stop(), "local timeouts preserve server lifecycle");
 }
 void infrastructure_failure(bool clock) {
     freeze();
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.idle_timeout_ms = 1000;
-    ProtocolSubReactor sub(config);
-    check(!sub.start(), "failure Sub initially ready");
+    ConnectionHarness sub(config);
+    check(!sub.start(), "failure 连接核心 initially ready");
     auto peer = attach(sub);
     admitted(sub);
-    auto destination = std::get<MainReactorTarget>(sub.target());
     if (clock)
         fail_clock = true;
     else
         fail_arm = true;
-    check(!notify_eventfd(destination.wakeup_fd), "trigger infrastructure failure");
+    check(!notify_eventfd(sub.wakeup_fd()), "trigger infrastructure failure");
     await([&] {
         return sub.status().first_error.value() == EIO;
     });
-    check(sub.status().state == ProtocolSubState::quiescing,
-        "time infrastructure failure stops Sub with first cause");
+    check(sub.status().state == ReactorState::quiescing,
+        "time infrastructure failure stops 连接核心 with first cause");
     (void)sub.request_stop();
     sub.release_publishers();
     check(sub.join().value() == EIO && sub.status().active == 0,
@@ -416,11 +409,11 @@ int main() {
     const auto baseline = fd_count();
     for (const auto value : {-1LL, 86400001LL})
         for (bool request : {false, true}) {
-            ProtocolSubConfig config;
+            ProtocolConnectionConfig config;
             (request ? config.request_timeout_ms : config.idle_timeout_ms) = value;
             bool rejected = false;
             try {
-                ProtocolSubReactor invalid(config);
+                ConnectionHarness invalid(config);
             } catch (const std::invalid_argument &) {
                 rejected = true;
             }
@@ -439,9 +432,9 @@ int main() {
     infrastructure_failure(false);
     fake_time = std::numeric_limits<std::int64_t>::max() - 1000;
     {
-        ProtocolSubConfig config;
+        ProtocolConnectionConfig config;
         config.idle_timeout_ms = 1;
-        ProtocolSubReactor sub(config);
+        ConnectionHarness sub(config);
         check(!sub.start(), "overflow starts with no active deadline");
         auto peer = attach(sub);
         await([&] {

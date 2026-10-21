@@ -6,6 +6,7 @@
  * BRIEF   : 独立成品验证原子发布、旧读者寿命、回滚缓存和真实在线切换
  */
 #include "siftwing/net/online_server.hpp"
+#include "siftwing/net/signalfd_source.hpp"
 #include "siftwing/logging/logger.hpp"
 #include "../support/online_server_fixture.hpp"
 #include <nlohmann/json.hpp>
@@ -455,8 +456,7 @@ void signaled_online(const std::string &parent,
         "running and queued jobs finish once, no signal failure");
     std::size_t responses = 0, timeouts = 0;
     for (const auto &sub : {report.reactor}) {
-        check(
-            sub.state == net::ProtocolSubState::stopped && sub.active == 0, "Reactor owner joined");
+        check(sub.state == net::ReactorState::stopped && sub.active == 0, "Reactor owner joined");
         responses += sub.drain_responses;
         timeouts += sub.drain_timeouts;
     }

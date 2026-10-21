@@ -3,7 +3,7 @@
  * FILE    : completion_wakeup_concurrency_test.cc
  * AUTHOR  : bitofux
  * DATE    : 2026-10-15
- * BRIEF   : 多Sub与真实WorkerPool回投、逐客户端字节参考及线程I/O归属
+ * BRIEF   : 多连接核心与真实WorkerPool回投、逐客户端字节参考及线程I/O归属
  */
 #include "../support/completion_fixture.hpp"
 #include <sys/epoll.h>
@@ -86,7 +86,7 @@ int main() {
     const auto baseline = fd_count();
     for (unsigned int round = 0; round < 4; ++round) {
         Submitter sink;
-        ProtocolSubConfig config;
+        ProtocolConnectionConfig config;
         config.reactor_id = 31;
         config.request_submitter = &sink;
         config.max_body_bytes = 256;
@@ -96,10 +96,11 @@ int main() {
         config.read_byte_budget = 11;
         config.write_byte_budget = 7;
         config.io_attempt_budget = 1;
-        ProtocolSubReactor first(config);
+        ConnectionHarness first(config);
         ++config.reactor_id;
-        ProtocolSubReactor second(config);
-        check(!first.start() && !second.start(), "all Sub targets ready before worker routing");
+        ConnectionHarness second(config);
+        check(
+            !first.start() && !second.start(), "all 连接核心 targets ready before worker routing");
         sink.targets[0] = std::get<CompletionTarget>(first.completion_target());
         sink.targets[1] = std::get<CompletionTarget>(second.completion_target());
         std::array<UniqueFd, 48> peers;
@@ -144,10 +145,10 @@ int main() {
         check(!first.request_stop() && !second.request_stop(),
             "stop both consumers before worker barrier");
         await([&] {
-            return first.status().state == ProtocolSubState::quiescing
-                   && second.status().state == ProtocolSubState::quiescing;
+            return first.status().state == ReactorState::quiescing
+                   && second.status().state == ReactorState::quiescing;
         });
-        sink.pool.join(); // Sub不会再调用submitter；所有worker完整发布/通知已经返回。
+        sink.pool.join(); // 连接核心不会再调用submitter；所有worker完整发布/通知已经返回。
         check(sink.pool.report().succeeded == 576 && sink.pool.report().failed == 0,
             "pool observes exactly one execution per accepted request");
         first.release_publishers();

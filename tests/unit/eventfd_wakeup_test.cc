@@ -73,30 +73,17 @@ int main() {
         require(drain_eventfd(fd.get()).state == EventFdDrainState::drained, "clear readiness");
         require(::epoll_wait(epoll.get(), &event, 1, 0) == 0, "drained is no longer readable");
 
-        // 独立参考：真实内核计数饱和仍可读；真实队列只有3项，不能按巨大计数pop。
+        // 独立参考：真实内核计数饱和仍可读；通知次数与真实队列数无关，队列行为由Completion回投测试验证。
         const auto saturated = std::numeric_limits<std::uint64_t>::max() - 1;
         require(::write(fd.get(), &saturated, sizeof(saturated))
                     == static_cast<ssize_t>(sizeof(saturated)),
             "saturate");
-        FdHandoffQueue queue(3);
-        for (int i = 0; i < 3; ++i) {
-            UniqueFd source(::open("/dev/null", O_RDONLY | O_CLOEXEC));
-            require(static_cast<bool>(source), "resource");
-            const auto result = try_handoff_and_notify(queue, source, fd.get());
-            require(result.handoff == FdHandoffResult::accepted && !source
-                        && !result.notification_error,
-                "real EAGAIN accepted as coalesced notification");
-        }
+        for (int n = 0; n < 3; ++n)
+            require(!notify_eventfd(fd.get()), "saturated EAGAIN remains a valid notification");
         require(::epoll_wait(epoll.get(), &event, 1, 0) == 1, "saturated still readable");
         const auto drained = drain_eventfd(fd.get());
         require(drained.state == EventFdDrainState::drained && drained.successful_reads == 1,
             "counter ignored");
-        unsigned int popped = 0;
-        while (auto item = queue.try_pop()) {
-            ++popped;
-            require(!item->close(), "close queue owner");
-        }
-        require(popped == 3 && queue.status().size == 0, "queue determines work count");
         require(!epoll_remove(epoll.get(), fd.get()), "unregister before close");
     }
     // 隔离子进程取得fd 0，不改变测试主进程标准输入；_exit不依赖缓冲输出。

@@ -3,11 +3,11 @@
  * FILE    : eventfd_wakeup.hpp
  * AUTHOR  : bitofux
  * DATE    : 2026-10-14
- * BRIEF   : 有限预算的eventfd通知与fd队列提交后唤醒
+ * BRIEF   : 有限预算的非阻塞eventfd通知与清空原语
  */
 #pragma once
 
-#include "siftwing/net/fd_handoff_queue.hpp"
+#include "siftwing/net/unique_fd.hpp"
 #include <cstddef>
 #include <system_error>
 #include <variant>
@@ -70,33 +70,4 @@ struct EventFdDrainResult {
  */
 [[nodiscard]] EventFdDrainResult drain_eventfd(
     int stable_fd, std::size_t max_attempts = eventfd_attempt_limit) noexcept;
-/** @brief 入队和通知为两个结果；只有accepted时执行通知，通知错误不撤销提交。 */
-struct FdHandoffWakeupResult {
-    FdHandoffResult handoff;            ///< accepted后source为空，队列或消费者拥有fd。
-    std::error_code notification_error; ///< 拒绝入队时为空；accepted仍须检查通知诊断。
-};
-/**
- * @brief 先提交真实队列，再通知；不将通知失败伪装成入队失败
- *
- * @param[in,out] queue
- *     存活的目标队列；同FdHandoffQueue的同步及生命周期合同。
- *
- * @param[in,out] source
- *     生产者独占源；只有accepted消费，拒绝/加锁异常保持。
- *
- * @param[in] stable_wakeup_fd
- *     同notify_eventfd的稳定借用，覆盖整个发布+通知调用。
- *
- * @return
- *     两阶段结果；accepted后通知失败也不得收回、重投或在生产者关闭已提交fd。
- *
- * @throws
- *     mutex加锁失败可抛system_error，发生在提交前；通知本身不抛异常。
- *
- * @note
- *     停止须close队列入口、撤发布者并等已进入的完整调用返回，最后控制通知也须返回/撤借用，
- *     再由消费者drain/清理并关闭eventfd。队列closed/empty不能代替发布者静止。
- */
-[[nodiscard]] FdHandoffWakeupResult try_handoff_and_notify(
-    FdHandoffQueue &queue, UniqueFd &source, int stable_wakeup_fd);
 } // namespace siftwing::net

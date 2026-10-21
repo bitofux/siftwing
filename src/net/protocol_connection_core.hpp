@@ -7,7 +7,9 @@
  */
 #pragma once
 
-#include "siftwing/net/protocol_sub_reactor.hpp"
+#include "siftwing/net/reactor_report.hpp"
+#include "siftwing/net/protocol_connection_config.hpp"
+#include <atomic>
 #include <memory>
 
 namespace siftwing::net {
@@ -23,7 +25,7 @@ public:
     ProtocolConnectionCore(int epoll,
         int timer,
         const ProtocolConnectionConfig &config,
-        ProtocolSubStatus &report,
+        ReactorReport &report,
         const std::atomic<std::int64_t> &drain_requested);
     ~ProtocolConnectionCore() noexcept;
     ProtocolConnectionCore(const ProtocolConnectionCore &) = delete;
@@ -35,8 +37,6 @@ public:
     [[nodiscard]] bool drained();
     /** @brief 接管一个已接受fd，分配身份并注册到借用的epoll。 */
     void admit(UniqueFd &source);
-    /** @brief 推进可运行连接、期限及一轮epoll等待；timeout语义沿用原Sub。 */
-    void tick(int timeout);
     /** @brief 新一轮：重置逐连接预算并推进主动续处理/期限；返回本轮是否已有主动工作。 */
     [[nodiscard]] bool prepare_round();
     /** @brief wait后先按同钟裁决到期，再应用本批事件/Completion；不重置逐连接预算。 */

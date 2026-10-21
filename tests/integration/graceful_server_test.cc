@@ -306,7 +306,7 @@ void scenario(const std::string &parent, std::size_t capacity_scale, int mode) {
         const auto report = server->report();
         std::size_t drained = 0, timed_out = 0, requests = 0;
         for (const auto &sub : {report.reactor}) {
-            check(sub.state == ProtocolSubState::stopped && sub.active == 0 && sub.drain_started
+            check(sub.state == ReactorState::stopped && sub.active == 0 && sub.drain_started
                       && !sub.first_error,
                 "single owner drained and stopped");
             drained += sub.drain_responses;

@@ -26,7 +26,7 @@ enum class Level {
 /** @brief 固定模块名，不能向日志传递任意用户文本。 */
 enum class Module {
     server,
-    sub,
+    reactor,
     worker,
     cache
 };

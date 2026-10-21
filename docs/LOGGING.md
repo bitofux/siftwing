@@ -126,3 +126,7 @@ ctest --test-dir build/debug --output-on-failure --no-tests=error -R '^logging\.
 独立解析JSON并用独立排名/推荐参考验证四命令、同连接miss/hit、错误后继续、线程与关联、
 空闲关闭及坏日志目标下业务继续。Release保留行为检查；并发专项可在独立TSan构建中运行logging.contract，
 ASan/UBSan使用另一构建。测试不证明日志无阻塞、持久化、高并发容量或生产性能。
+
+## 网络模块名称迁移
+
+当前连接日志module为`reactor`，不再为`sub`。消费日志枚举的脚本应同步迁移；事件、身份、安全过滤及行预算保持。旧日志原件保留当时的sub标签，不回写历史。

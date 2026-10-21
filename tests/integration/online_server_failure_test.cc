@@ -170,7 +170,7 @@ int main(int argc, char **argv) {
         check(report.stopped && report.workers.succeeded == 1 && report.workers.failed == 0,
             "exactly one completed worker before release");
         for (const auto &sub : {report.reactor})
-            check(sub.active == 0 && sub.state == ProtocolSubState::stopped,
+            check(sub.active == 0 && sub.state == ReactorState::stopped,
                 "single Reactor resources closed");
     }
     {

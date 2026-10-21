@@ -1,6 +1,6 @@
 /*
  * PROJECT : SIFTWING
- * FILE    : graceful_sub_test.cc
+ * FILE    : connection_core_drain_test.cc
  * AUTHOR  : bitofux
  * DATE    : 2026-10-15
  * BRIEF   : 排空边界、慢输出、原期限与完整发布屏障的独立证明
@@ -91,12 +91,12 @@ std::int64_t freeze() {
 void wake(int fd) {
     check(!notify_eventfd(fd), "wake owner with stable target");
 }
-void quiescent(ProtocolSubReactor &sub) {
+void quiescent(ConnectionHarness &sub) {
     await([&] {
-        return sub.status().state == ProtocolSubState::quiescing;
+        return sub.status().state == ReactorState::quiescing;
     });
 }
-void finish(ProtocolSubReactor &sub, CompletionTarget target, std::size_t active = 0) {
+void finish(ConnectionHarness &sub, CompletionTarget target, std::size_t active = 0) {
     quiescent(sub);
     await([&] {
         return target.queue->status().closed;
@@ -105,33 +105,29 @@ void finish(ProtocolSubReactor &sub, CompletionTarget target, std::size_t active
         "quiescing retains complete publisher notification fd");
     check(sub.status().active == active, "quiescing connection count");
     sub.release_publishers();
-    check(!sub.join(), "graceful Sub joins without service error");
+    check(!sub.join(), "graceful 连接核心 joins without service error");
     check(::fcntl(target.wakeup_fd, F_GETFD) == -1 && errno == EBADF,
         "last publisher returned then fd closed");
-    check(sub.status().state == ProtocolSubState::joined && sub.status().active == 0,
+    check(sub.status().state == ReactorState::stopped && sub.status().active == 0,
         "final joined and no connections");
 }
-UniqueFd watched_peer(ProtocolSubReactor &sub) {
+UniqueFd watched_peer(ConnectionHarness &sub) {
     int pair[2];
     check(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, pair) == 0,
         "owned nonblocking socketpair");
     UniqueFd source(pair[0]), peer(pair[1]);
     watched = source.get();
-    const auto target = std::get<MainReactorTarget>(sub.target());
-    check(try_handoff_and_notify(*target.queue, source, target.wakeup_fd).handoff
-              == FdHandoffResult::accepted,
-        "real handoff consumes source");
+    check(!sub.adopt(source), "real handoff consumes source");
     return peer;
 }
 void drain() {
     const auto base = freeze();
     CaptureSubmitter sink;
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.request_submitter = &sink;
-    ProtocolSubReactor sub(config);
-    check(!sub.start(), "Sub ready");
+    ConnectionHarness sub(config);
+    check(!sub.start(), "连接核心 ready");
     const auto target = std::get<CompletionTarget>(sub.completion_target());
-    const auto handoff = std::get<MainReactorTarget>(sub.target());
     auto peer = attach(sub);
     auto idle = attach(sub);
     auto partial = attach(sub);
@@ -143,13 +139,11 @@ void drain() {
         return sub.status().admitted == 3;
     });
     check(!sub.request_drain(base + 1000000000), "publish absolute drain request");
-    handoff.queue->close(); // 模拟Main close在排空发布后关闭handoff，不能退回立即丢弃。
     await([&] {
         return sub.status().drain_started && sub.status().active == 1;
     });
-    check(sub.status().state == ProtocolSubState::draining, "only pending connection remains");
-    check(std::holds_alternative<std::error_code>(sub.target()),
-        "draining revokes new target acquisition");
+    check(sub.status().state == ReactorState::draining, "only pending connection remains");
+    check(!sub.accepting(), "draining revokes new target acquisition");
     publish(target, completion(*task));
     const auto expected = wire(0x8003, 77, "{\"test\":true}");
     check(receive(peer.get(), expected.size()) == expected,
@@ -160,59 +154,16 @@ void drain() {
               && sink.requests.status().size == 0,
         "cached PING and half packet are never accepted during drain");
 }
-void queued_handoffs() {
-    const auto base = freeze();
-    ProtocolSubConfig config;
-    config.handoff_budget = 1;
-    ProtocolSubReactor sub(config);
-    check(!sub.start(), "handoff drain Sub ready");
-    const auto target = std::get<CompletionTarget>(sub.completion_target());
-    const auto input = std::get<MainReactorTarget>(sub.target());
-    // 暂停真实epoll返回，确保这三项都仍由handoff拥有，没有机会注册Connection。
-    waiting = false;
-    release_wait = false;
-    pause_wait = true;
-    wake(input.wakeup_fd);
-    await([] {
-        return waiting.load();
-    });
-    std::array<UniqueFd, 3> peers;
-    std::array<int, 3> numbers{};
-    for (std::size_t n = 0; n < peers.size(); ++n) {
-        int pair[2];
-        check(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, pair) == 0,
-            "queued handoff peer");
-        UniqueFd source(pair[0]);
-        peers[n] = UniqueFd(pair[1]);
-        numbers[n] = source.get();
-        check(try_handoff_and_notify(*input.queue, source, input.wakeup_fd).handoff
-                  == FdHandoffResult::accepted,
-            "handoff owns queued source");
-    }
-    check(input.queue->status().size == 3, "all sources confirmed queued before drain");
-    check(!sub.request_drain(base + 1000000000), "drain before admitting queued sources");
-    release_wait = true;
-    quiescent(sub);
-    check(sub.status().discarded == 3 && sub.status().received == 0 && sub.status().admitted == 0,
-        "queued handoffs closed before publisher barrier, never admitted");
-    for (std::size_t n = 0; n < peers.size(); ++n) {
-        check(::fcntl(numbers[n], F_GETFD) == -1 && errno == EBADF,
-            "queued source fd closed while publisher notification fd remains");
-        char byte;
-        check(::recv(peers[n].get(), &byte, 1, MSG_DONTWAIT) == 0,
-            "unadmitted peer observes immediate close");
-    }
-    finish(sub, target);
-}
+
 void cutoff(bool send_crosses, bool earlier_request) {
     const auto base = freeze();
     CaptureSubmitter sink;
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.request_submitter = &sink;
     if (earlier_request)
         config.request_timeout_ms = 1;
-    ProtocolSubReactor sub(config);
-    check(!sub.start(), "cutoff Sub ready");
+    ConnectionHarness sub(config);
+    check(!sub.start(), "cutoff 连接核心 ready");
     auto peer = watched_peer(sub);
     send_all(peer.get(), wire(3, 11) + wire(1, 12));
     auto task = take_request(sink);
@@ -254,10 +205,10 @@ void cutoff(bool send_crosses, bool earlier_request) {
 void waiting_and_tightening() {
     const auto base = freeze();
     CaptureSubmitter sink;
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.request_submitter = &sink;
-    ProtocolSubReactor sub(config);
-    check(!sub.start(), "waiting Sub ready");
+    ConnectionHarness sub(config);
+    check(!sub.start(), "waiting 连接核心 ready");
     auto peer = attach(sub);
     send_all(peer.get(), wire(3, 21));
     auto task = take_request(sink);
@@ -281,14 +232,14 @@ void waiting_and_tightening() {
         "late worker result refused without consumption or notification");
     finish(sub, target);
     check(sub.status().drain_timeouts == 1, "pending worker cutoff counted once");
-    check(sub.request_drain(base + 2).value() == ECANCELED, "cannot restart joined Sub");
+    check(sub.request_drain(base + 2).value() == ECANCELED, "cannot restart joined 连接核心");
 }
 void callback_crossing() {
     const auto base = freeze();
     // 最后一个提交回调中收到关闭请求并跨到等号；真实closed分支会构造STOPPING输出。
     // 验证发送前裁决，而非发送完整错误后只把统计改成timeout。
     struct ClosingSubmitter final : RoutedRequestSubmitter {
-        ProtocolSubReactor *owner = nullptr;
+        ConnectionHarness *owner = nullptr;
         std::int64_t when = 0;
         TaskSubmitResult try_submit(std::unique_ptr<RoutedSearchTask> &) override {
             if (const auto error = owner->request_drain(when))
@@ -298,11 +249,11 @@ void callback_crossing() {
         }
     } sink;
     sink.when = base + 1;
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.request_submitter = &sink;
-    ProtocolSubReactor sub(config);
+    ConnectionHarness sub(config);
     sink.owner = &sub;
-    check(!sub.start(), "callback crossing Sub ready");
+    check(!sub.start(), "callback crossing 连接核心 ready");
     const auto target = std::get<CompletionTarget>(sub.completion_target());
     auto peer = attach(sub);
     send_all(peer.get(), wire(3, 51));
@@ -318,10 +269,10 @@ void faults() {
     for (int mode = 0; mode != 3; ++mode) {
         const auto base = freeze();
         CaptureSubmitter sink;
-        ProtocolSubConfig config;
+        ProtocolConnectionConfig config;
         config.request_submitter = &sink;
-        ProtocolSubReactor sub(config);
-        check(!sub.start(), "fault Sub ready");
+        ConnectionHarness sub(config);
+        check(!sub.start(), "fault 连接核心 ready");
         auto peer = attach(sub);
         send_all(peer.get(), wire(3, 31));
         auto task = take_request(sink);
@@ -352,10 +303,10 @@ void faults() {
 void real_timer() {
     fake_time = 0;
     CaptureSubmitter sink;
-    ProtocolSubConfig config;
+    ProtocolConnectionConfig config;
     config.request_submitter = &sink;
-    ProtocolSubReactor sub(config);
-    check(!sub.start(), "real timer Sub ready");
+    ConnectionHarness sub(config);
+    check(!sub.start(), "real timer 连接核心 ready");
     auto peer = attach(sub);
     send_all(peer.get(), wire(3, 41));
     auto task = take_request(sink);
@@ -374,7 +325,6 @@ int main(int argc, char **argv) {
     const std::string mode = argv[1];
     if (mode == "drain") {
         drain();
-        queued_handoffs();
     } else if (mode == "boundaries") {
         cutoff(false, false);
         cutoff(true, false);
@@ -388,5 +338,5 @@ int main(int argc, char **argv) {
     else
         return 2;
     check(fd_count() == descriptors, "all owned descriptors returned after each suite");
-    std::cout << checks << " graceful Sub checks passed\n";
+    std::cout << checks << " graceful 连接核心 checks passed\n";
 }

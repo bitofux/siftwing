@@ -68,11 +68,5 @@ EventFdDrainResult drain_eventfd(int stable_fd, std::size_t max_attempts) noexce
     // 持续发布或持续信号不能让本调用无限占用消费者线程。
     return {EventFdDrainState::budget_exhausted, reads, {}};
 }
-FdHandoffWakeupResult try_handoff_and_notify(
-    FdHandoffQueue &queue, UniqueFd &source, int stable_wakeup_fd) {
-    const auto result = queue.try_push(source);
-    // try_push返回时队列锁已释放；成功提交后消费者甚至可能已取出该条目。
-    return {result,
-        result == FdHandoffResult::accepted ? notify_eventfd(stable_wakeup_fd) : std::error_code{}};
-}
+
 } // namespace siftwing::net

@@ -251,8 +251,8 @@ void final_accounts(const OnlineServerReport &report, std::size_t jobs) {
               && report.workers.failed == 0,
         "all accepted real jobs finish before service teardown");
     for (const auto &sub : {report.reactor}) {
-        check(sub.state == ProtocolSubState::stopped && sub.active == 0
-                  && sub.admitted == sub.dropped && !sub.first_error && !sub.cleanup_error,
+        check(sub.state == ReactorState::stopped && sub.active == 0 && sub.admitted == sub.dropped
+                  && !sub.first_error && !sub.cleanup_error,
             "no active Reactor owns no connections and local faults do not fail service");
         check(sub.completion_received
                   == sub.completion_applied + sub.completion_rejected + sub.completion_stale,
