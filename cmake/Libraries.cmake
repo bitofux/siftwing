@@ -63,6 +63,7 @@ add_library(siftwing_full STATIC
     src/net/main_reactor.cc
     src/net/online_server.cc
     src/net/protocol_loop.cc
+    src/net/protocol_connection_core.cc
     src/net/protocol_sub_reactor.cc
     src/net/signalfd_source.cc
     src/net/socket_ops.cc
